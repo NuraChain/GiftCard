@@ -5,9 +5,10 @@
 // to is one indivisible act, and so is settling a payment.
 import type { DatabaseSync } from 'node:sqlite';
 
-import type { CodeQueries } from './codes.ts';
-import { shaped, phoneNeedle, toOrder, type OrderRow } from './shared.ts';
-import type { NewOrder, Order, OrderQuery } from './types.ts';
+import type { CodeQueries } from '../inventory/queries.ts';
+import { shaped } from '../../platform/db.ts';
+import { phoneNeedle, toOrder, type OrderRow } from '../../db/shared.ts';
+import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
 
 export interface OrderQueries
 {

@@ -4,14 +4,14 @@ import type { Logger } from '@azerothjs/logger';
 
 import type { HandlersWithGuards } from '@azerothjs/http/api';
 
-import type { contract, Receipt } from '../contract.ts';
-import type { Store } from '../db/index.ts';
-import { mintReceiptToken } from '../domain/codes.ts';
-import { displayPhone, normalizePhone } from '../domain/phone.ts';
-import type { PaymentGateway } from '../gateways/zarinpal.ts';
-import type { Checkout } from '../services/checkout.ts';
-import type { Settings } from '../services/settings.ts';
-import { throttle } from './throttle.ts';
+import type { contract, Receipt } from '../../contract/index.ts';
+import type { Store } from '../../db/index.ts';
+import { mintReceiptToken } from '../../domain/codes.ts';
+import { displayPhone, normalizePhone } from '../../domain/phone.ts';
+import type { PaymentGateway } from './zarinpal.ts';
+import type { Checkout } from './checkout.ts';
+import type { Settings } from '../settings/settings.ts';
+import { throttle } from '../../platform/throttle.ts';
 
 /**
  * How long a code stays reserved for a checkout that has not come back. Long enough for a
@@ -72,6 +72,7 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
     const { store, settings, payment, callbackUrl, log } = options;
 
     return {
+        // GET /api/pay/catalog
         catalog: () =>
         {
             // Only ACTIVE tiers reach the shop. A disabled card is not "hidden by the page" -
@@ -92,6 +93,7 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
             };
         },
 
+        // POST /api/pay/start
         start: async ({ input }: { input: { amount: number; phone: string } }) =>
         {
             // The schema proved the phone is valid; it does not canonicalise, so this is
@@ -156,6 +158,7 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
             return { payUrl: opened.payUrl };
         },
 
+        // GET /api/pay/receipt
         receipt: ({ query }: { query: { token: string } }): Receipt =>
         {
             const order = store.orderById(query.token);

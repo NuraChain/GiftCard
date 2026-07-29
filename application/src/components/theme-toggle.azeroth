@@ -18,7 +18,7 @@
 // the server and desynchronise hydration.
 import type { IconNode } from 'lucide';
 import { Monitor, Moon, Sun } from 'lucide';
-import { icon } from './icon.ts';
+import { icon } from '../ui/icon.ts';
 
 type Choice = 'system' | 'light' | 'dark';
 

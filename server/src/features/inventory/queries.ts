@@ -5,8 +5,9 @@
 // than application timing. Everything else here counts what that statement left behind.
 import type { DatabaseSync } from 'node:sqlite';
 
-import { shaped, phoneNeedle, UUID } from './shared.ts';
-import type { Amount, AddCodesResult, CodeQuery, CodeRow, CodeState, StockLine, Tier } from './types.ts';
+import { shaped } from '../../platform/db.ts';
+import { phoneNeedle, UUID } from '../../db/shared.ts';
+import type { Amount, AddCodesResult, CodeQuery, CodeRow, CodeState, StockLine, Tier } from '../../db/types.ts';
 
 export interface CodeQueries
 {

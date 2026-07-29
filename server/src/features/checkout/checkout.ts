@@ -21,9 +21,9 @@
 //      stored, and on the buyer's screen.
 import type { Logger } from '@azerothjs/logger';
 
-import type { Order, Store } from '../db/index.ts';
-import type { PaymentGateway } from '../gateways/zarinpal.ts';
-import type { SmsSender } from '../gateways/kavenegar.ts';
+import type { Order, Store } from '../../db/index.ts';
+import type { PaymentGateway } from './zarinpal.ts';
+import type { SmsSender } from './sms.ts';
 
 export interface CheckoutOptions
 {

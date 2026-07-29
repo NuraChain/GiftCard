@@ -8,7 +8,7 @@
 // The code carries dir="ltr": it isolates the Latin run so it cannot scramble the
 // Persian layout around it, and keeps its own characters in reading order.
 import { Check } from 'lucide';
-import { icon } from './icon.ts';
+import { icon } from '../ui/icon.ts';
 
 export default component CodeCapsule(props: { code: string; label: string; verified?: boolean; scanning?: boolean })
 {

@@ -18,7 +18,7 @@
 // more, so a stolen console session can overwrite a credential but never read one out.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
-import type { SettingsStore } from '../db/index.ts';
+import type { SettingsStore } from '../../db/index.ts';
 
 /** Every key this module owns. Anything not listed is not settable from the browser. */
 export const SETTING_KEYS =

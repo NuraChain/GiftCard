@@ -9,10 +9,10 @@
 // The page argues one thing: what you buy is a code, and this is exactly what happens
 // to it. The hero shows that code as the artifact it is, the tiers repeat the motif,
 // and the FAQ answers the fears in the buyer's own words.
-import { useCatalog, type CatalogTier } from '../catalog.ts';
-import { STEPS, FAQS, ASSURANCES, CONTACT } from '../content.ts';
-import { icon } from '../components/icon.ts';
-import Async from '../components/async.azeroth';
+import { useCatalog, type CatalogTier } from '../lib/catalog.ts';
+import { STEPS, FAQS, ASSURANCES, CONTACT } from '../lib/content.ts';
+import { icon } from '../ui/icon.ts';
+import Async from '../ui/async.azeroth';
 import CodeCapsule from '../components/code-capsule.azeroth';
 import GiftCard from '../components/gift-card.azeroth';
 import FaqItem from '../components/faq-item.azeroth';

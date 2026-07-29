@@ -10,12 +10,12 @@
 // call. The first real payment is still the first real payment.
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { createAdmin } from '../src/services/admin.ts';
+import { createAdmin } from '../src/features/console/session.ts';
 import { buildApp } from '../src/app.ts';
-import type { PaymentGateway, RequestResult, VerifyResult } from '../src/gateways/zarinpal.ts';
+import type { PaymentGateway, RequestResult, VerifyResult } from '../src/features/checkout/zarinpal.ts';
 import { seedTiers } from '../src/domain/seed.ts';
-import { createSettings, type Settings } from '../src/services/settings.ts';
-import type { SmsResult, SmsSender } from '../src/gateways/kavenegar.ts';
+import { createSettings, type Settings } from '../src/features/settings/settings.ts';
+import type { SmsResult, SmsSender } from '../src/features/checkout/sms.ts';
 import { createStore, type Store } from '../src/db/index.ts';
 
 const ADMIN_KEY = 'ABCD-EFGH-JKLM-NPQR';
@@ -130,8 +130,15 @@ function get(path: string, headers: Record<string, string> = {}): Promise<Respon
     return app.handle(new Request(`http://local${ path }`, { headers }));
 }
 
-/** Runs a checkout up to the point the browser would leave for the gateway. */
-async function buy(amount: 5 | 10 | 25 = 10, phone = '09170459330'): Promise<number>
+/**
+ * Runs a checkout up to the point the browser would leave for the gateway.
+ *
+ * `amount` is a plain number, not `5 | 10 | 25`. That union was this helper's last trace of
+ * a fixed catalogue, and it contradicted the test below that creates a $50 tier at runtime
+ * and buys it. Whether an amount is sellable is a lookup against the live tier table now -
+ * see the note on `amountField` in the contract.
+ */
+async function buy(amount = 10, phone = '09170459330'): Promise<number>
 {
     return (await post('/api/pay/start', { amount, phone })).status;
 }
@@ -680,10 +687,11 @@ describe('the catalogue', () =>
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${ authority }&Status=OK`);
 
-        const removed = await app.handle(new Request('http://local/api/admin/tiers', {
+        // The amount rides in the query string, not a DELETE body: a body on DELETE has no
+        // defined semantics and intermediaries may drop it.
+        const removed = await app.handle(new Request('http://local/api/admin/tiers?amount=10', {
             method: 'DELETE',
-            headers: { 'content-type': 'application/json', cookie },
-            body: JSON.stringify({ amount: 10 })
+            headers: { cookie }
         }));
 
         // Dropping the row would orphan the history that explains what someone paid.
@@ -695,10 +703,9 @@ describe('the catalogue', () =>
     it('deletes a tier nobody ever used', async () =>
     {
         const cookie = await signedIn();
-        const removed = await app.handle(new Request('http://local/api/admin/tiers', {
+        const removed = await app.handle(new Request('http://local/api/admin/tiers?amount=25', {
             method: 'DELETE',
-            headers: { 'content-type': 'application/json', cookie },
-            body: JSON.stringify({ amount: 25 })
+            headers: { cookie }
         }));
         expect(await removed.json()).toEqual({ outcome: 'deleted' });
         expect(store.tiers().map((tier) => tier.amount)).toEqual([5, 10]);

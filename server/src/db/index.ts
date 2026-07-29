@@ -1,25 +1,18 @@
-// Opening the database, and composing the four query modules into one Store.
+// Composing the four query modules into one Store.
 //
-// `:memory:` gives tests the REAL engine rather than a fake, so the claim semantics under
-// test are the ones that ship.
-import { DatabaseSync } from 'node:sqlite';
-
-import { createCodeQueries } from './codes.ts';
-import { createOrderQueries } from './orders.ts';
-import { SCHEMA } from './schema.ts';
-import { createSettingQueries } from './settings.ts';
-import { createTierQueries } from './tiers.ts';
+// Opening the connection is platform/db.ts's job; this file only assembles. `:memory:`
+// gives tests the REAL engine rather than a fake, so the claim semantics under test are
+// the ones that ship.
+import { openDatabase } from '../platform/db.ts';
+import { createCodeQueries } from '../features/inventory/queries.ts';
+import { createOrderQueries } from '../features/checkout/queries.ts';
+import { createSettingQueries } from '../features/settings/queries.ts';
+import { createTierQueries } from '../features/catalogue/queries.ts';
 import type { Store } from './types.ts';
 
 export function createStore(file: string): Store
 {
-    const db = new DatabaseSync(file);
-    // WAL lets a reader (the shop counting stock) run while a writer (a purchase) commits.
-    // A foreign-key pragma is not needed - codes and orders are joined by application logic
-    // on purpose, so a deleted order can never orphan a code that is still worth money.
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA busy_timeout = 5000');
-    db.exec(SCHEMA);
+    const db = openDatabase(file);
 
     const settings = createSettingQueries(db);
     const tiers = createTierQueries(db);

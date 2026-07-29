@@ -7,7 +7,7 @@
 // keeps is an HttpOnly cookie no script here can read - including this one.
 import { createSignal, createStore } from 'azerothjs';
 
-import { client } from '../../api.ts';
+import { client } from '../../lib/api.ts';
 
 export const useAdminSession = createStore(() =>
 {

@@ -1,40 +1,56 @@
 # How the server is laid out
 
-Five layers, each answering one question. A file belongs to the layer whose question it
-answers, not to the feature it happens to serve.
+**Organised by FEATURE, not by layer.** A feature is a folder you can read top to bottom: its
+wire shapes, its handlers, its rules and its SQL sit together. "How does buying a card work?"
+has one answer - open `features/checkout/`.
+
+It used to be layer-first (`routes/`, `services/`, `db/`, `gateways/`, `contract/`). Every
+file was fine and following one feature still meant opening eight of them across five
+directories. That is the trade this layout reverses.
 
 ```
 src/
   main.ts        Bootstrap. The ONLY file that reads the environment or builds a real
                  gateway, SMS client or database.
-  app.ts         Route wiring. Says which handler serves which route and which are
-                 guarded, and nothing else.
-  config.ts      The environment - as a SEED, not the last word (see services/settings.ts).
-  contract.ts    The shared wire contract. Client-safe: the browser imports this file.
+  app.ts         WIRING ONLY: which feature answers which group, and which routes are
+                 guarded. If a rule appears here, it is in the wrong file.
+  config.ts      The environment - as a SEED, not the last word (see features/settings).
 
-  routes/        HTTP. Reads a request, calls a service or the store, shapes a response.
-    pay.ts       The shop, the checkout, the bank's return, the receipt.
-    admin.ts     The console: session, ledger, inventory, catalogue, settings, key.
+  platform/      What every feature needs and none of them owns.
+    db.ts        Opens the connection, sets the pragmas, applies the schema.
+    schema.ts    EVERY table and index, in one readable map.
     throttle.ts  Per-route rate limiting.
+    branding.ts  The edge wrapper that stamps the shop's name into served HTML.
 
-  services/      Rules. No HTTP types cross this line.
-    checkout.ts  THE MONEY RULES. Read this before touching a payment.
-    admin.ts     Sessions, lockout, cookies.
-    settings.ts  Runtime configuration: the write-only rule, the audit, the admin key.
+  contract/
+    index.ts     defineContract({ pay, admin }) - the whole API in one screen.
+    shared.ts    The two amount fields both halves need.
 
-  gateways/      Third parties, behind an injectable `fetch`.
-    zarinpal.ts  Payment request and verify.
-    kavenegar.ts SMS delivery.
+  features/
+    checkout/    A buyer buys a card.
+      contract.ts  the shop's wire shapes and routes
+      routes.ts    handlers, plus the gateway's redirect callback
+      checkout.ts  THE MONEY RULES. Read this before touching a payment.
+      queries.ts   the ledger, and the transactions that move a purchase along
+      zarinpal.ts  payment request and verify
+      sms.ts       code delivery
 
-  db/            Persistence. One module per table; SQL lives here and nowhere else.
-    index.ts     Opens the database and composes the modules into one `Store`.
-    schema.ts    Every table and index, in one readable place.
-    types.ts     The shapes the database speaks, and the `Store` interface.
-    orders.ts    The ledger, and the transactions that move a purchase through its life.
-    codes.ts     The inventory, and the claim that stops two buyers getting one code.
-    tiers.ts     The catalogue.
-    settings.ts  Settings rows and the audit beside them.
-    shared.ts    Row casts and the phone-search helper.
+    inventory/   Codes come in, codes go out.
+      contract.ts  routes.ts  queries.ts (the claim that stops double-selling)
+
+    catalogue/   What the shop sells.
+      contract.ts  routes.ts  queries.ts (a used tier deactivates, never deletes)
+
+    console/     Who is signed in, and what happened.
+      contract.ts  routes.ts  session.ts (sessions, lockout, cookies)
+
+    settings/    Runtime configuration, and the admin key.
+      contract.ts  routes.ts  settings.ts (the write-only rule)  queries.ts
+
+  db/            The Store composition and the vocabulary every query module speaks.
+    index.ts     Assembles each feature's queries into one injectable Store.
+    types.ts     The shapes the database speaks, and the Store interface.
+    shared.ts    The order row cast and the phone-search helper.
 
   domain/        Pure rules, no I/O.
     phone.ts     Iranian mobile numbers, normalised to one canonical form.
@@ -42,29 +58,56 @@ src/
     seed.ts      The catalogue a first boot starts from.
 ```
 
-## The rules that decide where something goes
+## The rules that keep it honest
 
-**A route may not contain a rule that matters.** `settle` used to live inside the route
-wiring, which meant the four rules that decide whether money moved could only be found by
-reading past a router. It is `services/checkout.ts` now, and the header of that file states
-them.
+**A feature folder reads top to bottom.** Opening `features/checkout/` answers "how does
+buying work" without another directory.
 
-**SQL lives in `db/` only.** A route that builds a query has put the schema in two places.
+**The schema stays central.** `platform/schema.ts` holds every `CREATE TABLE` - a database's
+shape is one thing, and scattering it per feature loses the map. Only the *queries* live in
+features.
 
-**A cross-table transaction belongs to its aggregate, not to a table.** Claiming a code and
-creating the order it belongs to is one indivisible act, so it lives in `db/orders.ts` and
-calls into `db/codes.ts` - the transaction is the unit, not the table.
+**A feature may import another feature's queries, never its routes.** Checkout claims a code
+and settles an order in one transaction, so `features/checkout/queries.ts` legitimately reads
+`features/inventory/queries.ts`. If two features needed each other's *routes*, they would be
+one feature.
 
-**`services/` never imports from `routes/`.** If a service needs to answer with a status
-code, it is returning a result the route translates, not throwing HTTP from underneath.
+**Every `features/*/contract.ts` is CLIENT-SAFE.** It may import `@azerothjs/http/api/client`,
+`@azerothjs/schema`, `domain/`, and `contract/shared.ts` - nothing else. The application
+imports these files directly, so anything else here lands in the browser bundle.
 
-**Handler factories are typed FROM the contract** (`HandlersWithGuards<typeof contract, …>`),
-so a route added without a handler - or a handler whose shape drifts - is a compile error
-rather than a runtime 500.
+**Contract groups are the client's call path, not the folder name.** The wire has two groups,
+`pay` and `admin`; `contract/index.ts` composes each feature's declarations into them. A
+feature can move without changing a line of browser code.
+
+**Each feature claims only its own routes.** A handler factory returns
+`Pick<AdminHandlers, 'its' | 'own' | 'keys'>`, so a handler whose shape drifts from its route
+fails to compile in its own file - and `mountApi` in `app.ts` still proves the union covers
+every route in the contract.
+
+**A route may not contain a rule that matters.** The four rules that decide whether money
+moved are stated in the header of `features/checkout/checkout.ts`, not buried in a router.
+
+**SQL lives in a `queries.ts` only.** A route that builds a query has put the schema in two
+places.
+
+## Why the Store is still one object
+
+Each feature owns its queries, but `db/index.ts` composes them into a single `Store` that
+`buildApp` takes as one argument. That is deliberate: it is why a test can drive the entire
+app - the forged-callback, replay and sold-out paths included - against `:memory:` with two
+fakes and no network. Splitting it into five injected query objects would buy symmetry and
+cost the thing that makes the suite worth having.
 
 ## Where to start reading
 
-- Money: `services/checkout.ts`, then `routes/pay.ts`.
-- Never selling one code twice: `db/codes.ts`, the `claim` statement.
-- Credentials: `services/settings.ts`.
-- The API's shape: `contract.ts`, then `app.ts`.
+- **Money**: `features/checkout/checkout.ts`, then its `routes.ts`.
+- **Never selling one code twice**: `features/inventory/queries.ts`, the `claim` statement.
+- **Credentials**: `features/settings/settings.ts`.
+- **The API's shape**: `contract/index.ts`, then `app.ts`.
+
+## Testing
+
+`app.handle(new Request(...))` is the whole story: no sockets, no test server. The gateway and
+the SMS provider are injected fakes; the database is a real SQLite in memory, so every claim
+about money is tested against the engine that ships.

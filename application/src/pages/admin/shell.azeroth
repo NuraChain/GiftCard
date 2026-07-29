@@ -6,11 +6,11 @@
 import { Link, useRoute, type MountNode } from 'azerothjs';
 import { Boxes, ClipboardPaste, Eye, EyeOff, LockKeyhole, LogOut, Settings, Ticket, Receipt } from 'lucide';
 
-import { useCatalog } from '../../catalog.ts';
-import { count } from '../../format.ts';
-import { icon } from '../../components/icon.ts';
-import { useToasts } from '../../components/toast.ts';
-import Button from '../../components/ui/button.azeroth';
+import { useCatalog } from '../../lib/catalog.ts';
+import { count } from '../../lib/format.ts';
+import { icon } from '../../ui/icon.ts';
+import { useToasts } from '../../ui/toast.ts';
+import Button from '../../ui/button.azeroth';
 import { useAdminSession } from './session.ts';
 
 const TABS =

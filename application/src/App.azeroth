@@ -7,13 +7,13 @@
 import { RouterProvider, Routes, Link, createRouter, createMemoryHistory } from 'azerothjs';
 import type { LoaderHandoff } from 'azerothjs';
 import { Link2, Mail, MessageCircle, Phone, Clock } from 'lucide';
-import { useCatalog } from './catalog.ts';
+import { useCatalog } from './lib/catalog.ts';
 import { routes } from './routes.ts';
-import { CONTACT } from './content.ts';
-import { icon } from './components/icon.ts';
+import { CONTACT } from './lib/content.ts';
+import { icon } from './ui/icon.ts';
 import ThemeToggle from './components/theme-toggle.azeroth';
 import MobileNav from './components/mobile-nav.azeroth';
-import ToastHost from './components/toast-host.azeroth';
+import ToastHost from './ui/toast-host.azeroth';
 
 // Absolute, not bare fragments. The bar is shown on every route now, and `#cards` from the
 // console would navigate to /admin#cards and scroll nowhere - the link has to name the page

@@ -16,16 +16,16 @@
 import { useNavigate, useQuery } from 'azerothjs';
 import { ArrowRight, Check, Copy, ShieldCheck, TriangleAlert } from 'lucide';
 
-import { client } from '../api.ts';
-import { purchaseFormInput, type Receipt } from '../../../server/src/contract.ts';
-import type { CatalogTier } from '../catalog.ts';
-import { CONTACT } from '../content.ts';
-import { toman } from '../format.ts';
-import { icon } from './icon.ts';
-import Button from './ui/button.azeroth';
-import Field from './ui/field.azeroth';
-import TextInput from './ui/text-input.azeroth';
-import { useToasts } from './toast.ts';
+import { client } from '../lib/api.ts';
+import { purchaseFormInput, type Receipt } from '../../../server/src/contract/index.ts';
+import type { CatalogTier } from '../lib/catalog.ts';
+import { CONTACT } from '../lib/content.ts';
+import { toman } from '../lib/format.ts';
+import { icon } from '../ui/icon.ts';
+import Button from '../ui/button.azeroth';
+import Field from '../ui/field.azeroth';
+import TextInput from '../ui/text-input.azeroth';
+import { useToasts } from '../ui/toast.ts';
 import CodeCapsule from './code-capsule.azeroth';
 
 export default component PurchasePanel(props: { tier: CatalogTier | undefined })

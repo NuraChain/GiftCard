@@ -1,15 +1,5 @@
-// Small things every query module needs.
+// The order row's shape and the phone-search helper. `shaped` lives in platform/db.ts.
 import type { Order, OrderStatus } from './types.ts';
-
-/**
- * SQLite hands back loose `Record<string, SQLOutputValue>` rows. Every query in this layer
- * selects known columns from the schema next door, so the shape is asserted HERE rather
- * than at each call site - one place to look when a column is renamed.
- */
-export function shaped<T>(row: unknown): T
-{
-    return row as T;
-}
 
 /** The row shape SQLite returns for an order; booleans are integers and there are no unions. */
 export interface OrderRow

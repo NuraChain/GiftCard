@@ -5,9 +5,9 @@ import type { PageRoute } from '@azerothjs/kit';
 
 import Landing from './pages/landing.azeroth';
 import AdminOverview from './pages/admin/overview.azeroth';
-import AdminCodes from './pages/admin/codes.azeroth';
+import AdminCodes from './pages/admin/codes/index.azeroth';
 import AdminOrders from './pages/admin/orders.azeroth';
-import AdminSettings from './pages/admin/settings.azeroth';
+import AdminSettings from './pages/admin/settings/index.azeroth';
 
 export const routes: PageRoute[] = [
     // Rendered PER REQUEST so the server can stamp the shop's configured name into the

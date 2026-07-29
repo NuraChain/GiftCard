@@ -4,13 +4,13 @@
 // number that decides that. Everything else here is context for it.
 import { RefreshCw, TriangleAlert } from 'lucide';
 
-import { client } from '../../api.ts';
-import type { AdminOverview } from '../../../../server/src/contract.ts';
-import { count } from '../../format.ts';
-import { icon } from '../../components/icon.ts';
-import { useToasts } from '../../components/toast.ts';
-import Async from '../../components/async.azeroth';
-import Button from '../../components/ui/button.azeroth';
+import { client } from '../../lib/api.ts';
+import type { AdminOverview } from '../../../../server/src/contract/index.ts';
+import { count } from '../../lib/format.ts';
+import { icon } from '../../ui/icon.ts';
+import { useToasts } from '../../ui/toast.ts';
+import Async from '../../ui/async.azeroth';
+import Button from '../../ui/button.azeroth';
 import AdminShell from './shell.azeroth';
 import { useAdminSession } from './session.ts';
 

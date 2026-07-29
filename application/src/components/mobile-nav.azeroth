@@ -12,7 +12,7 @@
 // navigation, which is the one thing it is for.
 import { Transition } from 'azerothjs';
 import { Menu, X } from 'lucide';
-import { icon } from './icon.ts';
+import { icon } from '../ui/icon.ts';
 
 export default component MobileNav(props: { links: Array<{ href: string; label: string }> })
 {

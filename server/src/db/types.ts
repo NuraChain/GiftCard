@@ -170,7 +170,7 @@ export interface SettingsLogEntry
 }
 
 /**
- * The settings half of the store, kept as its own interface so `services/settings.ts`
+ * The settings half of the store, kept as its own interface so `features/settings/settings.ts`
  * depends on the four calls it needs rather than on the whole database.
  */
 export interface SettingsStore

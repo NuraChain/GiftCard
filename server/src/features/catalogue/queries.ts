@@ -5,8 +5,8 @@
 // explains what someone paid.
 import type { DatabaseSync } from 'node:sqlite';
 
-import { shaped } from './shared.ts';
-import type { Amount, Tier, TierInput, TierRemoval } from './types.ts';
+import { shaped } from '../../platform/db.ts';
+import type { Amount, Tier, TierInput, TierRemoval } from '../../db/types.ts';
 
 /** The row shape SQLite returns; booleans are integers. */
 interface TierRow

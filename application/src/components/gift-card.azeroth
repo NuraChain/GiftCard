@@ -9,8 +9,8 @@
 // on the block itself silently flips what `text-start` means and left-aligns the price
 // against the rest of the card.
 import CodeCapsule from './code-capsule.azeroth';
-import type { CatalogTier } from '../catalog.ts';
-import { count, toman } from '../format.ts';
+import type { CatalogTier } from '../lib/catalog.ts';
+import { count, toman } from '../lib/format.ts';
 
 export default component GiftCard(props: { tier: CatalogTier; onChoose: (tier: CatalogTier) => void })
 {

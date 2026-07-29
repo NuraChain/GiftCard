@@ -1,0 +1,271 @@
+// Auditing where the stock went: every code, its state, and its buyer.
+//
+// Codes stay MASKED until asked for. A console that prints the whole inventory is one
+// screenshot away from giving it away, and these are bearer values - whoever reads one can
+// redeem it.
+//
+// `revision` is the parent's way of saying "a batch was just pasted, refetch". A prop rather
+// than a shared store because the only thing that ever invalidates this list is the form on
+// the same page.
+import { Copy, Search, Ticket } from 'lucide';
+
+import { client } from '../../../lib/api.ts';
+import type { CodeRow, TierRow } from '../../../../../server/src/contract/index.ts';
+import { count, moment } from '../../../lib/format.ts';
+import { icon } from '../../../ui/icon.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import Async from '../../../ui/async.azeroth';
+import Button from '../../../ui/button.azeroth';
+import Select from '../../../ui/select.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+
+/**
+ * The inventory filters, in the order an operator asks the questions. The first entry
+ * names the filter as well as clearing it, which is what lets the picker go unlabelled.
+ */
+const FILTERS: Array<{ label: string; state: 'free' | 'held' | 'sold' | null }> =
+[
+    { label: 'همهٔ وضعیت‌ها', state: null },
+    { label: 'آماده فروش', state: 'free' },
+    { label: 'رزرو شده', state: 'held' },
+    { label: 'فروخته شده', state: 'sold' }
+];
+
+/** Persian for a code's state, with the token that carries its weight. */
+const STATE_TEXT: Record<string, { label: string; tone: string }> =
+{
+    free: { label: 'آماده فروش', tone: 'text-firouze' },
+    held: { label: 'رزرو شده', tone: 'text-nura' },
+    sold: { label: 'فروخته شده', tone: 'text-muted' }
+};
+
+export default component InventoryTable(props: { tiers: TierRow[]; revision: number })
+{
+    const notify = useToasts();
+
+    state rows: CodeRow[] = [];
+    state total = 0;
+    state pageSize = 25;
+    state page = 1;
+    state search = '';
+    state filterState: 'free' | 'held' | 'sold' | null = null;
+    state filterAmount: number | null = null;
+    state loading = false;
+    state error = '';
+    state revealed: string | null = null;
+
+    derived lastPage = Math.max(1, Math.ceil(total / pageSize));
+
+    derived stateOptions = FILTERS.map((item) => ({ value: item.state ?? '', label: item.label }));
+    // Rebuilt from the catalogue rather than fixed: the denominations are the operator's to
+    // change, so this list is however many cards they have defined today.
+    derived amountOptions = [
+        { value: '', label: 'هر مبلغی' },
+        ...props.tiers.map((tier) => ({ value: String(tier.amount), label: `$${ tier.amount }`, latin: true }))
+    ];
+
+    const load = async (): Promise<void> =>
+    {
+        loading = true;
+        error = '';
+        try
+        {
+            const found = await client.admin.codes({
+                query: {
+                    search,
+                    state: filterState ?? undefined,
+                    amount: filterAmount ?? undefined,
+                    page
+                }
+            });
+            rows = found.rows;
+            total = found.total;
+            pageSize = found.pageSize;
+        }
+        catch (failure)
+        {
+            error = failure instanceof Error && failure.message !== '' ? failure.message : 'کدها خوانده نشدند';
+        }
+        finally
+        {
+            loading = false;
+        }
+    };
+
+    // Refetches on the first render AND every time the parent bumps `revision` after a paste.
+    effect (props.revision)
+    {
+        void load();
+    }
+
+    /** Any change to a filter is a new question, so it starts at page one. */
+    const filter = async (change: () => void): Promise<void> =>
+    {
+        change();
+        page = 1;
+        await load();
+    };
+
+    const goToPage = async (next: number): Promise<void> =>
+    {
+        page = Math.min(Math.max(1, next), lastPage);
+        await load();
+    };
+
+    /**
+     * The clipboard leaves no trace on the page, so this is the one console action that
+     * cannot confirm itself. Support reads or pastes a code far more often than it retypes one.
+     */
+    const copyCode = async (code: string): Promise<void> =>
+    {
+        try
+        {
+            await navigator.clipboard.writeText(code);
+            notify.success('کد کپی شد');
+        }
+        catch
+        {
+            notify.error('کپی نشد. کد را دستی انتخاب کنید.');
+        }
+    };
+
+    <section class="mt-section">
+        <h2 class="flex items-center gap-2 text-h3 font-bold">
+            { icon(Ticket, 'size-5 text-firouze') }
+            موجودی
+        </h2>
+        <p class="mt-2 text-small text-muted">
+            هر کدی که وارد کرده‌اید، به‌همراه وضعیت و خریدارش. تازه‌ترین کد اول.
+        </p>
+
+        <form class="mt-4 flex flex-wrap gap-2" novalidate onSubmit={ (event: Event) => { event.preventDefault(); void filter(() => undefined); } }>
+            <label class="sr-only" for="code-search">جستجو در کدها</label>
+            <div class="relative min-w-0 flex-1">
+                <TextInput
+                    id="code-search"
+                    tone="surface"
+                    class="ps-11 pe-4 text-small"
+                    placeholder="بخشی از کد، یا شماره موبایل خریدار"
+                    bind:value={ search }
+                />
+                <span class="pointer-events-none absolute inset-y-0 start-4 flex items-center text-muted">
+                    { icon(Search, 'size-4') }
+                </span>
+            </div>
+            <Button type="submit" disabled={ loading }>جستجو</Button>
+        </form>
+
+        {/* Pickers, not chips. As chips these two filters wrapped onto three rows of a
+            phone, and they grow with the catalogue - a shop with eight denominations
+            would have had eleven buttons here. A picker is one row at any catalogue
+            size, and on a phone it opens the platform's own list.
+
+            Neither carries a visible label: the option that clears the filter also
+            names it, so "همهٔ وضعیت‌ها" says what the closed picker is for. */}
+        <div class="mt-3 flex gap-2">
+            <Select
+                id="filter-state"
+                class="min-w-0 flex-1 sm:max-w-52"
+                label="وضعیت کد"
+                value={ filterState ?? '' }
+                options={ stateOptions }
+                onChange={ (chosen) => void filter(() => { filterState = chosen === '' ? null : chosen as 'free' | 'held' | 'sold'; }) }
+            />
+            <Select
+                id="filter-amount"
+                class="min-w-0 flex-1 sm:max-w-40"
+                label="مبلغ کارت"
+                value={ filterAmount === null ? '' : String(filterAmount) }
+                options={ amountOptions }
+                onChange={ (chosen) => void filter(() => { filterAmount = chosen === '' ? null : Number(chosen); }) }
+            />
+        </div>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading }
+                error={ error }
+                empty={ rows.length === 0 }
+                emptyText={ search === '' && filterState === null && filterAmount === null ? 'هنوز کدی وارد نشده است.' : 'کدی با این مشخصات نیست.' }
+                onRetry={ () => void load() }
+                skeleton={ <div class="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div> }
+            >
+                {/* Cards below `md` - see the note on the same table in orders.azeroth.
+                    The reveal sits at the FOOT of each card rather than the head: the code
+                    is masked, so what identifies a row on sight is its state and amount,
+                    and leading with the button would make the page a stack of buttons. */}
+                <div class="overflow-x-auto rounded-2xl border border-line bg-surface">
+                    <table class="table-cards w-full text-start text-small">
+                        <thead class="border-b border-line text-caption text-muted">
+                            <tr>
+                                <th class="p-3 text-start font-normal">کد</th>
+                                <th class="p-3 text-start font-normal">کارت</th>
+                                <th class="p-3 text-start font-normal">وضعیت</th>
+                                <th class="p-3 text-start font-normal">خریدار</th>
+                                <th class="p-3 text-start font-normal">افزوده شد</th>
+                                <th class="p-3 text-start font-normal">فروخته شد</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <For each={ rows } key={ (row) => `${ row.code }:${ row.state }` }>
+                                { (row) =>
+                                    <tr class="border-b border-line/60">
+                                        <td data-label="کد" class="cell-action p-3 whitespace-nowrap max-md:order-6">
+                                            <Show
+                                                when={ revealed === row.code }
+                                                fallback={
+                                                    <button
+                                                        type="button"
+                                                        class="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
+                                                        onClick={ () => { revealed = row.code; } }
+                                                    >
+                                                        نمایش کد
+                                                    </button>
+                                                }
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="flex items-center gap-2 py-1 text-caption hover:text-firouze max-md:min-h-tap max-md:w-full max-md:justify-center max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
+                                                    title="کپی کردن کد"
+                                                    onClick={ () => void copyCode(row.code) }
+                                                >
+                                                    <span dir="ltr" class="latin break-all">{ row.code }</span>
+                                                    { icon(Copy, 'size-3.5 shrink-0 text-muted') }
+                                                </button>
+                                            </Show>
+                                        </td>
+                                        <td data-label="کارت" class="cell-inline p-3 whitespace-nowrap max-md:order-2">
+                                            <span dir="ltr" class="latin">${ row.amount }</span>
+                                        </td>
+                                        <td data-label="وضعیت" class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-1 ${ STATE_TEXT[row.state].tone }` }>
+                                            { STATE_TEXT[row.state].label }
+                                        </td>
+                                        <td data-label="خریدار" class="cell-inline p-3 whitespace-nowrap max-md:order-3">
+                                            <Show when={ row.phone !== null } fallback={ <span class="text-muted">-</span> }>
+                                                <span dir="ltr" class="latin">{ row.phone ?? '' }</span>
+                                            </Show>
+                                        </td>
+                                        <td data-label="افزوده شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-4">{ moment(row.addedAt) }</td>
+                                        <td data-label="فروخته شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
+                                            { row.soldAt === null ? '-' : moment(row.soldAt) }
+                                        </td>
+                                    </tr>
+                                }
+                            </For>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center gap-3">
+                    <p class="text-caption text-muted">
+                        { count(total) } کد، صفحهٔ { count(page) } از { count(lastPage) }
+                    </p>
+                    <div class="ms-auto flex gap-2">
+                        <Button disabled={ page <= 1 || loading } onClick={ () => void goToPage(page - 1) }>تازه‌تر</Button>
+                        <Button disabled={ page >= lastPage || loading } onClick={ () => void goToPage(page + 1) }>قدیمی‌تر</Button>
+                    </div>
+                </div>
+            </Async>
+        </div>
+    </section>
+}

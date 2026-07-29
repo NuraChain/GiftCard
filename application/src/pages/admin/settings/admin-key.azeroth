@@ -1,0 +1,103 @@
+// Rotating the console credential.
+//
+// The current key is required even though a session is already open: a session proves
+// someone WAS the admin at sign-in, and replacing the credential should prove they still
+// are. Rotation kills every open session including this one, so success ends by sending the
+// operator back to the lock screen - that is the honest consequence, not a bug.
+import { KeyRound } from 'lucide';
+
+import { client } from '../../../lib/api.ts';
+import { icon } from '../../../ui/icon.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import Button from '../../../ui/button.azeroth';
+import Field from '../../../ui/field.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+
+/** The generator's alphabet, matching the server's ADMIN_KEY_PATTERN: no I, O, 0 or 1. */
+const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export default component AdminKeySettings()
+{
+    const notify = useToasts();
+
+    state currentKey = '';
+    state newKey = '';
+    state rotating = false;
+
+    const rotate = async (event: Event): Promise<void> =>
+    {
+        event.preventDefault();
+        rotating = true;
+        try
+        {
+            await client.admin.rotateKey({ input: { currentKey, newKey } });
+            // Every session died with the old key, including this one. Sending the operator
+            // back to the lock screen is the honest consequence, not a bug.
+            notify.success('کلید عوض شد. با کلید تازه دوباره وارد شوید.');
+            window.location.assign('/admin');
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'چرخش کلید انجام نشد');
+            rotating = false;
+        }
+    };
+
+    const generateKey = (): void =>
+    {
+        newKey = [...crypto.getRandomValues(new Uint8Array(16))]
+            .map((byte) => KEY_ALPHABET[byte % KEY_ALPHABET.length])
+            .join('')
+            .replace(/(.{4})(?=.)/g, '$1-');
+    };
+
+    <section class="mt-section">
+        <h2 class="flex items-center gap-2 text-h3 font-bold">
+            { icon(KeyRound, 'size-5 text-firouze') }
+            کلید مدیریت
+        </h2>
+        <p class="mt-2 text-small text-muted">
+            کلید تازه جای کلید فعلی را می‌گیرد و همهٔ نشست‌های باز - از جمله همین یکی - بسته می‌شوند.
+            کلید فقط به شکل درهم‌سازی‌شده ذخیره می‌شود، پس اگر گمش کنید بازیابی نمی‌شود.
+        </p>
+
+        <form class="mt-4 rounded-2xl border border-line bg-surface p-5" novalidate onSubmit={ (event: Event) => void rotate(event) }>
+            <Field label="کلید فعلی" for="current-key">
+                <TextInput
+                    id="current-key"
+                    type="password"
+                    latin
+                    autocomplete="off"
+                    class="tracking-wider"
+                    placeholder="XXXX-XXXX-XXXX-XXXX"
+                    bind:value={ currentKey }
+                />
+            </Field>
+
+            <Field label="کلید تازه" for="new-key" class="mt-4" hint="پیش از چرخش، کلید تازه را جایی امن ذخیره کنید.">
+                <div class="flex gap-2">
+                    <TextInput
+                        id="new-key"
+                        latin
+                        autocomplete="off"
+                        class="min-w-0 tracking-wider"
+                        placeholder="XXXX-XXXX-XXXX-XXXX"
+                        bind:value={ newKey }
+                    />
+                    <Button class="shrink-0" onClick={ generateKey }>تولید</Button>
+                </div>
+            </Field>
+
+            <Button
+                type="submit"
+                variant="danger"
+                class="mt-5"
+                busy={ rotating }
+                busyText="در حال چرخش..."
+                disabled={ currentKey.length !== 19 || newKey.length !== 19 }
+            >
+                چرخش کلید
+            </Button>
+        </form>
+    </section>
+}

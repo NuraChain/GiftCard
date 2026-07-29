@@ -11,7 +11,7 @@
 // dropped when people rebuild a select, and it is the part that makes it usable without eyes.
 import { ChevronDown } from 'lucide';
 
-import { icon } from '../icon.ts';
+import { icon } from './icon.ts';
 
 export interface SelectOption
 {

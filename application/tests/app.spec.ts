@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { renderTest, cleanup, fire } from '@azerothjs/testing';
 
 import App from '../src/App.azeroth';
-import { FAQS, ASSURANCES } from '../src/content.ts';
+import { FAQS, ASSURANCES } from '../src/lib/content.ts';
 
 afterEach(cleanup);
 

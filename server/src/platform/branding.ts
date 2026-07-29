@@ -11,7 +11,7 @@
 // after it has been rendered.
 import type { HandlerWrapper } from '@azerothjs/http';
 
-import type { Settings } from '../services/settings.ts';
+import type { Settings } from '../features/settings/settings.ts';
 
 /** @internal Text going into an HTML attribute or element - never trusted, always escaped. */
 function escapeHtml(value: string): string

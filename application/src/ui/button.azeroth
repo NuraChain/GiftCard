@@ -11,7 +11,7 @@
 import type { MountNode } from 'azerothjs';
 import type { IconNode } from 'lucide';
 
-import { icon } from '../icon.ts';
+import { icon } from './icon.ts';
 
 /** What the button MEANS, not what it looks like - the look is this table's business. */
 const VARIANTS =

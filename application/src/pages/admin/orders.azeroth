@@ -4,14 +4,14 @@
 // because they are the only rows that need a human rather than a glance.
 import { Search } from 'lucide';
 
-import { client } from '../../api.ts';
-import type { LedgerRow } from '../../../../server/src/contract.ts';
-import { count, moment, toman } from '../../format.ts';
-import { icon } from '../../components/icon.ts';
-import { useToasts } from '../../components/toast.ts';
-import Async from '../../components/async.azeroth';
-import Button from '../../components/ui/button.azeroth';
-import TextInput from '../../components/ui/text-input.azeroth';
+import { client } from '../../lib/api.ts';
+import type { LedgerRow } from '../../../../server/src/contract/index.ts';
+import { count, moment, toman } from '../../lib/format.ts';
+import { icon } from '../../ui/icon.ts';
+import { useToasts } from '../../ui/toast.ts';
+import Async from '../../ui/async.azeroth';
+import Button from '../../ui/button.azeroth';
+import TextInput from '../../ui/text-input.azeroth';
 import AdminShell from './shell.azeroth';
 import { useAdminSession } from './session.ts';
 

@@ -1,11 +1,11 @@
 // The settings rows, and the audit beside them.
 //
 // This module knows nothing about what a setting MEANS - not which are secret, not how they
-// are sealed. That lives in `services/settings.ts`; here a value is a string in a row.
+// are sealed. That lives in `features/settings/settings.ts`; here a value is a string in a row.
 import type { DatabaseSync } from 'node:sqlite';
 
-import { shaped } from './shared.ts';
-import type { SettingsStore } from './types.ts';
+import { shaped } from '../../platform/db.ts';
+import type { SettingsStore } from '../../db/types.ts';
 
 export function createSettingQueries(db: DatabaseSync): SettingsStore
 {

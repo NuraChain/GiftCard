@@ -1,8 +1,12 @@
-// The app, built pure: dependencies in, App out.
+// The app, built pure: dependencies in, App out. WIRING ONLY.
 //
-// This file does ONE thing now - it wires routes to handlers and says which are guarded.
-// The handlers live in `routes/`, the rules they call in `services/`, the queries in `db/`.
-// Reading this file should tell you the shape of the API and nothing else.
+// Every handler lives in `features/<name>/routes.ts`, beside the contract that declares it,
+// the rules it calls, and its SQL. Nothing in this file decides anything - it says which
+// feature answers which group, and which routes are guarded. If a rule appears here, it is
+// in the wrong file.
+//
+// Reading this file should tell you two things and nothing else: the shape of the API, and
+// what a request has to get past before a handler sees it.
 //
 // API routes live under /api - the same prefix the application's dev proxy forwards - and in
 // production the server also serves the built client, so the deployed app is ONE origin (no
@@ -16,16 +20,19 @@ import { guard, mountApi } from '@azerothjs/http/api';
 import { mountPages, type KitOptions } from '@azerothjs/kit';
 import type { Logger } from '@azerothjs/logger';
 
-import { contract } from './contract.ts';
+import { contract } from './contract/index.ts';
 import type { Store } from './db/index.ts';
-import type { SmsSender } from './gateways/kavenegar.ts';
-import type { PaymentGateway } from './gateways/zarinpal.ts';
-import { adminHandlers } from './routes/admin.ts';
-import { mountPayCallback, payHandlers } from './routes/pay.ts';
-import { throttle } from './routes/throttle.ts';
-import type { Admin } from './services/admin.ts';
-import { createCheckout } from './services/checkout.ts';
-import type { Settings } from './services/settings.ts';
+import { catalogueHandlers } from './features/catalogue/routes.ts';
+import { createCheckout } from './features/checkout/checkout.ts';
+import { mountPayCallback, payHandlers } from './features/checkout/routes.ts';
+import type { SmsSender } from './features/checkout/sms.ts';
+import type { PaymentGateway } from './features/checkout/zarinpal.ts';
+import { consoleHandlers } from './features/console/routes.ts';
+import type { Admin } from './features/console/session.ts';
+import { inventoryHandlers } from './features/inventory/routes.ts';
+import { settingsHandlers } from './features/settings/routes.ts';
+import type { Settings } from './features/settings/settings.ts';
+import { throttle } from './platform/throttle.ts';
 
 export interface AppOptions
 {
@@ -58,12 +65,14 @@ export function buildApp(options: AppOptions): App
     const { store, payment, sms, admin, settings, callbackUrl, log } = options;
     const resultPath = options.resultPath ?? '/';
 
-    // The orchestrator probe: cheap, dependency-free, always 200 when the process lives.
+    // The orchestrator probe: cheap, dependency-free, always 200 when the process lives. It
+    // stays imperative because nothing calls it with types - see features/ for the rest.
     app.get('/api/healthz', () => json({ ok: true, at: new Date().toISOString() }));
 
+    // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
+    // itself rather than through the contract.
     const checkout = createCheckout({ store, payment, sms, log });
     const pay = { store, settings, payment, checkout, callbackUrl, resultPath, log };
-
     mountPayCallback(app, pay);
 
     const requireAdmin = guard((context) => void admin.require(context.request));
@@ -74,6 +83,8 @@ export function buildApp(options: AppOptions): App
             'pay.start': [guard(throttle(8, 60_000))],
             'admin.signIn': [guard(throttle(10, 60_000))],
 
+            // Everything in the console except signing in - that route IS how you get past
+            // this guard.
             'admin.overview': [requireAdmin],
             'admin.orders': [requireAdmin],
             'admin.addCodes': [requireAdmin],
@@ -90,9 +101,17 @@ export function buildApp(options: AppOptions): App
             'admin.rotateKey': [requireAdmin, guard(throttle(10, 60_000))],
             'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))]
         },
+
+        // One line per feature. `mountApi` proves the union covers every route in the
+        // contract, so a feature that forgets a handler fails to compile HERE.
         handlers: {
             pay: payHandlers(pay),
-            admin: adminHandlers({ store, admin, settings, sms, callbackUrl, log })
+            admin: {
+                ...consoleHandlers({ store, admin }),
+                ...catalogueHandlers({ store, log }),
+                ...inventoryHandlers({ store }),
+                ...settingsHandlers({ settings, admin, sms, callbackUrl, log })
+            }
         }
     });
 

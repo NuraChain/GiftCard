@@ -21,14 +21,14 @@ import type { PageRenderer, PageRoute } from '@azerothjs/kit';
 import { createLogger } from '@azerothjs/logger';
 import { fileStream } from '@azerothjs/logger/node';
 
-import { createAdmin } from './services/admin.ts';
+import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
-import { brandPages } from './routes/branding.ts';
+import { brandPages } from './platform/branding.ts';
 import { config, isProduction } from './config.ts';
-import { createPayment } from './gateways/zarinpal.ts';
+import { createPayment } from './features/checkout/zarinpal.ts';
 import { seedTiers } from './domain/seed.ts';
-import { createSettings } from './services/settings.ts';
-import { createSms } from './gateways/kavenegar.ts';
+import { createSettings } from './features/settings/settings.ts';
+import { createSms } from './features/checkout/sms.ts';
 import { createStore } from './db/index.ts';
 
 // Redaction happens in the logger rather than at each call site, so no formatter and no
