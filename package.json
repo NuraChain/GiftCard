@@ -1,0 +1,23 @@
+{
+    "name": "nura-chain",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "engines": {
+        "node": ">=22"
+    },
+    "workspaces": [
+        "application",
+        "server"
+    ],
+    "scripts": {
+        "dev": "azeroth dev",
+        "check": "azeroth check",
+        "build": "azeroth build",
+        "test": "npm test --workspaces --if-present",
+        "start": "npm start --workspace server"
+    },
+    "devDependencies": {
+        "@azerothjs/cli": "^1.1.0"
+    }
+}

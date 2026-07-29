@@ -1,0 +1,594 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/vazirmatn';
+
+/* Nura Chain design tokens.
+   Palette grounded in Persian pigment rather than generic SaaS blue: lajevard is the
+   lapis that gave English the word azure, firouze is Isfahan tilework turquoise, and
+   nura ("light") is a warm gold spent ONLY on a verified/delivered state - never as
+   decoration, so its appearance always means something. */
+:root
+{
+    color-scheme: light dark;
+
+    --paper: light-dark(#eff4f3, #0e1633);
+    --surface: light-dark(#ffffff, #16203f);
+    --ink: light-dark(#10203a, #e7eef6);
+    --muted: light-dark(#5a6b82, #93a4bd);
+    --firouze: light-dark(#12796f, #3fc9b6);
+    --nura: light-dark(#8a5e0a, #e8b14c);
+    --line: light-dark(#d4e0de, #26315a);
+    --danger: light-dark(#a32820, #f39189);
+
+    /* Persian needs more leading than Latin: descenders and diacritics collide at
+       Latin line-heights. */
+    --leading-fa: 1.85;
+
+    /* The scrollbar is part of the page, not part of the OS. Both are derived from the
+       palette above, so they follow light and dark without a second declaration. The
+       track is transparent rather than a colour: a scrolling panel sits on --surface and
+       the page sits on --paper, and transparent is correct on both. */
+    --scroll-thumb: color-mix(in srgb, var(--muted) 45%, transparent);
+    --scroll-track: transparent;
+}
+
+/* An explicit choice overrides the system preference. Both selectors are needed so the
+   attribute wins over the media query in BOTH directions. */
+:root[data-theme='light']
+{
+    color-scheme: light;
+}
+
+:root[data-theme='dark']
+{
+    color-scheme: dark;
+}
+
+@theme inline
+{
+    --color-paper: var(--paper);
+    --color-surface: var(--surface);
+    --color-ink: var(--ink);
+    --color-muted: var(--muted);
+    --color-firouze: var(--firouze);
+    --color-nura: var(--nura);
+    --color-line: var(--line);
+    --color-danger: var(--danger);
+
+    --font-fa: 'Vazirmatn Variable', system-ui, sans-serif;
+    --font-code: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+    /* TYPE SCALE - one ratio, declared once. Phone sizes are the base and each step
+       grows with the viewport, so nothing needs a per-section clamp(). The ratio is
+       ~1.25 (major third): small enough that Persian headings stay readable at 360px,
+       large enough that h1 still leads on a desktop.
+
+       Leading is set per role, not globally: Persian body needs the generous
+       --leading-fa, but a heading at that leading looks unset, and the Latin
+       monospace needs tighter still. */
+    --text-display: clamp(1.75rem, 1.35rem + 2vw, 3rem);
+    --text-display--line-height: 1.35;
+    --text-h2: clamp(1.375rem, 1.2rem + 0.9vw, 1.875rem);
+    --text-h2--line-height: 1.45;
+    --text-h3: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+    --text-h3--line-height: 1.55;
+    --text-body: 1rem;
+    --text-body--line-height: 1.85;
+    --text-small: 0.9375rem;
+    --text-small--line-height: 1.75;
+    --text-caption: 0.8125rem;
+    --text-caption--line-height: 1.6;
+
+    /* SPACING RHYTHM - two tokens do the whole page. `section` is the vertical air
+       around a band, `stack` is the gap between blocks inside one. Both are single
+       fluid values rather than a base plus breakpoint overrides, so a section cannot
+       drift out of rhythm by forgetting a modifier.
+
+       The section floor is 2rem, not 3rem: air that reads as generous in a desktop
+       column reads as a scroll on a 360px screen, where the same gap is a tenth of the
+       viewport. The slope is steeper to compensate, so the desktop end is unchanged. */
+    --spacing-section: clamp(2rem, 0.35rem + 7.3vw, 5.5rem);
+    --spacing-stack: clamp(1.25rem, 1rem + 1.2vw, 2rem);
+
+    /* The minimum comfortable touch target (WCAG 2.2 target size is 24px; 44px is the
+       Apple/Material figure and the one worth designing to on a phone). */
+    --spacing-tap: 2.75rem;
+
+    /* Motion vocabulary - see the MOTION section further down for how these are used. */
+    --dur-fast: 120ms;
+    --dur-quick: 220ms;
+    --dur-base: 300ms;
+    --dur-slow: 420ms;
+    --dur-slower: 560ms;
+    --dur-scan: 1900ms;
+
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    /* Gentle spring, ~6% overshoot: the theme glyph pop. */
+    --ease-spring: linear(0, 0.008, 0.031 2.7%, 0.129 6.1%, 0.257, 0.534 15.9%, 0.638, 0.731, 0.81, 0.876, 0.928 30.8%, 0.983, 1.02, 1.046 41.6%, 1.058, 1.061, 1.057 50.9%, 1.048, 1.021 62.6%, 1.008 69.7%, 0.998, 0.995 82.4%, 1);
+}
+
+@layer base
+{
+    html
+    {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font-fa);
+        font-size: var(--text-body);
+        line-height: var(--leading-fa);
+    }
+
+    /* Headings take their own leading from the scale: Persian body leading looks
+       unset on a two-line heading. Weight and colour stay with the utilities so a
+       heading can still be quiet where the design wants it quiet. */
+    h1
+    {
+        font-size: var(--text-display);
+        line-height: var(--text-display--line-height);
+    }
+
+    h2
+    {
+        font-size: var(--text-h2);
+        line-height: var(--text-h2--line-height);
+    }
+
+    h3
+    {
+        font-size: var(--text-h3);
+        line-height: var(--text-h3--line-height);
+    }
+
+    /* Persian letterforms JOIN. Any tracking breaks the joins and renders a word as
+       disconnected glyphs, so tracking is off globally and re-enabled only on .latin -
+       the monospace code motif, which is unaffected by joining rules. */
+    body,
+    body *
+    {
+        letter-spacing: 0;
+        scroll-behavior: smooth;
+    }
+
+    .latin
+    {
+        font-family: var(--font-code);
+        letter-spacing: 0.04em;
+        line-height: 1.4;
+    }
+
+    /* Tailwind v4's preflight sets `cursor: default` on buttons, which leaves every
+       control on the page looking unclickable. The pointer belongs to anything that
+       ACTS on click, so it is stated once here rather than as a utility repeated at
+       twenty call sites - and a disabled control says so instead, because a pointer
+       over something that will not respond is a small lie. */
+    button:not(:disabled),
+    summary,
+    [role='button']:not([aria-disabled='true'])
+    {
+        cursor: pointer;
+    }
+
+    button:disabled,
+    [role='button'][aria-disabled='true']
+    {
+        cursor: not-allowed;
+    }
+
+    /* The trust strip's hairlines. Drawn with LOGICAL borders so the grid mirrors
+       itself in RTL, and driven by nth-child rather than a border on every cell,
+       which would double up against the panel's own border. 2 columns on a phone,
+       4 from `lg`. */
+    .trust-cell + .trust-cell
+    {
+        border-inline-start: 1px solid var(--line);
+    }
+
+    .trust-cell:nth-child(3)
+    {
+        border-block-start: 1px solid var(--line);
+    }
+
+    .trust-cell:nth-child(4)
+    {
+        border-block-start: 1px solid var(--line);
+    }
+
+    @media (width >= 64rem)
+    {
+        /* At 4 columns nothing sits on a second row, so the horizontal rules go and
+           the third cell regains the vertical one it lost as a row-start. */
+        .trust-cell:nth-child(3),
+        .trust-cell:nth-child(4)
+        {
+            border-block-start: 0;
+        }
+    }
+
+    @media (width < 64rem)
+    {
+        /* In the 2-column layout the third cell starts a row: it must not carry a
+           vertical rule against the panel edge. */
+        .trust-cell:nth-child(3)
+        {
+            border-inline-start: 0;
+        }
+    }
+
+    /* Persian has no italic form: a synthesised oblique is a rendering artefact, not a
+       typographic style. */
+    i,
+    em
+    {
+        font-style: normal;
+        font-weight: 700;
+    }
+
+    :focus-visible
+    {
+        outline: 2px solid var(--firouze);
+        outline-offset: 3px;
+        border-radius: 4px;
+    }
+
+    ::selection
+    {
+        background: color-mix(in srgb, var(--firouze) 30%, transparent);
+    }
+}
+
+/* Tailwind generates no utility for a custom spacing token, so the two tap-target
+   shapes the page needs are declared here rather than repeating a magic 2.75rem at
+   every control. Declared with `@utility` rather than as plain classes so they take
+   variants - `max-sm:size-tap` is how a labelled action becomes a square icon button
+   on a phone without hardcoding the token's value a second time. */
+@utility size-tap
+{
+    width: var(--spacing-tap);
+    height: var(--spacing-tap);
+}
+
+@utility min-h-tap
+{
+    min-height: var(--spacing-tap);
+}
+
+/* A page action that keeps its icon and drops its label on a phone, ending up a square
+   tap target instead of a wide one. The label goes `sr-only` rather than `display:none`
+   at the call site, so the button is still CALLED what it does - an icon-only control
+   with no accessible name is the usual way this pattern goes wrong. */
+@media (width < 40rem)
+{
+    .action-compact
+    {
+        width: var(--spacing-tap);
+        justify-content: center;
+        padding-inline: 0;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   SCROLLING
+
+   Everything below is UNLAYERED on purpose. Tailwind ships inside cascade layers,
+   and an unlayered rule beats a layered one whatever their specificity - which is
+   how `.table-cards td` can undo a `whitespace-nowrap` utility sitting on the same
+   cell without an `!important` or a specificity duel.
+   --------------------------------------------------------------------------- */
+
+/* `scrollbar-color` is the standard property and the one Firefox reads; the
+   ::-webkit rules cover the WebKit versions that predate it. Chrome honours both and
+   prefers the standard one, so the two never disagree.
+
+   Set once on the root because both properties INHERIT: every panel that scrolls
+   picks this up without opting in, and only the tab strip opts back out. */
+html
+{
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+::-webkit-scrollbar
+{
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track
+{
+    background: var(--scroll-track);
+}
+
+::-webkit-scrollbar-thumb
+{
+    background: var(--scroll-thumb);
+    border-radius: 9999px;
+    /* A transparent border inset by the track colour: the thumb reads as a floating
+       pill rather than a bar wedged against the edge. */
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover
+{
+    background: var(--muted);
+    background-clip: padding-box;
+}
+
+/* For strips whose cut-off edge already says "there is more this way" - the console
+   tabs. A scrollbar under four tab labels is louder than the thing it describes. */
+.no-scrollbar
+{
+    scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar
+{
+    display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   TABLES THAT BECOME CARDS
+
+   Below `md` a table is redrawn as a stack of cards: the cells go full width and
+   each one prints its own column heading from `data-label`. ONE markup tree does
+   both - rendering the rows a second time for phones would double the DOM and let
+   the two copies drift apart.
+
+   Three kinds of cell, and the difference is what keeps a card from becoming six
+   lines tall - which on a 25-row page is thirteen screens of scrolling:
+
+     - the default takes a line of its own, label at the start, value at the end;
+     - `.cell-inline` shrinks to its content and shares a line with its neighbours,
+       for the short values that read as one thought (status, amount, buyer);
+     - `.cell-action` is the row's CONTROL rather than a value, so it drops its
+       label and takes the full width, making what a phone taps a real target.
+
+   The row is a WRAPPING FLEX, so cells can also be reordered with `max-md:order-*`:
+   a card leads with what identifies it, which is not the order a desktop ledger
+   reads in.
+   --------------------------------------------------------------------------- */
+@media (width < 48rem)
+{
+    .table-cards,
+    .table-cards tbody
+    {
+        display: block;
+        width: 100%;
+    }
+
+    .table-cards thead
+    {
+        display: none;
+    }
+
+    .table-cards tr
+    {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        width: 100%;
+        padding: 0.5rem 0.25rem;
+    }
+
+    .table-cards td
+    {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.25rem 0.75rem;
+        text-align: end;
+        white-space: normal;
+    }
+
+    .table-cards td::before
+    {
+        content: attr(data-label);
+        flex: none;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        text-align: start;
+    }
+
+    .table-cards td.cell-inline
+    {
+        width: auto;
+        max-width: 100%;
+        gap: 0.375rem;
+    }
+
+    .table-cards td.cell-action
+    {
+        padding-block: 0.375rem 0.25rem;
+    }
+
+    .table-cards td.cell-action::before
+    {
+        display: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   MOTION
+
+   One vocabulary, so timing reads as a system rather than a pile of per-component
+   guesses. Durations climb by role - an icon swap is fast, a panel is slower.
+   Easings split by intent: `out` for entrances that arrive and settle, `in` for
+   exits that leave quickly. The spring is built with linear() so the icon pop
+   overshoots a hair and settles like a physical object - an arc no cubic-bezier
+   can express, and no JavaScript required.
+
+   RTL DISCIPLINE: every animation here is VERTICAL + OPACITY only, so Persian and
+   Latin read identically. The one horizontal motion (the capsule scan) is written
+   with inset-inline-start, which mirrors itself.
+
+   Everything below is collapsed to an instant state change by the single global
+   reduced-motion block at the end of this file, so no component carries its own
+   guard.
+   --------------------------------------------------------------------------- */
+@keyframes scan
+{
+    from
+    {
+        inset-inline-start: -30%;
+    }
+
+    to
+    {
+        inset-inline-start: 115%;
+    }
+}
+
+@keyframes settle
+{
+    from
+    {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+@keyframes rise
+{
+    from
+    {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+/* The icon swap: the reactive binding mounts a FRESH glyph on every theme change,
+   so this plays once per change without any state to track. */
+@keyframes icon-swap
+{
+    from
+    {
+        opacity: 0;
+        transform: scale(0.5) rotate(-15deg);
+    }
+}
+
+.anim-scan
+{
+    animation: scan var(--dur-scan) var(--ease-standard) var(--dur-base) 2 both;
+}
+
+.anim-settle
+{
+    animation: settle var(--dur-slower) var(--ease-out) both;
+}
+
+/* A notice slides in from the edge it lives on. `translateX` is written against the
+   INLINE axis so it enters from the page's start side in either direction - a hard-coded
+   -8px would have it fly in from the wrong side of an RTL page. */
+@keyframes toast-in
+{
+    from
+    {
+        opacity: 0;
+        transform: translate(calc(-8px * var(--inline-sign)), 4px);
+    }
+}
+
+.anim-toast
+{
+    --inline-sign: 1;
+    animation: toast-in var(--dur-base) var(--ease-out) both;
+}
+
+/* A refusal, felt rather than read: the console's key field shakes when the key is wrong.
+   It is the one horizontal animation here that needs no RTL mirror - the motion is
+   SYMMETRIC, so it looks the same travelling either way. */
+@keyframes shake
+{
+    25%
+    {
+        transform: translateX(-5px);
+    }
+
+    75%
+    {
+        transform: translateX(5px);
+    }
+}
+
+.anim-shake
+{
+    animation: shake var(--dur-quick) var(--ease-standard) 2;
+}
+
+/* A skeleton breathes rather than sweeps: a shimmer that travels needs a direction, and a
+   direction has to be flipped for RTL. Opacity has no handedness. */
+@keyframes pulse
+{
+    50%
+    {
+        opacity: 0.45;
+    }
+}
+
+.anim-pulse
+{
+    animation: pulse var(--dur-slower) var(--ease-standard) infinite;
+}
+
+[dir='rtl'] .anim-toast
+{
+    --inline-sign: -1;
+}
+
+@utility animate-icon-swap
+{
+    animation: icon-swap var(--dur-base) var(--ease-spring);
+}
+
+/* A small, FIXED group rises in a quick cascade on mount - the trust strip's four
+   cells. Deliberately not for lists: a cascade over unbounded rows reads as lag. */
+.stagger > *
+{
+    animation: rise var(--dur-slow) var(--ease-out) both;
+}
+
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 140ms; }
+.stagger > *:nth-child(4) { animation-delay: 210ms; }
+
+/* The mobile nav panel's 6-class family for <Transition name="nav">. Height is not
+   animated (it would need a measured value and forces layout); the panel slides a
+   few pixels and fades, which reads as the same gesture for a fraction of the cost. */
+.nav-enter-active,
+.nav-leave-active
+{
+    transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+
+.nav-leave-active
+{
+    transition-timing-function: var(--ease-in);
+}
+
+.nav-enter-from,
+.nav-leave-to
+{
+    opacity: 0;
+    transform: translateY(-8px);
+}
+
+/* ONE global reduced-motion contract: everything animated collapses to an instant
+   state change. Declared once here so a component can never forget its own guard -
+   the failure mode where a new animation ships unguarded because the author did not
+   know the convention. */
+@media (prefers-reduced-motion: reduce)
+{
+    *,
+    *::before,
+    *::after
+    {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        animation-delay: 0ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}

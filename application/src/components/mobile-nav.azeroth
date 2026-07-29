@@ -1,0 +1,124 @@
+// The phone navigation: a DISCLOSURE panel, deliberately not a modal drawer.
+//
+// The nav is three in-page anchors plus the theme control. A modal drawer would oblige
+// a focus trap, a scroll lock, role="dialog"/aria-modal, and focus restoration - and a
+// drawer that skips any of those is worse than no drawer, because it can strand a
+// keyboard user inside it. A non-modal disclosure needs none of that machinery and
+// cannot trap anyone. If this nav ever grows past ~5 items, promote it to a real modal
+// and take on the full contract at that point.
+//
+// The theme control deliberately does NOT live in here: it sits beside the trigger in the
+// header, so changing theme is one tap from anywhere instead of two. This panel holds
+// navigation, which is the one thing it is for.
+import { Transition } from 'azerothjs';
+import { Menu, X } from 'lucide';
+import { icon } from './icon.ts';
+
+export default component MobileNav(props: { links: Array<{ href: string; label: string }> })
+{
+    state open = false;
+
+    // The trigger, captured on mount so Escape can hand focus back to it. Losing focus
+    // to <body> on close is the classic disclosure bug: the next Tab restarts from the
+    // top of the document instead of continuing from the control you just used.
+    let trigger: HTMLButtonElement | undefined;
+
+    const close = (): void =>
+    {
+        open = false;
+    };
+
+    const dismiss = (): void =>
+    {
+        close();
+        trigger?.focus();
+    };
+
+    effect
+    {
+        if (!open)
+        {
+            return;
+        }
+
+        const onKey = (event: KeyboardEvent): void =>
+        {
+            if (event.key === 'Escape')
+            {
+                dismiss();
+            }
+        };
+
+        // Armed one task late: the pointerdown that OPENED the panel is still
+        // propagating, and a listener attached synchronously would see it and close
+        // the panel immediately.
+        let onOutside: ((event: Event) => void) | undefined;
+        const arm = setTimeout(() =>
+        {
+            onOutside = (event: Event): void =>
+            {
+                const target = event.target as Node | null;
+                if (target !== null && !(panel?.contains(target) ?? false) && !(trigger?.contains(target) ?? false))
+                {
+                    close();
+                }
+            };
+            document.addEventListener('pointerdown', onOutside);
+        }, 0);
+
+        document.addEventListener('keydown', onKey);
+
+        cleanup
+        {
+            clearTimeout(arm);
+            document.removeEventListener('keydown', onKey);
+            if (onOutside)
+            {
+                document.removeEventListener('pointerdown', onOutside);
+            }
+        }
+    }
+
+    let panel: HTMLElement | undefined;
+
+    <div class="md:hidden">
+        <button
+            type="button"
+            ref={ (element: HTMLButtonElement) => trigger = element }
+            class="flex size-tap items-center justify-center rounded-xl border border-line text-ink"
+            aria-expanded={ open ? 'true' : 'false' }
+            aria-controls="mobile-nav-panel"
+            aria-label={ open ? 'بستن منو' : 'باز کردن منو' }
+            onClick={ () => open = !open }
+        >
+            { icon(open ? X : Menu, 'size-5') }
+        </button>
+
+        <Transition when={ open } name="nav" duration={ 260 }>
+            { () =>
+                <div
+                    id="mobile-nav-panel"
+                    ref={ (element: HTMLElement) => panel = element }
+                    class="absolute inset-x-0 top-full border-b border-line bg-paper p-3 shadow-lg"
+                >
+                    <ul class="flex flex-col">
+                        <For each={ props.links } key={ (link) => link.href }>
+                            { (link) =>
+                                <li>
+                                    <a
+                                        class="flex min-h-tap items-center rounded-xl px-3 text-small transition-colors hover:bg-surface hover:text-firouze"
+                                        href={ link.href }
+                                        onClick={ close }
+                                    >
+                                        { link.label }
+                                    </a>
+                                </li>
+                            }
+                        </For>
+                    </ul>
+                </div>
+            }
+        </Transition>
+
+    </div>
+}

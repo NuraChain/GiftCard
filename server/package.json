@@ -1,0 +1,33 @@
+{
+    "name": "nura-chain-server",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "check": "azeroth check",
+        "test": "vitest run",
+        "start": "node src/main.ts",
+        "admin-key": "node scripts/admin-key.mjs"
+    },
+    "dependencies": {
+        "@azerothjs/http": "^1.1.0",
+        "@azerothjs/kit": "^1.1.0",
+        "@azerothjs/logger": "^1.1.0",
+        "@azerothjs/schema": "^1.1.0"
+    },
+    "devDependencies": {
+        "@azerothjs/cli": "^1.1.0",
+        "@azerothjs/eslint-plugin": "^1.1.0",
+        "@eslint/js": "^10.0.1",
+        "@types/node": "^24.0.0",
+        "eslint": "^10.7.0",
+        "globals": "^17.7.0",
+        "jiti": "^2.7.0",
+        "typescript": "~6.0.2",
+        "typescript-eslint": "^8.63.0",
+        "vitest": "^4.0.0"
+    }
+}

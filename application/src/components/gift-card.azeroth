@@ -1,0 +1,68 @@
+// One purchasable tier, drawn from the catalogue the console edits.
+//
+// The three cards are NOT interchangeable boxes: the recommended one carries the firouze
+// treatment and one extra line of reasoning, so the hierarchy comes from colour and content
+// rather than a scale transform and a "popular" sticker.
+//
+// The amount is an LTR ISLAND inside an RTL block: only the inner span carries dir, so
+// the characters read "$25" while the block still aligns to the RTL start. Putting dir
+// on the block itself silently flips what `text-start` means and left-aligns the price
+// against the rest of the card.
+import CodeCapsule from './code-capsule.azeroth';
+import type { CatalogTier } from '../catalog.ts';
+import { count, toman } from '../format.ts';
+
+export default component GiftCard(props: { tier: CatalogTier; onChoose: (tier: CatalogTier) => void })
+{
+    derived soldOut = props.tier.available === 0;
+
+    <article
+        class={ `flex flex-col rounded-2xl border bg-surface p-5 sm:p-6 ${ props.tier.recommended ? 'border-firouze shadow-[0_1px_24px_-8px_var(--firouze)]' : 'border-line' }` }
+    >
+        <div class="flex items-baseline justify-between gap-2">
+            <h3 class="font-bold">{ props.tier.title }</h3>
+            <Show when={ props.tier.recommended }>
+                <span class="rounded-full bg-firouze/15 px-2.5 py-0.5 text-caption font-bold text-firouze">
+                    انتخاب بیشتر کاربران
+                </span>
+            </Show>
+        </div>
+
+        <p class="mt-3 text-start text-3xl font-bold sm:text-4xl">
+            <span dir="ltr" class="latin inline-block">${ props.tier.amount }</span>
+        </p>
+
+        <p class="mt-1 text-small text-muted">{ toman(props.tier.toman) } تومان</p>
+
+        <p class="mt-3 text-small text-muted">{ props.tier.blurb }</p>
+
+        <div class="mt-4">
+            <CodeCapsule code={ props.tier.sample } label="نمونه کدی که دریافت می‌کنید" />
+        </div>
+
+        {/* `mt-auto` pins the footer to the bottom of the card. The blurbs and the sample
+            capsules are different heights, so without it the buttons sit at three different
+            levels across a row and the grid reads as broken rather than as a set. */}
+        <div class="mt-auto pt-4">
+            <p class="min-h-5 text-caption">
+                <Show
+                    when={ !soldOut }
+                    fallback={ <span class="text-muted">فعلاً موجود نیست</span> }
+                >
+                    <span class="text-firouze">{ count(props.tier.available) } کد آماده تحویل</span>
+                </Show>
+            </p>
+
+            <button
+                type="button"
+                class={ `mt-3 flex min-h-tap w-full items-center justify-center rounded-xl px-4 text-small font-bold transition-colors disabled:opacity-50 ${ props.tier.recommended ? 'bg-firouze text-paper hover:opacity-90' : 'border border-line hover:border-firouze hover:text-firouze' }` }
+                disabled={ soldOut }
+                onClick={ () => props.onChoose(props.tier) }
+            >
+                <Show when={ soldOut } fallback={ <span>انتخاب کارت <span dir="ltr" class="latin inline-block">${ props.tier.amount }</span></span> }>
+                    <span>ناموجود</span>
+                </Show>
+            </button>
+        </div>
+    </article>
+}

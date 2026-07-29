@@ -1,0 +1,41 @@
+// One accordion row. A real <button> with aria-expanded/aria-controls rather than a
+// clickable div, so it is reachable and operable from the keyboard and announced
+// correctly. The panel stays in the DOM when closed (hidden), which keeps the
+// prerendered answers readable to crawlers and to find-in-page.
+//
+// The chevron ROTATES to point at the open panel rather than mirroring: a vertical
+// indicator reads identically in RTL and LTR, so it needs no direction handling.
+//
+// aria-expanded/aria-pressed take the STRINGS "true"/"false", not a boolean: passing a
+// boolean makes the compiler emit a bare attribute (aria-expanded="") which is invalid
+// ARIA and leaves the state unannounced.
+import { ChevronDown } from 'lucide';
+import { icon } from './icon.ts';
+
+export default component FaqItem(props: { id: string; question: string; answer: string; open: boolean; onToggle: (id: string) => void })
+{
+    <div class="border-b border-line last:border-b-0">
+        <h3>
+            <button
+                type="button"
+                id={ `faq-button-${ props.id }` }
+                class="flex min-h-tap w-full items-center justify-between gap-4 py-4 text-start text-h3 font-bold hover:text-firouze"
+                aria-expanded={ props.open ? 'true' : 'false' }
+                aria-controls={ `faq-panel-${ props.id }` }
+                onClick={ () => props.onToggle(props.id) }
+            >
+                { props.question }
+                { icon(ChevronDown, `size-4 shrink-0 text-muted transition-transform ${ props.open ? 'rotate-180' : '' }`) }
+            </button>
+        </h3>
+        <div
+            id={ `faq-panel-${ props.id }` }
+            role="region"
+            aria-labelledby={ `faq-button-${ props.id }` }
+            hidden={ !props.open }
+            class="pb-4 text-small text-muted"
+        >
+            { props.answer }
+        </div>
+    </div>
+}

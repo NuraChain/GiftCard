@@ -1,0 +1,585 @@
+// The shop's own controls: what it sells, what it charges, where the money goes, and the
+// key to this console.
+//
+// Three of these change money. The page is written so none of them can be changed by
+// accident: the merchant id asks for confirmation, a removal says which of the two things it
+// did, and rotating the key requires the current one even though a session is already open.
+//
+// A secret is never shown. The inputs are empty with a masked placeholder, and leaving one
+// blank means "keep it" - so saving a template name cannot wipe a working API key.
+import { AlertTriangle, KeyRound, Plus, Save, Send, Settings2, Trash2 } from 'lucide';
+
+import { client } from '../../api.ts';
+import type { SettingsView, TierRow } from '../../../../server/src/contract.ts';
+import { toman } from '../../format.ts';
+import { icon } from '../../components/icon.ts';
+import { useToasts } from '../../components/toast.ts';
+import { useCatalog } from '../../catalog.ts';
+import Async from '../../components/async.azeroth';
+import Button from '../../components/ui/button.azeroth';
+import Field from '../../components/ui/field.azeroth';
+import TextInput from '../../components/ui/text-input.azeroth';
+import AdminShell from './shell.azeroth';
+import { useAdminSession } from './session.ts';
+
+/** A blank card, ready to be filled in. */
+function emptyTier(sort: number): TierRow
+{
+    return { amount: 0, toman: 0, title: '', blurb: '', sample: '', recommended: false, active: true, sort };
+}
+
+export default component AdminSettings()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+    const catalog = useCatalog();
+
+    state tiers: TierRow[] = [];
+    state draft: TierRow | null = null;
+    state tiersLoading = false;
+    state tiersError = '';
+    state saving = false;
+
+    state settings: SettingsView | null = null;
+    state settingsLoading = false;
+    state settingsError = '';
+
+    // Secrets start EMPTY, not pre-filled with the stored value: there is no stored value to
+    // pre-fill with, because the server never sends one. Blank means "unchanged".
+    state formAppName = '';
+    state formBase = '';
+    state formMerchantId = '';
+    state formKavenegarKey = '';
+    state formKavenegarTemplate = '';
+    state formKavenegarBase = '';
+    state savingSettings = false;
+
+    state currentKey = '';
+    state newKey = '';
+    state rotating = false;
+
+    state testPhone = '';
+    state testing = false;
+
+    const loadTiers = async (): Promise<void> =>
+    {
+        tiersLoading = true;
+        tiersError = '';
+        try
+        {
+            tiers = (await client.admin.tiers()).tiers;
+        }
+        catch (failure)
+        {
+            tiersError = failure instanceof Error && failure.message !== '' ? failure.message : 'کارت‌ها خوانده نشدند';
+        }
+        finally
+        {
+            tiersLoading = false;
+        }
+    };
+
+    const loadSettings = async (): Promise<void> =>
+    {
+        settingsLoading = true;
+        settingsError = '';
+        try
+        {
+            const view = await client.admin.settings();
+            settings = view;
+            formAppName = view.appName;
+            formBase = view.zarinpalBase;
+            formKavenegarTemplate = view.kavenegarTemplate;
+            formKavenegarBase = view.kavenegarBase;
+        }
+        catch (failure)
+        {
+            settingsError = failure instanceof Error && failure.message !== '' ? failure.message : 'تنظیمات خوانده نشد';
+        }
+        finally
+        {
+            settingsLoading = false;
+        }
+    };
+
+    // Keyed on the session, not on mount - see the note in overview.azeroth.
+    effect (session.revision())
+    {
+        if (session.unlocked())
+        {
+            void loadTiers();
+            void loadSettings();
+        }
+    }
+
+    const saveTier = async (event: Event): Promise<void> =>
+    {
+        event.preventDefault();
+        const tier = draft;
+        if (tier === null)
+        {
+            return;
+        }
+        saving = true;
+        try
+        {
+            tiers = (await client.admin.saveTier({ input: tier })).tiers;
+            draft = null;
+            notify.success(`کارت $${ tier.amount } ذخیره شد`);
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'ذخیره نشد');
+        }
+        finally
+        {
+            saving = false;
+        }
+    };
+
+    const removeTier = async (tier: TierRow): Promise<void> =>
+    {
+        // A tier with codes or orders behind it is DEACTIVATED rather than deleted, so the
+        // dialog promises the weaker of the two - the server decides which actually happens
+        // and the notice below reports it.
+        if (!confirm(`کارت $${ tier.amount } از فروش برداشته شود؟`))
+        {
+            return;
+        }
+        try
+        {
+            const result = await client.admin.removeTier({ input: { amount: tier.amount } });
+            await loadTiers();
+            notify.success(result.outcome === 'deleted'
+                ? `کارت $${ tier.amount } حذف شد`
+                : `کارت $${ tier.amount } از فروش برداشته شد. سابقهٔ فروش آن نگه داشته می‌شود.`);
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'حذف نشد');
+        }
+    };
+
+    const saveSettings = async (event: Event): Promise<void> =>
+    {
+        event.preventDefault();
+        // Changing the merchant id changes WHERE THE MONEY GOES. It is the one field on this
+        // page that deserves a second question.
+        if (formMerchantId !== '' && !confirm('شناسهٔ پذیرنده عوض می‌شود. از این پس پرداخت‌ها به حساب تازه می‌رود. مطمئنید؟'))
+        {
+            return;
+        }
+        savingSettings = true;
+        try
+        {
+            // Absent, not empty: an untouched secret input must not clear a working
+            // credential, so a blank field is simply not sent.
+            settings = await client.admin.saveSettings({
+                input: {
+                    appName: formAppName,
+                    zarinpalBase: formBase,
+                    kavenegarTemplate: formKavenegarTemplate,
+                    kavenegarBase: formKavenegarBase,
+                    merchantId: formMerchantId === '' ? undefined : formMerchantId,
+                    kavenegarKey: formKavenegarKey === '' ? undefined : formKavenegarKey
+                }
+            });
+            formMerchantId = '';
+            formKavenegarKey = '';
+            // The name appears in the tab title and on every page, so the shop is told to
+            // re-read it rather than left showing the old one until a reload.
+            void catalog.load();
+            notify.success('تنظیمات ذخیره شد');
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'ذخیره نشد');
+        }
+        finally
+        {
+            savingSettings = false;
+        }
+    };
+
+    const rotate = async (event: Event): Promise<void> =>
+    {
+        event.preventDefault();
+        rotating = true;
+        try
+        {
+            await client.admin.rotateKey({ input: { currentKey, newKey } });
+            // Every session died with the old key, including this one. Sending the operator
+            // back to the lock screen is the honest consequence, not a bug.
+            notify.success('کلید عوض شد. با کلید تازه دوباره وارد شوید.');
+            window.location.assign('/admin');
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'چرخش کلید انجام نشد');
+            rotating = false;
+        }
+    };
+
+    const generateKey = (): void =>
+    {
+        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        newKey = [...crypto.getRandomValues(new Uint8Array(16))]
+            .map((byte) => alphabet[byte % alphabet.length])
+            .join('')
+            .replace(/(.{4})(?=.)/g, '$1-');
+    };
+
+    const sendTest = async (event: Event): Promise<void> =>
+    {
+        event.preventDefault();
+        testing = true;
+        try
+        {
+            const result = await client.admin.testSms({ input: { phone: testPhone } });
+            if (result.ok)
+            {
+                notify.success('پیامک آزمایشی ارسال شد');
+            }
+            else
+            {
+                notify.error(`ارسال نشد: ${ result.reason }`);
+            }
+        }
+        catch (failure)
+        {
+            notify.error(failure instanceof Error && failure.message !== '' ? failure.message : 'ارسال نشد');
+        }
+        finally
+        {
+            testing = false;
+        }
+    };
+
+    <AdminShell>
+        <section>
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="flex items-center gap-2 text-h3 font-bold">
+                    { icon(Settings2, 'size-5 text-firouze') }
+                    کارت‌ها
+                </h2>
+                <Button glyph={ Plus } compact class="ms-auto" onClick={ () => { draft = emptyTier((tiers.length + 1) * 10); } }>
+                    کارت تازه
+                </Button>
+            </div>
+            <p class="mt-2 text-small text-muted">
+                مبلغ دلاری نام کارت است و قیمت تومانی چیزی که خریدار می‌پردازد. کارتی که غیرفعال شود از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
+            </p>
+
+            <div class="mt-4">
+                <Async
+                    loading={ tiersLoading && tiers.length === 0 }
+                    error={ tiersError }
+                    empty={ !tiersLoading && tiers.length === 0 && draft === null }
+                    emptyText="هنوز کارتی تعریف نشده است."
+                    onRetry={ () => void loadTiers() }
+                    skeleton={ <div class="anim-pulse h-40 rounded-2xl border border-line bg-surface"></div> }
+                >
+                    {/* `sm:contents` dissolves the wrapper from `sm` up, so the desktop row is
+                        the same single flex line it always was. Below that the card is two
+                        blocks - what the tier IS, then what you can do to it - rather than four
+                        labels and two buttons wrapping into four lines. */}
+                    <ul class="grid gap-3">
+                        <For each={ tiers } key={ (tier) => tier.amount }>
+                            { (tier) =>
+                                <li class={ `rounded-2xl border p-4 sm:flex sm:flex-wrap sm:items-center sm:gap-3 ${ tier.active ? 'border-line bg-surface' : 'border-line/60 bg-surface/50' }` }>
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 sm:contents">
+                                        <span dir="ltr" class="latin text-lg font-bold">${ tier.amount }</span>
+                                        <span class="text-small">{ tier.title }</span>
+                                        <span class="text-small text-muted">{ toman(tier.toman) } تومان</span>
+                                        <Show when={ tier.recommended }>
+                                            <span class="rounded-full bg-firouze/15 px-2.5 py-0.5 text-caption font-bold text-firouze">پیشنهادی</span>
+                                        </Show>
+                                        <Show when={ !tier.active }>
+                                            <span class="rounded-full bg-muted/15 px-2.5 py-0.5 text-caption font-bold text-muted">غیرفعال</span>
+                                        </Show>
+                                    </div>
+
+                                    <div class="mt-3 flex gap-2 sm:mt-0 sm:ms-auto">
+                                        <Button size="sm" grow onClick={ () => { draft = { ...tier }; } }>ویرایش</Button>
+                                        <Button size="sm" grow variant="retreat" glyph={ Trash2 } onClick={ () => void removeTier(tier) }>حذف</Button>
+                                    </div>
+                                </li>
+                            }
+                        </For>
+                    </ul>
+                </Async>
+            </div>
+
+            <Show when={ draft !== null }>
+                <form class="mt-4 rounded-2xl border border-firouze bg-surface p-5" novalidate onSubmit={ (event: Event) => void saveTier(event) }>
+                    <h3 class="font-bold">
+                        <Show when={ (draft?.amount ?? 0) > 0 } fallback={ <span>کارت تازه</span> }>
+                            <span>ویرایش کارت <span dir="ltr" class="latin">${ draft?.amount }</span></span>
+                        </Show>
+                    </h3>
+
+                    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                        <Field label="مبلغ دلاری" for="tier-amount">
+                            <TextInput
+                                id="tier-amount"
+                                type="number"
+                                latin
+                                value={ String(draft?.amount ?? 0) }
+                                onInput={ (next) => { if (draft !== null) { draft = { ...draft, amount: Number(next) }; } } }
+                            />
+                        </Field>
+                        <Field label="قیمت به تومان" for="tier-toman">
+                            <TextInput
+                                id="tier-toman"
+                                type="number"
+                                latin
+                                value={ String(draft?.toman ?? 0) }
+                                onInput={ (next) => { if (draft !== null) { draft = { ...draft, toman: Number(next) }; } } }
+                            />
+                        </Field>
+                    </div>
+
+                    <Field label="عنوان" for="tier-title" class="mt-4">
+                        <TextInput
+                            id="tier-title"
+                            value={ draft?.title ?? '' }
+                            onInput={ (next) => { if (draft !== null) { draft = { ...draft, title: next }; } } }
+                        />
+                    </Field>
+
+                    <label class="mt-4 block text-small font-bold" for="tier-blurb">توضیح روی کارت</label>
+                    <textarea
+                        id="tier-blurb"
+                        rows="3"
+                        class="mt-2 w-full rounded-xl border border-line bg-paper p-4 text-small outline-none focus:border-firouze"
+                        value={ draft?.blurb ?? '' }
+                        onInput={ (event: Event) => { if (draft !== null) { draft = { ...draft, blurb: (event.target as HTMLTextAreaElement).value }; } } }
+                    ></textarea>
+
+                    <Field
+                        label="نمونهٔ کد"
+                        for="tier-sample"
+                        class="mt-4"
+                        hint="روی کارت به‌عنوان نمونه نشان داده می‌شود. هرگز یک کد واقعی اینجا نگذارید."
+                    >
+                        <TextInput
+                            id="tier-sample"
+                            latin
+                            placeholder="3f9a41c8-....-....-............"
+                            value={ draft?.sample ?? '' }
+                            onInput={ (next) => { if (draft !== null) { draft = { ...draft, sample: next }; } } }
+                        />
+                    </Field>
+
+                    <div class="mt-4 flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 text-small">
+                            <input
+                                type="checkbox"
+                                checked={ draft?.active ?? true }
+                                onChange={ (event: Event) => { if (draft !== null) { draft = { ...draft, active: (event.target as HTMLInputElement).checked }; } } }
+                            />
+                            فعال (در فروشگاه دیده می‌شود)
+                        </label>
+                        <label class="flex items-center gap-2 text-small">
+                            <input
+                                type="checkbox"
+                                checked={ draft?.recommended ?? false }
+                                onChange={ (event: Event) => { if (draft !== null) { draft = { ...draft, recommended: (event.target as HTMLInputElement).checked }; } } }
+                            />
+                            پیشنهادی (فقط یکی می‌تواند باشد)
+                        </label>
+                    </div>
+
+                    <div class="mt-5 flex gap-2">
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            glyph={ Save }
+                            busy={ saving }
+                            busyText="در حال ذخیره..."
+                            disabled={ (draft?.amount ?? 0) < 1 || (draft?.toman ?? 0) < 1 || (draft?.title ?? '') === '' }
+                        >
+                            ذخیره
+                        </Button>
+                        <Button onClick={ () => { draft = null; } }>انصراف</Button>
+                    </div>
+                </form>
+            </Show>
+        </section>
+
+        <section class="mt-section">
+            <h2 class="text-h3 font-bold">درگاه و پیامک</h2>
+
+            <div class="mt-4">
+                <Async
+                    loading={ settingsLoading && settings === null }
+                    error={ settingsError }
+                    onRetry={ () => void loadSettings() }
+                    skeleton={ <div class="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div> }
+                >
+                    <p class="mb-4 flex items-start gap-2 rounded-xl border border-nura/40 bg-nura/10 p-4 text-small">
+                        { icon(AlertTriangle, 'size-5 shrink-0 text-nura') }
+                        <span>
+                            تغییر شناسهٔ پذیرنده مقصد پول را عوض می‌کند. مقادیر محرمانه پس از ذخیره دیگر نمایش داده نمی‌شوند؛
+                            برای نگه داشتن مقدار فعلی، کادر را خالی بگذارید.
+                        </span>
+                    </p>
+
+                    <form class="rounded-2xl border border-line bg-surface p-5" novalidate onSubmit={ (event: Event) => void saveSettings(event) }>
+                        <Field
+                            label="نام فروشگاه"
+                            for="app-name"
+                            hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، و توضیح تراکنش در درگاه دیده می‌شود."
+                        >
+                            <TextInput id="app-name" placeholder="نورا چین" bind:value={ formAppName } />
+                        </Field>
+
+                        <Field label="آدرس درگاه" for="zarinpal-base" class="mt-4">
+                            <TextInput id="zarinpal-base" latin bind:value={ formBase } />
+                        </Field>
+                        <p class="mt-1 text-caption text-muted">
+                            <Show
+                                when={ settings?.sandbox }
+                                fallback={ <span>درگاه واقعی. پرداخت‌ها با پول واقعی انجام می‌شود.</span> }
+                            >
+                                <span class="text-nura">حالت آزمایشی (سندباکس) - پولی جابه‌جا نمی‌شود.</span>
+                            </Show>
+                        </p>
+
+                        <Field label="شناسهٔ پذیرنده" for="merchant-id" class="mt-4">
+                            <TextInput
+                                id="merchant-id"
+                                latin
+                                autocomplete="off"
+                                placeholder={ settings?.merchantIdSet ? `${ settings.merchantIdMasked } (برای تغییر بنویسید)` : 'تنظیم نشده' }
+                                bind:value={ formMerchantId }
+                            />
+                        </Field>
+
+                        <Field label="کلید کاوه‌نگار" for="kavenegar-key" class="mt-4">
+                            <TextInput
+                                id="kavenegar-key"
+                                type="password"
+                                latin
+                                autocomplete="off"
+                                placeholder={ settings?.kavenegarKeySet ? `${ settings.kavenegarKeyMasked } (برای تغییر بنویسید)` : 'تنظیم نشده' }
+                                bind:value={ formKavenegarKey }
+                            />
+                        </Field>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                            <Field label="نام قالب" for="kavenegar-template">
+                                <TextInput id="kavenegar-template" latin bind:value={ formKavenegarTemplate } />
+                            </Field>
+                            <Field label="آدرس کاوه‌نگار" for="kavenegar-base">
+                                <TextInput id="kavenegar-base" latin bind:value={ formKavenegarBase } />
+                            </Field>
+                        </div>
+
+                        {/* A flex child defaults to `min-width: auto`, so an unbreakable
+                            value refuses to shrink and pushes the row past the viewport -
+                            which is exactly what this URL did. `min-w-0` is what lets it
+                            shrink at all; `break-all` is what it does once it can. */}
+                        <dl class="mt-5 grid gap-2 border-t border-line pt-4 text-caption text-muted">
+                            <div class="flex justify-between gap-2">
+                                <dt>وضعیت پیامک</dt>
+                                <dd class={ settings?.smsReady ? 'font-bold text-firouze' : 'font-bold text-nura' }>
+                                    { settings?.smsReady ? 'آماده' : 'خاموش' }
+                                </dd>
+                            </div>
+                            <div class="flex justify-between gap-2">
+                                <dt class="shrink-0">آدرس بازگشت از درگاه</dt>
+                                <dd dir="ltr" class="latin min-w-0 break-all text-end">{ settings?.callbackUrl ?? '' }</dd>
+                            </div>
+                        </dl>
+
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            glyph={ Save }
+                            class="mt-5"
+                            busy={ savingSettings }
+                            busyText="در حال ذخیره..."
+                        >
+                            ذخیره تنظیمات
+                        </Button>
+                    </form>
+
+                    {/* The only way to prove a Kavenegar template is approved without selling
+                        something first. It sends an obviously-fake token, never a real code. */}
+                    <form class="mt-4 flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-5" novalidate onSubmit={ (event: Event) => void sendTest(event) }>
+                        <Field label="پیامک آزمایشی به" for="test-phone" class="min-w-0 flex-1">
+                            <TextInput
+                                id="test-phone"
+                                type="tel"
+                                latin
+                                inputmode="tel"
+                                placeholder="09170459330"
+                                bind:value={ testPhone }
+                            />
+                        </Field>
+                        <Button
+                            type="submit"
+                            glyph={ Send }
+                            busy={ testing }
+                            busyText="در حال ارسال..."
+                            disabled={ testPhone === '' }
+                        >
+                            ارسال
+                        </Button>
+                    </form>
+                </Async>
+            </div>
+        </section>
+
+        <section class="mt-section">
+            <h2 class="flex items-center gap-2 text-h3 font-bold">
+                { icon(KeyRound, 'size-5 text-firouze') }
+                کلید مدیریت
+            </h2>
+            <p class="mt-2 text-small text-muted">
+                کلید تازه جای کلید فعلی را می‌گیرد و همهٔ نشست‌های باز - از جمله همین یکی - بسته می‌شوند.
+                کلید فقط به شکل درهم‌سازی‌شده ذخیره می‌شود، پس اگر گمش کنید بازیابی نمی‌شود.
+            </p>
+
+            <form class="mt-4 rounded-2xl border border-line bg-surface p-5" novalidate onSubmit={ (event: Event) => void rotate(event) }>
+                <Field label="کلید فعلی" for="current-key">
+                    <TextInput
+                        id="current-key"
+                        type="password"
+                        latin
+                        autocomplete="off"
+                        class="tracking-wider"
+                        placeholder="XXXX-XXXX-XXXX-XXXX"
+                        bind:value={ currentKey }
+                    />
+                </Field>
+
+                <Field label="کلید تازه" for="new-key" class="mt-4" hint="پیش از چرخش، کلید تازه را جایی امن ذخیره کنید.">
+                    <div class="flex gap-2">
+                        <TextInput
+                            id="new-key"
+                            latin
+                            autocomplete="off"
+                            class="min-w-0 tracking-wider"
+                            placeholder="XXXX-XXXX-XXXX-XXXX"
+                            bind:value={ newKey }
+                        />
+                        <Button class="shrink-0" onClick={ generateKey }>تولید</Button>
+                    </div>
+                </Field>
+
+                <Button
+                    type="submit"
+                    variant="danger"
+                    class="mt-5"
+                    busy={ rotating }
+                    busyText="در حال چرخش..."
+                    disabled={ currentKey.length !== 19 || newKey.length !== 19 }
+                >
+                    چرخش کلید
+                </Button>
+            </form>
+        </section>
+    </AdminShell>
+}

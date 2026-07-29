@@ -1,0 +1,51 @@
+// One text control, so every field on the site is the same height, the same radius, and
+// focuses to the same colour.
+//
+// `latin` is the prop that matters. A phone number, a merchant id, a URL and a gift code are
+// Latin runs inside Persian prose: each needs `dir="ltr"` to keep bidi from reordering the
+// sentence around it, and the monospace face so a transcribed character can be checked. It
+// was three attributes and a class at every call site, which is three chances to forget one.
+export default component TextInput(props: {
+    id: string;
+    value: string;
+    /**
+     * Called with the VALUE, not the event. That is what `bind:value` on a component
+     * hands back, so a hand-written handler and a bound one have the same shape - and
+     * a mismatch here silently writes an Event object into the field.
+     *
+     * Optional: `bind:value` supplies one, and a read-only field wants none.
+     */
+    onInput?: (value: string) => void;
+    type?: string;
+    placeholder?: string;
+    /** A Latin run: isolated direction, monospace, start-aligned. */
+    latin?: boolean;
+    /** `paper` for a field inside a panel, `surface` for one on the page. */
+    tone?: 'paper' | 'surface';
+    inputmode?: string;
+    autocomplete?: string;
+    disabled?: boolean;
+    class?: string;
+})
+{
+    derived shape = [
+        'min-h-tap w-full rounded-xl border border-line px-4 outline-none focus:border-firouze',
+        props.tone === 'surface' ? 'bg-surface' : 'bg-paper',
+        props.latin === true ? 'latin text-start text-small' : '',
+        props.class ?? ''
+    ].filter((part) => part !== '').join(' ');
+
+    <input
+        id={ props.id }
+        type={ props.type ?? 'text' }
+        dir={ props.latin === true ? 'ltr' : null }
+        inputmode={ props.inputmode ?? null }
+        autocomplete={ props.autocomplete ?? null }
+        spellcheck={ props.latin === true ? 'false' : null }
+        class={ shape }
+        placeholder={ props.placeholder ?? null }
+        disabled={ props.disabled === true }
+        value={ props.value }
+        onInput={ (event: InputEvent) => props.onInput?.((event.target as HTMLInputElement).value) }
+    />
+}

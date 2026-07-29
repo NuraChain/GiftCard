@@ -1,0 +1,196 @@
+// The landing page, rendered per request (`render: 'server'` in routes.ts).
+//
+// It used to be prerendered at build. The catalogue is editable now, so a build-time file
+// would freeze the cards at whatever they were the day it was built - a price the operator
+// changed this morning would still be wrong on the page. Per-request rendering trades one
+// static file for a catalogue that is true when it is read, and the copy is still in the
+// served HTML rather than assembled by JavaScript.
+//
+// The page argues one thing: what you buy is a code, and this is exactly what happens
+// to it. The hero shows that code as the artifact it is, the tiers repeat the motif,
+// and the FAQ answers the fears in the buyer's own words.
+import { useCatalog, type CatalogTier } from '../catalog.ts';
+import { STEPS, FAQS, ASSURANCES, CONTACT } from '../content.ts';
+import { icon } from '../components/icon.ts';
+import Async from '../components/async.azeroth';
+import CodeCapsule from '../components/code-capsule.azeroth';
+import GiftCard from '../components/gift-card.azeroth';
+import FaqItem from '../components/faq-item.azeroth';
+import PurchasePanel from '../components/purchase-panel.azeroth';
+
+export default component Landing()
+{
+    // The hero capsule resolves from scanning to verified once, on load. `mount` runs
+    // only in the browser, so the prerendered HTML ships the settled state and a
+    // reader with JavaScript off still sees a coherent page.
+    state scanning = false;
+    state verified = true;
+
+    mount
+    {
+        scanning = true;
+        verified = false;
+        const timer = setTimeout(() =>
+        {
+            scanning = false;
+            verified = true;
+        }, 4200);
+        cleanup
+        {
+            clearTimeout(timer);
+        }
+    }
+
+    state openFaq: string | null = FAQS[0].id;
+    const toggleFaq = (id: string): void =>
+    {
+        openFaq = openFaq === id ? null : id;
+    };
+
+    const catalog = useCatalog();
+
+    mount
+    {
+        void catalog.load();
+    }
+
+    // Which card the purchase panel is for. Null until the catalogue lands, because before
+    // then there is no honest default - the shop does not know what it sells yet.
+    state chosen: number | null = null;
+    derived selected = catalog.tiers().find((tier) => tier.amount === chosen)
+        ?? catalog.tiers().find((tier) => tier.recommended)
+        ?? catalog.tiers()[0];
+
+    const choose = (tier: CatalogTier): void =>
+    {
+        chosen = tier.amount;
+        document.getElementById('purchase')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    <div>
+        <section class="mx-auto grid max-w-6xl items-center gap-stack px-4 pt-section pb-stack sm:px-5 lg:grid-cols-[1.05fr_1fr]">
+            <div class="anim-settle">
+                <p class="text-small font-bold text-firouze">گیفت کارت نورا چین</p>
+                <h1 class="mt-4 font-bold">
+                    کد را همان لحظه تحویل می‌گیرید، نه بعد از انتظار
+                </h1>
+                <p class="mt-5 max-w-xl text-muted">
+                    آنچه می‌خرید یک کد است. اینجا دقیقاً می‌بینید که چه شکلی دارد، کی به دستتان می‌رسد و اگر کار نکرد چه اتفاقی می‌افتد.
+                </p>
+
+
+                <div class="mt-stack flex flex-wrap gap-3">
+                    <a href="#cards" class="flex min-h-tap items-center rounded-xl bg-firouze px-5 text-small font-bold text-paper hover:opacity-90">
+                        دیدن کارت‌ها
+                    </a>
+                    <a href="#how" class="flex min-h-tap items-center rounded-xl border border-line px-5 text-small font-bold hover:border-firouze hover:text-firouze">
+                        روش خرید
+                    </a>
+                </div>
+            </div>
+
+            <div class="anim-settle">
+                <CodeCapsule
+                    code="7f3c1e2a-9b04-4d68-a5c1-0e7b2d9f4a31"
+                    label="نمونه کد - این کد واقعی نیست"
+                    scanning={ scanning }
+                    verified={ verified }
+                />
+                <p class="mt-3 text-caption text-muted">
+                    کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و همزمان با پیامک به دستتان می‌رسد.
+                </p>
+            </div>
+        </section>
+
+        <section class="mx-auto max-w-6xl px-4 pb-section sm:px-5">
+            <ul class="stagger grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-surface lg:grid-cols-4">
+                <For each={ ASSURANCES } key={ (item) => item.label }>
+                    { (item) =>
+                        <li class="trust-cell p-4">
+                            { icon(item.glyph, 'size-5 text-firouze') }
+                            <p class="mt-2.5 text-small font-bold">{ item.label }</p>
+                            <p class="mt-1 text-caption text-muted">{ item.detail }</p>
+                        </li>
+                    }
+                </For>
+            </ul>
+        </section>
+
+        <section id="cards" class="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
+            <h2 class="font-bold">کارت خود را انتخاب کنید</h2>
+            <p class="mt-3 max-w-xl text-muted">
+                {/* No count in this sentence: the catalogue is editable, so "all three" was
+                    a promise the page could not keep the moment a fourth card was added. */}
+                همهٔ کارت‌ها یک نوع کد می‌دهند و یک جور تحویل می‌شوند. تنها تفاوت، مبلغ است.
+            </p>
+
+            <div class="mt-stack">
+                <Async
+                    loading={ catalog.loading() && !catalog.loaded() }
+                    error={ catalog.error() }
+                    empty={ catalog.loaded() && catalog.tiers().length === 0 }
+                    emptyText="در حال حاضر کارتی برای فروش نیست."
+                    onRetry={ () => void catalog.load() }
+                    skeleton={
+                        <div class="grid gap-5 md:grid-cols-3">
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                        </div>
+                    }
+                >
+                    <div class="grid gap-5 md:grid-cols-3">
+                        <For each={ catalog.tiers() } key={ (tier) => tier.amount }>
+                            { (tier) => <GiftCard tier={ tier } onChoose={ choose } /> }
+                        </For>
+                    </div>
+                </Async>
+            </div>
+        </section>
+
+        <section id="how" class="border-y border-line bg-surface/40">
+            <div class="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
+                <h2 class="font-bold">از پرداخت تا کد فعال</h2>
+                <ol class="mt-stack grid gap-6 md:grid-cols-3">
+                    <For each={ STEPS } key={ (step) => step.title }>
+                        { (step, index) =>
+                            <li class="rounded-2xl border border-line bg-surface p-5">
+                                <div class="flex items-center gap-2.5 text-firouze">
+                                    { icon(step.glyph, 'size-5 shrink-0') }
+                                    <span dir="ltr" class="latin inline-block text-caption font-bold">{ index() + 1 }</span>
+                                </div>
+                                <h3 class="mt-3 font-bold">{ step.title }</h3>
+                                <p class="mt-2 text-small text-muted">{ step.body }</p>
+                            </li>
+                        }
+                    </For>
+                </ol>
+            </div>
+        </section>
+
+        <section id="purchase" class="mx-auto max-w-3xl scroll-mt-20 px-4 py-section sm:px-5">
+            <PurchasePanel tier={ selected } />
+        </section>
+
+        <section id="faq" class="mx-auto max-w-3xl scroll-mt-20 px-4 py-section sm:px-5">
+            <h2 class="font-bold">سوال‌های پرتکرار</h2>
+            <p class="mt-3 text-muted">
+                اگر پاسخ سوالتان اینجا نبود، به <span dir="ltr" class="latin">{ CONTACT.email }</span> بنویسید.
+            </p>
+
+            <div class="mt-6 rounded-2xl border border-line bg-surface px-5">
+                <For each={ FAQS } key={ (faq) => faq.id }>
+                    { (faq) =>
+                        <FaqItem
+                            id={ faq.id }
+                            question={ faq.question }
+                            answer={ faq.answer }
+                            open={ openFaq === faq.id }
+                            onToggle={ toggleFaq }
+                        />
+                    }
+                </For>
+            </div>
+        </section>
+    </div>
+}

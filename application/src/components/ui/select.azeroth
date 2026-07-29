@@ -1,0 +1,189 @@
+// A picker the design owns, rather than the one the operating system draws.
+//
+// WHY NOT `<select>`. A native select cannot be styled past its box: the open list keeps the
+// platform's font, its colours, and its own idea of dark mode, so on this page it arrived as
+// a white Latin-metric menu in the middle of a dark Persian panel. It also cannot hold a
+// mixed-direction option - "$25" beside Persian text - without the browser reordering it.
+//
+// This is the ARIA select-only combobox: the trigger keeps focus the whole time and points at
+// the highlighted option with `aria-activedescendant`, so a screen reader announces the list
+// and the moving selection without focus ever leaving the control. That is the part that gets
+// dropped when people rebuild a select, and it is the part that makes it usable without eyes.
+import { ChevronDown } from 'lucide';
+
+import { icon } from '../icon.ts';
+
+export interface SelectOption
+{
+    value: string;
+    label: string;
+    /** Render the label as an isolated Latin run - a price, a code, an amount. */
+    latin?: boolean;
+};
+
+export default component Select(props: {
+    id: string;
+    value: string;
+    options: SelectOption[];
+    onChange: (value: string) => void;
+    /** The accessible name. This control carries its own, so it needs no visible label. */
+    label: string;
+    class?: string;
+})
+{
+    state open = false;
+    state active = 0;
+
+    let root: HTMLElement | undefined;
+    let trigger: HTMLButtonElement | undefined;
+
+    derived chosen = props.options.find((option) => option.value === props.value);
+    derived listId = `${ props.id }-listbox`;
+
+    /**
+     * Closes on any press outside. Registered only while open - a document listener that
+     * outlives its menu is how a page ends up with forty of them after forty renders.
+     */
+    const onDocumentPointer = (event: Event): void =>
+    {
+        if (root !== undefined && !root.contains(event.target as Node))
+        {
+            open = false;
+        }
+    };
+
+    effect (open)
+    {
+        if (open)
+        {
+            document.addEventListener('pointerdown', onDocumentPointer);
+        }
+        else
+        {
+            document.removeEventListener('pointerdown', onDocumentPointer);
+        }
+    }
+
+    cleanup
+    {
+        document.removeEventListener('pointerdown', onDocumentPointer);
+    }
+
+    const show = (): void =>
+    {
+        // Opening onto the current choice, not onto the top: the list should start where the
+        // operator left it, so one arrow press moves to the neighbouring option.
+        active = Math.max(0, props.options.findIndex((option) => option.value === props.value));
+        open = true;
+    };
+
+    const choose = (index: number): void =>
+    {
+        const option = props.options[index];
+        if (option !== undefined)
+        {
+            props.onChange(option.value);
+        }
+        open = false;
+        trigger?.focus();
+    };
+
+    const onKeyDown = (event: KeyboardEvent): void =>
+    {
+        const last = props.options.length - 1;
+
+        if (!open)
+        {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === ' ')
+            {
+                event.preventDefault();
+                show();
+            }
+            return;
+        }
+
+        switch (event.key)
+        {
+            case 'ArrowDown':
+                event.preventDefault();
+                active = Math.min(active + 1, last);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                active = Math.max(active - 1, 0);
+                break;
+            case 'Home':
+                event.preventDefault();
+                active = 0;
+                break;
+            case 'End':
+                event.preventDefault();
+                active = last;
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                choose(active);
+                break;
+            case 'Escape':
+            case 'Tab':
+                // Escape abandons the change; Tab closes but lets focus move on.
+                open = false;
+                break;
+            default:
+                break;
+        }
+    };
+
+    <div class={ `relative ${ props.class ?? '' }` } ref={ (element: HTMLElement) => { root = element; } }>
+        <button
+            id={ props.id }
+            type="button"
+            role="combobox"
+            class="flex min-h-tap w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-caption font-bold outline-none focus:border-firouze sm:px-4"
+            aria-label={ props.label }
+            aria-haspopup="listbox"
+            aria-expanded={ open ? 'true' : 'false' }
+            aria-controls={ listId }
+            aria-activedescendant={ open ? `${ props.id }-option-${ active }` : null }
+            ref={ (element: HTMLButtonElement) => { trigger = element; } }
+            onClick={ () => { if (open) { open = false; } else { show(); } } }
+            onKeyDown={ onKeyDown }
+        >
+            <span class="min-w-0 truncate">
+                <Show when={ chosen?.latin === true } fallback={ <span>{ chosen?.label ?? '' }</span> }>
+                    <span dir="ltr" class="latin inline-block">{ chosen?.label ?? '' }</span>
+                </Show>
+            </span>
+            { icon(ChevronDown, `size-4 shrink-0 text-muted transition-transform ${ open ? 'rotate-180' : '' }`) }
+        </button>
+
+        <Show when={ open }>
+            <ul
+                id={ listId }
+                role="listbox"
+                class="anim-settle absolute inset-inline-start-0 top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-lg"
+                aria-label={ props.label }
+            >
+                <For each={ props.options } key={ (option) => option.value }>
+                    { (option, index) =>
+                        <li
+                            id={ `${ props.id }-option-${ index() }` }
+                            role="option"
+                            class={ `flex min-h-tap cursor-pointer items-center px-3 text-caption font-bold sm:px-4 ${
+                                option.value === props.value ? 'text-firouze' : ''
+                            } ${ index() === active ? 'bg-firouze/10' : '' }` }
+                            aria-selected={ option.value === props.value ? 'true' : 'false' }
+                            onPointerEnter={ () => { active = index(); } }
+                            onClick={ () => choose(index()) }
+                        >
+                            <Show when={ option.latin === true } fallback={ <span>{ option.label }</span> }>
+                                <span dir="ltr" class="latin inline-block">{ option.label }</span>
+                            </Show>
+                        </li>
+                    }
+                </For>
+            </ul>
+        </Show>
+    </div>
+}

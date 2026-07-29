@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.azeroth-types/
+.env
+*.local
+.idea
+
+# The gift-code inventory and the order ledger. Unsold codes in it are money.
+server/data/
+server/logs/

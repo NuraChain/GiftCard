@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <title>نورا چین - خرید گیفت کارت</title>
+        <meta name="description" content="خرید گیفت کارت نورا چین با تحویل آنی کد. پرداخت امن، پشتیبانی فارسی، و بازگشت وجه اگر کد کار نکند."/>
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eff4f3"/>
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1633"/>
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+        <link rel="stylesheet" href="/src/styles.css"/>
+        <script>
+            // Resolve the theme BEFORE first paint. Deferring this to the bundle would
+            // paint the system theme and then repaint the stored one - the flash of wrong
+            // theme. Wrapped in try/catch because localStorage throws outright in some
+            // privacy modes, and a themed page is not worth a blank one.
+            try
+            {
+                var stored = localStorage.getItem('nura-theme');
+                if (stored === 'light' || stored === 'dark')
+                {
+                    document.documentElement.setAttribute('data-theme', stored);
+                }
+            }
+            catch (error)
+            {
+                // No storage access: fall through to the system preference.
+            }
+        </script>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.azeroth" defer></script>
+    </body>
+</html>
