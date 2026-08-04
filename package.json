@@ -14,10 +14,10 @@
         "dev": "azeroth dev",
         "check": "azeroth check",
         "build": "azeroth build",
-        "test": "npm test --workspaces --if-present",
+        "test": "azeroth test",
         "start": "npm start --workspace server"
     },
     "devDependencies": {
-        "@azerothjs/cli": "^1.1.0"
+        "@azerothjs/cli": "2.0.0-beta.1"
     }
 }

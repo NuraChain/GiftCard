@@ -17,7 +17,7 @@ import { useNavigate, useQuery } from 'azerothjs';
 import { ArrowRight, Check, Copy, ShieldCheck, TriangleAlert } from 'lucide';
 
 import { client } from '../lib/api.ts';
-import { purchaseFormInput, type Receipt } from '../../../server/src/contract/index.ts';
+import { purchaseFormInput, type Receipt } from '../../../server/src/schemas.ts';
 import type { CatalogTier } from '../lib/catalog.ts';
 import { CONTACT } from '../lib/content.ts';
 import { toman } from '../lib/format.ts';

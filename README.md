@@ -1,5 +1,9 @@
 # nura-chain
 
+[![CI](https://github.com/NuraChain/GiftCard/actions/workflows/ci.yml/badge.svg)](https://github.com/NuraChain/GiftCard/actions/workflows/ci.yml)
+[![Built with AzerothJS](https://img.shields.io/badge/built%20with-AzerothJS-5fb3e8)](https://github.com/AzerothJS/AzerothJS)
+[![Node >= 24](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org)
+
 A gift-card shop built on [AzerothJS](https://github.com/AzerothJS/AzerothJS):
 `application/` (compiled `.azeroth` components on vite) + `server/`
 (`@azerothjs/http`, no build step) - one command runs both.
@@ -7,6 +11,18 @@ A gift-card shop built on [AzerothJS](https://github.com/AzerothJS/AzerothJS):
 A buyer picks a denomination, types a phone number, confirms it, pays on Zarinpal, and
 comes back to a gift code that is also sent by SMS. An operator loads codes and watches
 orders from `/admin`.
+
+<div align="center">
+
+<img src="docs/screenshots/shop-desktop-dark.png" alt="The shop, dark theme" width="840" />
+
+| | |
+| --- | --- |
+| <img src="docs/screenshots/console-desktop-dark.png" alt="The operator console" /> | <img src="docs/screenshots/shop-desktop-light.png" alt="The shop in the light theme" /> |
+
+<img src="docs/screenshots/shop-mobile-dark.png" alt="The shop on a phone" width="390" />
+
+</div>
 
 ## How a purchase works
 
@@ -45,12 +61,13 @@ gateway is called.
 | --- | --- | --- |
 | ONE route table | `application/src/routes.ts` | The router's own table IS the manifest - plus one `render:` field per route ('static' / 'server' / 'client') |
 | Client routing | `application/src/App.azeroth` | `<RouterProvider>` + `<Routes>` over that table; `useRoute()` swaps the chrome for the console |
-| ONE shared contract | `server/src/contract.ts` | Routes + schemas declared once; imported by BOTH halves; client-safe by construction |
-| Typed API client | `application/src/api.ts` | `createClient(contract)` - calls fully inferred, inputs validated BEFORE the wire |
+| ONE wire vocabulary | `server/src/schemas.ts` | Every wire shape declared once and imported by BOTH halves; client-safe by construction |
+| Colocated routes | `server/src/features/*/feature.ts` | `feature()` - method, path, schemas, guard and handler in one expression, so a handler cannot drift from its route |
+| Typed API client | `application/src/lib/api.ts` | `createClient<Api>(manifest)` - typed from the server's own declaration, inputs validated BEFORE the wire |
 | Schema-validated form | `application/src/components/purchase-panel.azeroth` | The `form` keyword with the SAME phone schema the server enforces |
-| Boundary validation | `server/src/app.ts` | `mountApi` - a forged request gets the 422 whose field map the form displays |
-| Typed guards | `server/src/app.ts` | One `requireAdmin` guard over the admin branch; per-route throttles on what costs money |
-| Layered server | `server/ARCHITECTURE.md` | `routes/` -> `services/` -> `db/`, with the money rules in `services/checkout.ts` |
+| Boundary validation | `server/src/app.ts` | `register` - a forged request gets the 422 whose field map the form displays |
+| Typed guards | `server/src/app.ts` | One `requireAdmin` over the whole admin feature; the two ways past it are `routes.with(...)` at the route |
+| Feature-first server | `server/ARCHITECTURE.md` | One folder per feature - shapes, routes, rules and SQL together - with the money rules in `features/checkout/checkout.ts` |
 | SSR and hydration | `application/src/entry.server.ts` + `main.azeroth` | The shop renders per request because its catalogue is editable; the console renders in the browser only |
 | One-origin deploy | `server/src/main.ts` (`mountPages`) + `server/Dockerfile` | One container serves API + pages + assets |
 
@@ -130,6 +147,22 @@ outgrow SQLite.
   is when the gateway sends them back.
 - **Production**: the server serves `application/dist` itself (`CLIENT_DIR`), so the deployed
   app is ONE origin - no CORS between your own halves, ever.
+
+## Configuration
+
+Copy `server/.env.example` to `server/.env`. Every key the server reads is listed there; keep
+the two files in step. Note what is NOT here: the gateway and SMS credentials live in the
+console and in the database, because two places to set one value is a trap.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `3000` | Server port |
+| `NODE_ENV` | `development` | `production` serves the built client |
+| `CLIENT_DIR` | `../application/dist` | Built client, served from the same origin |
+| `SSR_ENTRY` | `../application/dist-server/entry.server.js` | SSR bundle |
+| `PUBLIC_BASE_URL` | `http://localhost:3000` | Where the gateway returns the buyer. A wrong value strands every payment |
+| `DATABASE_FILE` | `data/nura.db` | Gift codes and the order ledger. Back it up like money |
+| `ADMIN_KEY` | *(unset)* | Optional override for the console credential. Leave it unset and the first boot mints one and prints it once |
 
 ## Deploy
 

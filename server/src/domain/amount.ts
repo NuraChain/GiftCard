@@ -1,5 +1,5 @@
-// The two fields both halves of the contract need. Everything else lives with the feature
-// that owns it - see pay.ts and admin.ts.
+// A denomination, as every wire shape spells it. It sits in domain/ beside phoneField for the
+// same reason: it is a fact about what this shop sells, not about any one route.
 import { number } from '@azerothjs/schema';
 
 /**

@@ -8,12 +8,18 @@ It used to be layer-first (`routes/`, `services/`, `db/`, `gateways/`, `contract
 file was fine and following one feature still meant opening eight of them across five
 directories. That is the trade this layout reverses.
 
+The split inside a feature went the same way. A route used to be declared in `contract.ts` and
+implemented in `routes.ts`, because the API let a declaration exist without its handler; the
+two files had to be read together and could disagree. They are now one `feature.ts`, and what
+survives of the split is only what has a REASON to survive: `schemas.ts` stays separate
+because the browser imports it.
+
 ```
 src/
   main.ts        Bootstrap. The ONLY file that reads the environment or builds a real
                  gateway, SMS client or database.
-  app.ts         WIRING ONLY: which feature answers which group, and which routes are
-                 guarded. If a rule appears here, it is in the wrong file.
+  app.ts         WIRING ONLY: which feature answers which surface, and what is guarded.
+                 If a rule appears here, it is in the wrong file.
   config.ts      The environment - as a SEED, not the last word (see features/settings).
 
   platform/      What every feature needs and none of them owns.
@@ -22,30 +28,29 @@ src/
     throttle.ts  Per-route rate limiting.
     branding.ts  The edge wrapper that stamps the shop's name into served HTML.
 
-  contract/
-    index.ts     defineContract({ pay, admin }) - the whole API in one screen.
-    shared.ts    The two amount fields both halves need.
+  schemas.ts     THE wire vocabulary: re-exports every features/*/schemas.ts. The one
+                 path the application imports from.
 
   features/
     checkout/    A buyer buys a card.
-      contract.ts  the shop's wire shapes and routes
-      routes.ts    handlers, plus the gateway's redirect callback
+      schemas.ts   the shop's wire shapes (client-safe)
+      feature.ts   routes AND handlers, plus the gateway's redirect callback
       checkout.ts  THE MONEY RULES. Read this before touching a payment.
       queries.ts   the ledger, and the transactions that move a purchase along
       zarinpal.ts  payment request and verify
       sms.ts       code delivery
 
     inventory/   Codes come in, codes go out.
-      contract.ts  routes.ts  queries.ts (the claim that stops double-selling)
+      schemas.ts  feature.ts  queries.ts (the claim that stops double-selling)
 
     catalogue/   What the shop sells.
-      contract.ts  routes.ts  queries.ts (a used tier deactivates, never deletes)
+      schemas.ts  feature.ts  queries.ts (a used tier deactivates, never deletes)
 
     console/     Who is signed in, and what happened.
-      contract.ts  routes.ts  session.ts (sessions, lockout, cookies)
+      schemas.ts  feature.ts  session.ts (sessions, lockout, cookies)
 
     settings/    Runtime configuration, and the admin key.
-      contract.ts  routes.ts  settings.ts (the write-only rule)  queries.ts
+      schemas.ts  feature.ts  settings.ts (the write-only rule)  queries.ts
 
   db/            The Store composition and the vocabulary every query module speaks.
     index.ts     Assembles each feature's queries into one injectable Store.
@@ -55,6 +60,7 @@ src/
   domain/        Pure rules, no I/O.
     phone.ts     Iranian mobile numbers, normalised to one canonical form.
     codes.ts     The receipt token. Gift codes are inventory, never minted here.
+    amount.ts    The two denomination fields every wire shape spells.
     seed.ts      The catalogue a first boot starts from.
 ```
 
@@ -72,18 +78,27 @@ and settles an order in one transaction, so `features/checkout/queries.ts` legit
 `features/inventory/queries.ts`. If two features needed each other's *routes*, they would be
 one feature.
 
-**Every `features/*/contract.ts` is CLIENT-SAFE.** It may import `@azerothjs/http/api/client`,
-`@azerothjs/schema`, `domain/`, and `contract/shared.ts` - nothing else. The application
-imports these files directly, so anything else here lands in the browser bundle.
+**Every `features/*/schemas.ts` is CLIENT-SAFE.** It may import `@azerothjs/schema` and
+`domain/` - nothing else. The application imports these files (through `schemas.ts`), so
+anything else here lands in the browser bundle. This is the whole reason schemas and routes
+are separate files: `feature.ts` reaches for the store, the throttle and the gateway, and it
+must never be on a path the browser can follow.
 
-**Contract groups are the client's call path, not the folder name.** The wire has two groups,
-`pay` and `admin`; `contract/index.ts` composes each feature's declarations into them. A
-feature can move without changing a line of browser code.
+**A route is declared WITH its handler.** `feature.ts` holds both - method, path, schemas,
+guard and handler in one expression - so a handler cannot drift from the route it answers:
+there is no second declaration to drift from. The route name is written once, and it keys the
+object, the served manifest, the browser's `client.admin.tiers()` and the OpenAPI operation.
 
-**Each feature claims only its own routes.** A handler factory returns
-`Pick<AdminHandlers, 'its' | 'own' | 'keys'>`, so a handler whose shape drifts from its route
-fails to compile in its own file - and `mountApi` in `app.ts` still proves the union covers
-every route in the contract.
+**The record key is the client's call path, not the folder name.** The wire has two surfaces,
+`pay` and `admin`; `createApi` in `app.ts` composes the four admin feature files into the one
+`admin` feature. A feature file can move without changing a line of browser code.
+
+**The admin feature is guarded as a whole.** `feature('/admin', [requireAdmin], ...)` puts the
+session in front of every route declared in it, so a route added later is guarded because of
+where it lives. The two exemptions are `routes.with(...)` calls written AT the route in
+`console/feature.ts` - greppable, and next to the thing they exempt. `routes.with()` REPLACES
+the chain rather than adding to it, which is why `settings/feature.ts` takes `requireAdmin` as
+an option: its two throttled routes have to re-state the guard or they would lose it.
 
 **A route may not contain a rule that matters.** The four rules that decide whether money
 moved are stated in the header of `features/checkout/checkout.ts`, not buried in a router.
@@ -101,10 +116,10 @@ cost the thing that makes the suite worth having.
 
 ## Where to start reading
 
-- **Money**: `features/checkout/checkout.ts`, then its `routes.ts`.
+- **Money**: `features/checkout/checkout.ts`, then its `feature.ts`.
 - **Never selling one code twice**: `features/inventory/queries.ts`, the `claim` statement.
 - **Credentials**: `features/settings/settings.ts`.
-- **The API's shape**: `contract/index.ts`, then `app.ts`.
+- **The API's shape**: `app.ts` - `createApi` is the whole surface in one screen.
 
 ## Testing
 

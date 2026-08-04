@@ -10,7 +10,7 @@
 import { Copy, Search, Ticket } from 'lucide';
 
 import { client } from '../../../lib/api.ts';
-import type { CodeRow, TierRow } from '../../../../../server/src/contract/index.ts';
+import type { CodeRow, TierRow } from '../../../../../server/src/schemas.ts';
 import { count, moment } from '../../../lib/format.ts';
 import { icon } from '../../../ui/icon.ts';
 import { useToasts } from '../../../ui/toast.ts';

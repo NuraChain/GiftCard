@@ -1,18 +1,12 @@
-// The console's own wire shapes and routes: the session, and the two read views.
+// The console's wire shapes: the session, and the two read views an operator opens first.
 //
-// The KEY is only ever sent in a request body, never a query string: a URL lands in browser
-// history, server logs and referrer headers, and a credential must be in none of those.
-//
-// CLIENT-SAFE. Like every features/*/contract.ts, this may import only
-// '@azerothjs/http/api/client', '@azerothjs/schema' and 'domain/'.
-import { del, get, post } from '@azerothjs/http/api/client';
+// CLIENT-SAFE. Like every features/*/schemas.ts, this may import only `@azerothjs/schema` and
+// `domain/` - anything else would drag the server into the browser bundle.
 import { array, boolean, literal, number, object, string, union, type Infer } from '@azerothjs/schema';
 
-import { amountField } from '../../contract/shared.ts';
+import { amountField } from '../../domain/amount.ts';
 
 export const adminKeyInput = object({ key: string({ trim: true, max: 32 }) });
-
-// --- What is happening right now ---
 
 /** One denomination's inventory. `held` is reserved by a checkout that has not settled. */
 export const stockLine = object({
@@ -71,11 +65,3 @@ export type AdminOverview = Infer<typeof adminOverview>;
 export type StockLine = Infer<typeof stockLine>;
 export type LedgerPage = Infer<typeof ledgerPage>;
 export type LedgerRow = Infer<typeof ledgerRow>;
-
-/** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
-export const consoleRoutes = {
-    signIn: post('/admin/session', { input: adminKeyInput }),
-    signOut: del('/admin/session'),
-    overview: get('/admin/overview', { output: adminOverview }),
-    orders: get('/admin/orders', { query: ledgerQuery, output: ledgerPage })
-};

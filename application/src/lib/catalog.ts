@@ -6,7 +6,7 @@
 import { createSignal, createStore } from 'azerothjs';
 
 import { client } from './api.ts';
-import type { Catalog } from '../../../server/src/contract/index.ts';
+import type { Catalog } from '../../../server/src/schemas.ts';
 
 /** One card, exactly as the server describes it. */
 export type CatalogTier = Catalog['tiers'][number];

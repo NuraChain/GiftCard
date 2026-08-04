@@ -1,17 +1,16 @@
 // The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt.
 import { ConflictError, HttpError, NotFoundError, redirect, type App } from '@azerothjs/http';
+import { feature } from '@azerothjs/http/api';
 import type { Logger } from '@azerothjs/logger';
 
-import type { HandlersWithGuards } from '@azerothjs/http/api';
-
-import type { contract, Receipt } from '../../contract/index.ts';
 import type { Store } from '../../db/index.ts';
 import { mintReceiptToken } from '../../domain/codes.ts';
 import { displayPhone, normalizePhone } from '../../domain/phone.ts';
-import type { PaymentGateway } from './zarinpal.ts';
-import type { Checkout } from './checkout.ts';
-import type { Settings } from '../settings/settings.ts';
 import { throttle } from '../../platform/throttle.ts';
+import type { Settings } from '../settings/settings.ts';
+import type { Checkout } from './checkout.ts';
+import { catalog, payStartInput, payStartOutput, receipt, receiptQuery } from './schemas.ts';
+import type { PaymentGateway } from './zarinpal.ts';
 
 /**
  * How long a code stays reserved for a checkout that has not come back. Long enough for a
@@ -37,7 +36,7 @@ export interface PayOptions
 }
 
 /**
- * The gateway's return. Deliberately NOT a contract route: no client calls it, it answers
+ * The gateway's return. Deliberately NOT a declared route: no client calls it, it answers
  * with a redirect rather than a body, and its query string is written by a third party - so
  * it reads its two parameters by hand and defensively. Throttled because each hit can cost
  * one verify call to the gateway.
@@ -62,18 +61,14 @@ export function mountPayCallback(app: App, options: PayOptions): void
     });
 }
 
-/**
- * Every handler under `pay`. The return type comes from the CONTRACT, which is the
- * framework's documented way to keep handlers in their own files without a cast - drift
- * between a route and its handler is a compile error here rather than a runtime 500.
- */
-export function payHandlers(options: PayOptions): HandlersWithGuards<typeof contract, Record<never, never>>['pay']
+/** The shop. Public by design - only `start` costs anything downstream, so only it has a ceiling. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the route literal IS the type; naming it would erase per-route inference
+export function payFeature(options: PayOptions)
 {
     const { store, settings, payment, callbackUrl, log } = options;
 
-    return {
-        // GET /api/pay/catalog
-        catalog: () =>
+    return feature('/pay', (routes) => ({
+        catalog: routes.get('/catalog', { output: catalog }, () =>
         {
             // Only ACTIVE tiers reach the shop. A disabled card is not "hidden by the page" -
             // it never leaves the server, so nothing on the client can reveal an amount the
@@ -91,10 +86,10 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
                     recommended: tier.recommended
                 }))
             };
-        },
+        }),
 
-        // POST /api/pay/start
-        start: async ({ input }: { input: { amount: number; phone: string } }) =>
+        // One call here costs a gateway request downstream, which is what the ceiling is for.
+        start: routes.with(throttle(8, 60_000)).post('/start', { input: payStartInput, output: payStartOutput }, async ({ input }) =>
         {
             // The schema proved the phone is valid; it does not canonicalise, so this is
             // where the buyer's typing becomes the one stored form.
@@ -156,10 +151,9 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
             }
 
             return { payUrl: opened.payUrl };
-        },
+        }),
 
-        // GET /api/pay/receipt
-        receipt: ({ query }: { query: { token: string } }): Receipt =>
+        receipt: routes.get('/receipt', { query: receiptQuery, output: receipt }, ({ query }) =>
         {
             const order = store.orderById(query.token);
             // A pending order is indistinguishable from no order here: until the gateway has
@@ -177,6 +171,6 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
                 refId: order.refId,
                 smsDelivered: order.smsDelivered
             };
-        }
-    };
+        })
+    }));
 }

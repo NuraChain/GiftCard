@@ -1,13 +1,14 @@
-// The shop's half of the contract: the catalogue, starting a purchase, and reading the
-// receipt. Pairs with routes/pay.ts - the shapes here, the handlers there.
+// The shop's wire shapes: the catalogue, starting a purchase, and reading the receipt.
 //
 // Scope note: no route here accepts card details. The buyer types a phone number, the
 // gateway takes the money on its own page, and this server never sees a card number.
-import { get, post } from '@azerothjs/http/api/client';
+//
+// CLIENT-SAFE. Like every features/*/schemas.ts, this may import only `@azerothjs/schema`
+// and `domain/`.
 import { array, boolean, literal, number, object, string, union, type Infer } from '@azerothjs/schema';
 
+import { amountField } from '../../domain/amount.ts';
 import { phoneField } from '../../domain/phone.ts';
-import { amountField } from '../../contract/shared.ts';
 
 /**
  * What starts a purchase. The SAME schema validates three times from this one declaration:
@@ -85,10 +86,3 @@ export const receipt = object({
 export type PayStartInput = Infer<typeof payStartInput>;
 export type Catalog = Infer<typeof catalog>;
 export type Receipt = Infer<typeof receipt>;
-
-/** The shop's routes. Assembled into the whole contract by ./index.ts. */
-export const checkoutRoutes = {
-    catalog: get('/pay/catalog', { output: catalog }),
-    start: post('/pay/start', { input: payStartInput, output: payStartOutput }),
-    receipt: get('/pay/receipt', { query: receiptQuery, output: receipt })
-};

@@ -168,14 +168,14 @@ export default component Select(props: {
                 <For each={ props.options } key={ (option) => option.value }>
                     { (option, index) =>
                         <li
-                            id={ `${ props.id }-option-${ index() }` }
+                            id={ `${ props.id }-option-${ index }` }
                             role="option"
                             class={ `flex min-h-tap cursor-pointer items-center px-3 text-caption font-bold sm:px-4 ${
                                 option.value === props.value ? 'text-firouze' : ''
-                            } ${ index() === active ? 'bg-firouze/10' : '' }` }
+                            } ${ index === active ? 'bg-firouze/10' : '' }` }
                             aria-selected={ option.value === props.value ? 'true' : 'false' }
-                            onPointerEnter={ () => { active = index(); } }
-                            onClick={ () => choose(index()) }
+                            onPointerEnter={ () => { active = index; } }
+                            onClick={ () => choose(index) }
                         >
                             <Show when={ option.latin === true } fallback={ <span>{ option.label }</span> }>
                                 <span dir="ltr" class="latin inline-block">{ option.label }</span>

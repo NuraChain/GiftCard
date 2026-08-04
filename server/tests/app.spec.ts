@@ -130,6 +130,11 @@ function get(path: string, headers: Record<string, string> = {}): Promise<Respon
     return app.handle(new Request(`http://local${ path }`, { headers }));
 }
 
+function del(path: string, headers: Record<string, string> = {}): Promise<Response>
+{
+    return app.handle(new Request(`http://local${ path }`, { method: 'DELETE', headers }));
+}
+
 /**
  * Runs a checkout up to the point the browser would leave for the gateway.
  *
@@ -465,6 +470,17 @@ describe('the console', () =>
     {
         expect((await get('/api/admin/overview')).status).toBe(401);
         expect((await post('/api/admin/codes', { amount: 5, codes: uuids(1) })).status).toBe(401);
+    });
+
+    it('lets an EXPIRED session sign out anyway', async () =>
+    {
+        // Signing out clears a cookie, so requiring the credential it is clearing would strand
+        // whoever needs it most. app.ts declares this the one open route in a guarded group
+        // (`only([])`); if that exception is ever dropped, this turns into a 401 and an
+        // operator with a stale cookie can never get back to a clean sign-in.
+        const response = await del('/api/admin/session');
+        expect(response.status).toBe(204);
+        expect(response.headers.get('set-cookie') ?? '').toContain('Max-Age=0');
     });
 
     it('refuses a wrong key and says nothing useful about it', async () =>

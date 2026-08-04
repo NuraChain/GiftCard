@@ -5,7 +5,7 @@
 import { Search } from 'lucide';
 
 import { client } from '../../lib/api.ts';
-import type { LedgerRow } from '../../../../server/src/contract/index.ts';
+import type { LedgerRow } from '../../../../server/src/schemas.ts';
 import { count, moment, toman } from '../../lib/format.ts';
 import { icon } from '../../ui/icon.ts';
 import { useToasts } from '../../ui/toast.ts';

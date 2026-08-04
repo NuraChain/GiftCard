@@ -1,13 +1,12 @@
-// Runtime configuration's wire shapes and routes, and the admin key beside them.
+// Runtime configuration's wire shapes, and the admin key beside them.
 //
 // A secret is WRITE-ONLY across this boundary. The console may replace the merchant id or
 // the SMS key, and may see whether one is set and its last four characters - never the
 // value. A stolen session must not be a way to read out the credentials it can overwrite.
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
 //
-// CLIENT-SAFE. Like every features/*/contract.ts, this may import only
-// `@azerothjs/http/api/client`, `@azerothjs/schema` and `domain/`.
-import { get, post } from '@azerothjs/http/api/client';
+// CLIENT-SAFE. Like every features/*/schemas.ts, this may import only `@azerothjs/schema`
+// and `domain/`.
 import { array, boolean, object, string, type Infer } from '@azerothjs/schema';
 
 import { phoneField } from '../../domain/phone.ts';
@@ -76,12 +75,3 @@ export const testSmsResult = object({ ok: boolean(), reason: string() });
 
 export type SettingsView = Infer<typeof settingsView>;
 export type SettingsLogRow = Infer<typeof settingsLogRow>;
-
-/** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
-export const settingsRoutes = {
-    settings: get('/admin/settings', { output: settingsView }),
-    saveSettings: post('/admin/settings', { input: settingsInput, output: settingsView }),
-    settingsLog: get('/admin/settings/log', { output: settingsLog }),
-    rotateKey: post('/admin/key', { input: rotateKeyInput }),
-    testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult })
-};

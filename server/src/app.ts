@@ -1,12 +1,12 @@
 // The app, built pure: dependencies in, App out. WIRING ONLY.
 //
-// Every handler lives in `features/<name>/routes.ts`, beside the contract that declares it,
-// the rules it calls, and its SQL. Nothing in this file decides anything - it says which
-// feature answers which group, and which routes are guarded. If a rule appears here, it is
-// in the wrong file.
+// Every route lives in `features/<name>/feature.ts`, beside the rules it calls and its SQL, and
+// its wire shapes sit in the `schemas.ts` next to it. Nothing in this file decides anything - it
+// says which feature answers which surface, and what a request has to get past before a handler
+// sees it. If a rule appears here, it is in the wrong file.
 //
-// Reading this file should tell you two things and nothing else: the shape of the API, and
-// what a request has to get past before a handler sees it.
+// Reading this file should tell you two things and nothing else: the shape of the API, and what
+// is guarded.
 //
 // API routes live under /api - the same prefix the application's dev proxy forwards - and in
 // production the server also serves the built client, so the deployed app is ONE origin (no
@@ -15,24 +15,22 @@
 // Everything arrives as OPTIONS. Nothing here reads config or touches the network by itself,
 // so the whole flow - including the forged-callback, replay and sold-out paths - is exercised
 // by handing `buildApp` an in-memory database and two fakes.
-import { App, json, type RequestObserver } from '@azerothjs/http';
-import { guard, mountApi } from '@azerothjs/http/api';
+import { App, json, type RequestContext, type RequestObserver } from '@azerothjs/http';
+import { feature, manifestOf, register } from '@azerothjs/http/api';
 import { mountPages, type KitOptions } from '@azerothjs/kit';
 import type { Logger } from '@azerothjs/logger';
 
-import { contract } from './contract/index.ts';
 import type { Store } from './db/index.ts';
-import { catalogueHandlers } from './features/catalogue/routes.ts';
+import { catalogueRoutes } from './features/catalogue/feature.ts';
 import { createCheckout } from './features/checkout/checkout.ts';
-import { mountPayCallback, payHandlers } from './features/checkout/routes.ts';
+import { mountPayCallback, payFeature } from './features/checkout/feature.ts';
 import type { SmsSender } from './features/checkout/sms.ts';
 import type { PaymentGateway } from './features/checkout/zarinpal.ts';
-import { consoleHandlers } from './features/console/routes.ts';
+import { consoleRoutes } from './features/console/feature.ts';
 import type { Admin } from './features/console/session.ts';
-import { inventoryHandlers } from './features/inventory/routes.ts';
-import { settingsHandlers } from './features/settings/routes.ts';
+import { inventoryRoutes } from './features/inventory/feature.ts';
+import { settingsRoutes } from './features/settings/feature.ts';
 import type { Settings } from './features/settings/settings.ts';
-import { throttle } from './platform/throttle.ts';
 
 export interface AppOptions
 {
@@ -59,61 +57,69 @@ export interface AppOptions
     log?: Logger;
 }
 
+/**
+ * The whole API, in one screen: two surfaces, and the four feature files that fill the second.
+ *
+ * The record key is the client namespace (`client.admin.tiers()`), so the admin routes are ONE
+ * feature rather than four - a feature per folder would split that namespace four ways and, more
+ * to the point, would make the session guard four separate decisions instead of one.
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the route literals ARE the type; naming it would erase per-route inference
+export function createApi(options: AppOptions & { checkout: ReturnType<typeof createCheckout> })
+{
+    const { store, payment, sms, admin, settings, callbackUrl, checkout, log } = options;
+
+    // A guard is any (context) => void | Response | additions. `guard()` only earns its keep when
+    // the guard ADDS to the context and that addition must be inferred; this one only throws.
+    const requireAdmin = (context: RequestContext): void => void admin.require(context.request);
+
+    return {
+        pay: payFeature({ store, settings, payment, checkout, callbackUrl, resultPath: options.resultPath ?? '/', log }),
+
+        // Everything under here is behind the session by DEFAULT: a route added to any of the
+        // four builders is guarded because of the feature it lands in, not because someone
+        // remembered a line. The two ways out are `routes.with(...)` calls in console/feature.ts,
+        // written at the route they exempt.
+        admin: feature('/admin', [requireAdmin], (routes) => ({
+            ...consoleRoutes(routes, { store, admin }),
+            ...catalogueRoutes(routes, { store, log }),
+            ...inventoryRoutes(routes, { store }),
+            ...settingsRoutes(routes, { settings, admin, sms, callbackUrl, requireAdmin, log })
+        }))
+    };
+}
+
+export type Api = ReturnType<typeof createApi>;
+
 export function buildApp(options: AppOptions): App
 {
     const app = new App({ dev: options.dev, observe: options.observe });
-    const { store, payment, sms, admin, settings, callbackUrl, log } = options;
-    const resultPath = options.resultPath ?? '/';
+    const { store, payment, sms, log } = options;
 
     // The orchestrator probe: cheap, dependency-free, always 200 when the process lives. It
     // stays imperative because nothing calls it with types - see features/ for the rest.
     app.get('/api/healthz', () => json({ ok: true, at: new Date().toISOString() }));
 
-    // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
-    // itself rather than through the contract.
     const checkout = createCheckout({ store, payment, sms, log });
-    const pay = { store, settings, payment, checkout, callbackUrl, resultPath, log };
-    mountPayCallback(app, pay);
+    const api = createApi({ ...options, checkout });
 
-    const requireAdmin = guard((context) => void admin.require(context.request));
+    register(app, api);
 
-    mountApi(app, contract, {
-        guards: {
-            // Money or credentials: one call here costs a gateway request, an SMS, or a guess.
-            'pay.start': [guard(throttle(8, 60_000))],
-            'admin.signIn': [guard(throttle(10, 60_000))],
-
-            // Everything in the console except signing in - that route IS how you get past
-            // this guard.
-            'admin.overview': [requireAdmin],
-            'admin.orders': [requireAdmin],
-            'admin.addCodes': [requireAdmin],
-            'admin.codes': [requireAdmin],
-            'admin.tiers': [requireAdmin],
-            'admin.saveTier': [requireAdmin],
-            'admin.removeTier': [requireAdmin],
-            'admin.settings': [requireAdmin],
-            'admin.saveSettings': [requireAdmin],
-            'admin.settingsLog': [requireAdmin],
-
-            // Rotation takes the CURRENT key, so it is one more place a credential can be
-            // guessed against - guarded and throttled.
-            'admin.rotateKey': [requireAdmin, guard(throttle(10, 60_000))],
-            'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))]
-        },
-
-        // One line per feature. `mountApi` proves the union covers every route in the
-        // contract, so a feature that forgets a handler fails to compile HERE.
-        handlers: {
-            pay: payHandlers(pay),
-            admin: {
-                ...consoleHandlers({ store, admin }),
-                ...catalogueHandlers({ store, log }),
-                ...inventoryHandlers({ store }),
-                ...settingsHandlers({ settings, admin, sms, callbackUrl, log })
-            }
-        }
+    // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
+    // itself rather than through a declaration.
+    mountPayCallback(app, {
+        store,
+        settings: options.settings,
+        payment,
+        checkout,
+        callbackUrl: options.callbackUrl,
+        resultPath: options.resultPath ?? '/',
+        log
     });
+
+    // The typed client's runtime half: method + path per route, projected from the SAME
+    // declaration register just installed. The browser fetches it once at boot.
+    app.get('/api/_manifest', () => json(manifestOf(api)));
 
     if (options.pages !== undefined)
     {

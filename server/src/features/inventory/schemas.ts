@@ -1,11 +1,10 @@
-// The inventory's wire shapes and routes: codes come in, codes go out.
+// The inventory's wire shapes: codes come in, codes go out.
 //
-// CLIENT-SAFE. Like every features/*/contract.ts, this may import only
-// `@azerothjs/http/api/client`, `@azerothjs/schema` and `domain/`.
-import { get, post } from '@azerothjs/http/api/client';
+// CLIENT-SAFE. Like every features/*/schemas.ts, this may import only `@azerothjs/schema`
+// and `domain/`.
 import { array, literal, number, object, string, union, type Infer } from '@azerothjs/schema';
 
-import { amountField, amountQueryField } from '../../contract/shared.ts';
+import { amountField, amountQueryField } from '../../domain/amount.ts';
 
 /**
  * One code in the inventory, and where it went. This is the audit view: what was loaded,
@@ -50,9 +49,3 @@ export const addCodesResult = object({
 export type CodePage = Infer<typeof codePage>;
 export type CodeRow = Infer<typeof codeRow>;
 export type AddCodesResult = Infer<typeof addCodesResult>;
-
-/** The inventory's routes. They join the `admin` group in ../../contract/index.ts. */
-export const inventoryRoutes = {
-    addCodes: post('/admin/codes', { input: addCodesInput, output: addCodesResult }),
-    codes: get('/admin/codes', { query: codeQuery, output: codePage })
-};

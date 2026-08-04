@@ -7,7 +7,7 @@
 // and a `revision` counter the form bumps after a paste so the table refetches. Neither
 // child knows the other exists.
 import { client } from '../../../lib/api.ts';
-import type { TierRow } from '../../../../../server/src/contract/index.ts';
+import type { TierRow } from '../../../../../server/src/schemas.ts';
 import AdminShell from '../shell.azeroth';
 import { useAdminSession } from '../session.ts';
 import PasteForm from './paste-form.azeroth';

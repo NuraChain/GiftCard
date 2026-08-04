@@ -1,0 +1,51 @@
+// A render that threw. Without this the tree unmounts and the reader gets a blank page, which
+// on a shop is indistinguishable from the shop being gone.
+//
+// `reset` re-runs the subtree instead of reloading, so a transient failure costs a click.
+//
+// The message says nothing about MONEY on purpose. This boundary catches rendering, not
+// payment: an order that was paid is settled on the server and stays settled whether or not
+// this page drew. Telling someone their purchase failed because a component threw would be
+// a lie in the one place a lie is expensive.
+import { Link } from 'azerothjs';
+import { RotateCcw, TriangleAlert } from 'lucide';
+
+import { CONTACT } from '../lib/content.ts';
+import { icon } from '../ui/icon.ts';
+
+export default component ErrorPage(props: { reset: () => void })
+{
+    <section class="mx-auto max-w-3xl px-4 py-section text-center sm:px-5">
+        <span class="mx-auto flex size-12 items-center justify-center rounded-full bg-surface text-danger">
+            { icon(TriangleAlert, 'size-6') }
+        </span>
+
+        <h1 class="mt-4 text-h2 font-bold">این صفحه درست بارگذاری نشد</h1>
+        <p class="mx-auto mt-3 max-w-md text-small leading-relaxed text-muted">
+            مشکل از نمایش صفحه بود، نه از سفارش شما. اگر پرداختی انجام داده‌اید ثبت شده است و
+            کدتان با پیامک هم فرستاده می‌شود. یک بار دوباره تلاش کنید.
+        </p>
+
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+                type="button"
+                class="flex min-h-tap cursor-pointer items-center gap-2 rounded-lg bg-firouze px-5 font-bold text-paper"
+                onClick={ () => props.reset() }
+            >
+                { icon(RotateCcw, 'size-4 shrink-0') }
+                تلاش دوباره
+            </button>
+            <Link to="/" scroll class="flex min-h-tap items-center px-3 text-small text-muted no-underline hover:text-ink">
+                بازگشت به صفحهٔ اصلی
+            </Link>
+        </div>
+
+        <p class="mt-8 text-caption text-muted">
+            اگر باز هم تکرار شد، با
+            <a class="text-firouze no-underline" href={ `tel:${ CONTACT.phone }` }>
+                <span dir="ltr" class="latin">{ CONTACT.phone }</span>
+            </a>
+            تماس بگیرید.
+        </p>
+    </section>
+}

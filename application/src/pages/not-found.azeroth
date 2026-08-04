@@ -1,0 +1,46 @@
+// A wrong address. It is a dead end for the reader, so the page's job is to put them back on a
+// road: the shop, the sections they were probably looking for, and support if the link came from
+// us. A bare "page not found" line leaves someone who mistyped one character with nowhere to go.
+import { Link } from 'azerothjs';
+import { Compass } from 'lucide';
+
+import { CONTACT } from '../lib/content.ts';
+import { icon } from '../ui/icon.ts';
+
+export default component NotFoundPage()
+{
+    <section class="mx-auto max-w-3xl px-4 py-section text-center sm:px-5">
+        <span class="mx-auto flex size-12 items-center justify-center rounded-full bg-surface text-firouze">
+            { icon(Compass, 'size-6') }
+        </span>
+
+        <h1 class="mt-4 text-h2 font-bold">این صفحه پیدا نشد</h1>
+        <p class="mx-auto mt-3 max-w-md text-small leading-relaxed text-muted">
+            نشانی‌ای که باز کردید وجود ندارد یا جابه‌جا شده است. اگر دنبال خرید کارت بودید،
+            از این‌جا ادامه دهید.
+        </p>
+
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+                to="/#cards"
+                scroll
+                class="flex min-h-tap items-center rounded-lg bg-firouze px-5 font-bold text-paper no-underline"
+            >
+                دیدن کارت‌ها
+            </Link>
+            <Link to="/" scroll class="flex min-h-tap items-center px-3 text-small text-muted no-underline hover:text-ink">
+                بازگشت به صفحهٔ اصلی
+            </Link>
+        </div>
+
+        {/* A PARAGRAPH, not a flex row: under `flex` each text fragment becomes its own flex
+            item, so the sentence breaks between its own words instead of wrapping as prose. */}
+        <p class="mt-8 text-caption text-muted">
+            اگر این پیوند را از ما گرفته‌اید، به
+            <a class="text-firouze no-underline" href={ `mailto:${ CONTACT.email }` }>
+                <span dir="ltr" class="latin">{ CONTACT.email }</span>
+            </a>
+            خبر دهید.
+        </p>
+    </section>
+}

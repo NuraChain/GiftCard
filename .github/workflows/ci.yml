@@ -16,4 +16,4 @@ jobs:
       - run: npm ci
       - run: npx azeroth check
       - run: npx azeroth build
-      - run: npm test --workspaces --if-present
+      - run: npx azeroth test
