@@ -13,14 +13,14 @@
         "admin-key": "node scripts/admin-key.mjs"
     },
     "dependencies": {
-        "@azerothjs/http": "2.0.0-beta.1",
-        "@azerothjs/kit": "2.0.0-beta.1",
-        "@azerothjs/logger": "2.0.0-beta.1",
-        "@azerothjs/schema": "2.0.0-beta.1"
+        "@azerothjs/http": "2.0.0-beta.2",
+        "@azerothjs/kit": "2.0.0-beta.2",
+        "@azerothjs/logger": "2.0.0-beta.2",
+        "@azerothjs/schema": "2.0.0-beta.2"
     },
     "devDependencies": {
-        "@azerothjs/cli": "2.0.0-beta.1",
-        "@azerothjs/eslint-plugin": "2.0.0-beta.1",
+        "@azerothjs/cli": "2.0.0-beta.2",
+        "@azerothjs/eslint-plugin": "2.0.0-beta.2",
         "@eslint/js": "^10.0.1",
         "@types/node": "^26.1.2",
         "eslint": "^10.7.0",

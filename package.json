@@ -18,6 +18,6 @@
         "start": "npm start --workspace server"
     },
     "devDependencies": {
-        "@azerothjs/cli": "2.0.0-beta.1"
+        "@azerothjs/cli": "2.0.0-beta.2"
     }
 }
