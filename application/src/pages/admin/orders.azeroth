@@ -157,59 +157,57 @@ export default component Orders()
                                 identity: `<For>` reuses a row whose key is unchanged, so
                                 keying on the id alone would leave a settled order showing
                                 "در انتظار پرداخت" after a refresh. */}
-                            <For each={ rows } key={ (order) => `${ order.id }:${ order.status }:${ order.code ?? '' }:${ order.smsDelivered }` }>
-                                { (order) =>
-                                    <tr class={ `border-b border-line/60 ${ order.status === 'paid' && order.code === null ? 'bg-danger/5' : '' }` }>
-                                        <td data-label="زمان" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-6">{ moment(order.createdAt) }</td>
-                                        <td data-label="موبایل" class="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold">
-                                            <span dir="ltr" class="latin">{ order.phone }</span>
-                                        </td>
-                                        <td data-label="کارت" class="cell-inline p-3 whitespace-nowrap max-md:order-3">
-                                            <span dir="ltr" class="latin">${ order.amount }</span>
-                                        </td>
-                                        <td data-label="مبلغ" class="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4">{ toman(order.toman) }</td>
-                                        <td data-label="وضعیت" class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-2 ${ STATUS_TEXT[order.status]?.tone ?? '' }` }>
+                            <For each={ rows } key={ (order) => `${ order.id }:${ order.status }:${ order.code ?? '' }:${ order.smsDelivered }` } let={ order }>
+                                <tr class={ `border-b border-line/60 ${ order.status === 'paid' && order.code === null ? 'bg-danger/5' : '' }` }>
+                                    <td data-label="زمان" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-6">{ moment(order.createdAt) }</td>
+                                    <td data-label="موبایل" class="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold">
+                                        <span dir="ltr" class="latin">{ order.phone }</span>
+                                    </td>
+                                    <td data-label="کارت" class="cell-inline p-3 whitespace-nowrap max-md:order-3">
+                                        <span dir="ltr" class="latin">${ order.amount }</span>
+                                    </td>
+                                    <td data-label="مبلغ" class="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4">{ toman(order.toman) }</td>
+                                    <td data-label="وضعیت" class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-2 ${ STATUS_TEXT[order.status]?.tone ?? '' }` }>
                                             { STATUS_TEXT[order.status]?.label ?? order.status }
-                                            <Show when={ order.status === 'paid' && !order.smsDelivered && order.code !== null }>
-                                                <span class="block text-caption font-normal text-muted">پیامک نرفت</span>
-                                            </Show>
-                                        </td>
-                                        <td data-label="پیگیری" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
-                                            <span dir="ltr" class="latin">{ order.refId === null ? '-' : String(order.refId) }</span>
-                                        </td>
+                                        <Show when={ order.status === 'paid' && !order.smsDelivered && order.code !== null }>
+                                            <span class="block text-caption font-normal text-muted">پیامک نرفت</span>
+                                        </Show>
+                                    </td>
+                                    <td data-label="پیگیری" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
+                                        <span dir="ltr" class="latin">{ order.refId === null ? '-' : String(order.refId) }</span>
+                                    </td>
                                         {/* `cell-action` only when there IS a code: the other two
                                             branches are values, and a value wants its label. */}
-                                        <td data-label="کد" class={ `p-3 whitespace-nowrap max-md:order-7 ${ order.code === null ? '' : 'cell-action' }` }>
-                                            <Switch>
-                                                <Match when={ order.status === 'paid' && order.code === null }>
-                                                    <span class="font-bold text-danger">کد داده نشده</span>
-                                                </Match>
-                                                <Match when={ order.code === null }>
-                                                    <span class="text-muted">-</span>
-                                                </Match>
-                                                <Match when={ revealed === order.id }>
-                                                    <button
-                                                        type="button"
-                                                        class="py-1 text-caption break-all hover:text-firouze max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
-                                                        title="کپی کردن کد"
-                                                        onClick={ () => void copyCode(order.code ?? '') }
-                                                    >
-                                                        <span dir="ltr" class="latin">{ order.code }</span>
-                                                    </button>
-                                                </Match>
-                                                <Match when={ true }>
-                                                    <button
-                                                        type="button"
-                                                        class="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
-                                                        onClick={ () => { revealed = order.id; } }
-                                                    >
+                                    <td data-label="کد" class={ `p-3 whitespace-nowrap max-md:order-7 ${ order.code === null ? '' : 'cell-action' }` }>
+                                        <Switch>
+                                            <Match when={ order.status === 'paid' && order.code === null }>
+                                                <span class="font-bold text-danger">کد داده نشده</span>
+                                            </Match>
+                                            <Match when={ order.code === null }>
+                                                <span class="text-muted">-</span>
+                                            </Match>
+                                            <Match when={ revealed === order.id }>
+                                                <button
+                                                    type="button"
+                                                    class="py-1 text-caption break-all hover:text-firouze max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
+                                                    title="کپی کردن کد"
+                                                    onClick={ () => void copyCode(order.code ?? '') }
+                                                >
+                                                    <span dir="ltr" class="latin">{ order.code }</span>
+                                                </button>
+                                            </Match>
+                                            <Match when={ true }>
+                                                <button
+                                                    type="button"
+                                                    class="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
+                                                    onClick={ () => { revealed = order.id; } }
+                                                >
                                                         نمایش کد
-                                                    </button>
-                                                </Match>
-                                            </Switch>
-                                        </td>
-                                    </tr>
-                                }
+                                                </button>
+                                            </Match>
+                                        </Switch>
+                                    </td>
+                                </tr>
                             </For>
                         </tbody>
                     </table>

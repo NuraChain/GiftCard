@@ -102,9 +102,8 @@ export default component MobileNav(props: { links: Array<{ href: string; label: 
                     class="absolute inset-x-0 top-full border-b border-line bg-paper p-3 shadow-lg"
                 >
                     <ul class="flex flex-col">
-                        <For each={ props.links } key={ (link) => link.href }>
-                            { (link) =>
-                                <li>
+                        <For each={ props.links } key={ (link) => link.href } let={ link }>
+                            <li>
                                     <a
                                         class="flex min-h-tap items-center rounded-xl px-3 text-small transition-colors hover:bg-surface hover:text-firouze"
                                         href={ link.href }
@@ -113,7 +112,6 @@ export default component MobileNav(props: { links: Array<{ href: string; label: 
                                         { link.label }
                                     </a>
                                 </li>
-                            }
                         </For>
                     </ul>
                 </div>

@@ -146,8 +146,8 @@ export default component PasteForm(props: { tiers: TierRow[]; onAdded: () => voi
                         <div class="mt-2 border-t border-line pt-2">
                             <p class="text-caption text-danger">این خط‌ها ثبت نشدند:</p>
                             <ul dir="ltr" class="latin mt-1 text-start text-caption text-muted">
-                                <For each={ result?.invalid ?? [] } key={ (line) => line }>
-                                    { (line) => <li>{ line }</li> }
+                                <For each={ result?.invalid ?? [] } key={ (line) => line } let={ line }>
+                                    <li>{ line }</li>
                                 </For>
                             </ul>
                         </div>

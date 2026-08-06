@@ -238,33 +238,31 @@ export default component AdminShell(props: { children: MountNode })
                             class={ `mt-3 flex gap-2 ${ shaking ? 'anim-shake' : '' }` }
                             ref={ (element: HTMLElement) => { box = element; } }
                         >
-                            <For each={ SEGMENTS } key={ (index) => index }>
-                                { (index) =>
-                                    <input
-                                        id={ `admin-key-${ index }` }
-                                        type={ revealKey ? 'text' : 'password' }
-                                        inputmode="text"
-                                        autocomplete="off"
-                                        autocapitalize="characters"
-                                        autocorrect="off"
-                                        spellcheck="false"
-                                        maxlength="4"
-                                        aria-label={ `گروه ${ count(index + 1) } از ۴` }
-                                        aria-invalid={ signInError !== '' ? 'true' : 'false' }
-                                        class={ `latin min-h-tap w-full min-w-0 rounded-xl border-2 bg-paper px-1 text-center text-lg font-bold tracking-widest outline-none transition-colors ${
+                            <For each={ SEGMENTS } key={ (index) => index } let={ index }>
+                                <input
+                                    id={ `admin-key-${ index }` }
+                                    type={ revealKey ? 'text' : 'password' }
+                                    inputmode="text"
+                                    autocomplete="off"
+                                    autocapitalize="characters"
+                                    autocorrect="off"
+                                    spellcheck="false"
+                                    maxlength="4"
+                                    aria-label={ `گروه ${ count(index + 1) } از ۴` }
+                                    aria-invalid={ signInError !== '' ? 'true' : 'false' }
+                                    class={ `latin min-h-tap w-full min-w-0 rounded-xl border-2 bg-paper px-1 text-center text-lg font-bold tracking-widest outline-none transition-colors ${
                                             signInError !== ''
                                                 ? 'border-danger'
                                                 : parts[index].length === 4
                                                     ? 'border-firouze/60 focus:border-firouze'
                                                     : 'border-line focus:border-firouze'
                                         }` }
-                                        value={ parts[index] }
-                                        onInput={ (event: Event) => onSegmentInput(index, event) }
-                                        onKeyDown={ (event: KeyboardEvent) => onSegmentKeyDown(index, event) }
-                                        onPaste={ (event: ClipboardEvent) => onSegmentPaste(index, event) }
-                                        onFocus={ (event: Event) => (event.target as HTMLInputElement).select() }
+                                    value={ parts[index] }
+                                    onInput={ (event: Event) => onSegmentInput(index, event) }
+                                    onKeyDown={ (event: KeyboardEvent) => onSegmentKeyDown(index, event) }
+                                    onPaste={ (event: ClipboardEvent) => onSegmentPaste(index, event) }
+                                    onFocus={ (event: Event) => (event.target as HTMLInputElement).select() }
                                     />
-                                }
                             </For>
                         </div>
 
@@ -323,22 +321,22 @@ export default component AdminShell(props: { children: MountNode })
                     not a tab. What gives on a phone is the ICONS - the labels are the thing
                     being pressed, so they are what stays. */}
                 <nav class="mt-5 flex gap-1 border-b border-line" aria-label="بخش‌های کنسول">
-                    <For each={ TABS } key={ (tab) => tab.to }>
-                        { (tab) =>
+                    <For each={ TABS } key={ (tab) => tab.to } let={ tab }>
+                        <div class="contents">
                             <Link
                                 to={ tab.to }
                                 end
                                 class={ `-mb-px flex min-h-tap flex-1 items-center justify-center gap-2 border-b-2 px-1 text-caption font-bold transition-colors sm:flex-none sm:justify-start sm:px-4 sm:text-small ${
-                                    location().pathname === tab.to
-                                        ? 'border-firouze text-firouze'
-                                        : 'border-transparent text-muted hover:text-ink'
-                                }` }
+                                        location().pathname === tab.to
+                                            ? 'border-firouze text-firouze'
+                                            : 'border-transparent text-muted hover:text-ink'
+                                    }` }
                                 aria-current={ location().pathname === tab.to ? 'page' : 'false' }
                             >
-                                { icon(tab.glyph, 'size-4 shrink-0 max-sm:hidden') }
-                                { tab.label }
+                                    { icon(tab.glyph, 'size-4 shrink-0 max-sm:hidden') }
+                                    { tab.label }
                             </Link>
-                        }
+                        </div>
                     </For>
                 </nav>
 

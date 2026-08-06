@@ -18,8 +18,8 @@ import
 } from '@azerothjs/http';
 import { serve, handleShutdownSignals } from '@azerothjs/http/node';
 import type { PageRenderer, PageRoute } from '@azerothjs/kit';
-import { createLogger } from '@azerothjs/logger';
-import { fileStream } from '@azerothjs/logger/node';
+import { createLogger, teeSink, terminalSink } from '@azerothjs/logger';
+import { fileSink } from '@azerothjs/logger/node';
 
 import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
@@ -35,7 +35,7 @@ import { createStore } from './db/index.ts';
 // future log line can leak a credential. `code` is here too: a gift code is bearer value,
 // and a log file is not where it should be readable.
 const log = createLogger({
-    stream: fileStream('logs/'),
+    sink: teeSink(terminalSink(), fileSink(new URL('../logs/', import.meta.url))),
     fields: { service: 'nura-chain-server' },
     redact: ['merchantId', 'apiKey', 'adminKey', 'key', 'currentKey', 'newKey', 'authority', 'code', 'phone']
 });
@@ -131,4 +131,4 @@ const handler = pipeline(
 const served = await serve(handler, { port: config.port });
 // The database closes AFTER in-flight requests drain: a settle mid-flight is money.
 handleShutdownSignals(served, { beforeExit: () => store.close() });
-log.info('listening', { port: served.port, env: config.env });
+log.info('listening', { url: `http://localhost:${ served.port }`, env: config.env });

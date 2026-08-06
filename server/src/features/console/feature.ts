@@ -22,7 +22,7 @@ export interface ConsoleOptions
 /**
  * The console's half of the admin surface. It is declared as a BUILDER rather than its own
  * feature so that every admin route lands inside the one guarded feature in app.ts - see the
- * two `routes.with(...)` calls below for the only two ways past that guard.
+ * two `routes.only(...)` calls below for the only two ways past that guard.
  */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the route literal IS the type; naming it would erase per-route inference
 export function consoleRoutes(routes: Verbs<Record<never, never>, '/admin'>, options: ConsoleOptions)
@@ -30,11 +30,11 @@ export function consoleRoutes(routes: Verbs<Record<never, never>, '/admin'>, opt
     const { store, admin } = options;
 
     return {
-        // Signing in IS how you get past requireAdmin, so it cannot sit behind it. `routes.with`
-        // replaces the feature's chain rather than adding to it, so this route has the ceiling
-        // and nothing else - and the exemption is written AT the route, where it is greppable,
-        // instead of in a map three files away.
-        signIn: routes.with(throttle(10, 60_000)).post('/session', { input: adminKeyInput }, (context) =>
+        // Signing in IS how you get past requireAdmin, so it cannot sit behind it. `routes.only`
+        // replaces the feature's chain, so this route has the ceiling and nothing else - and the
+        // exemption is written AT the route, where it is greppable, instead of in a map three
+        // files away.
+        signIn: routes.only(throttle(10, 60_000)).post('/session', { input: adminKeyInput }, (context) =>
             new Response(null, {
                 status: 204,
                 headers: { 'set-cookie': admin.signIn(context.request, context.input.key) }
@@ -42,7 +42,7 @@ export function consoleRoutes(routes: Verbs<Record<never, never>, '/admin'>, opt
 
         // Signing out clears a cookie. Requiring the credential you are clearing would strand
         // whoever needs it most, so the empty chain here is deliberate.
-        signOut: routes.with().del('/session', {}, (context) =>
+        signOut: routes.only().del('/session', {}, (context) =>
             new Response(null, {
                 status: 204,
                 headers: { 'set-cookie': admin.signOut(context.request) }

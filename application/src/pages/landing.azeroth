@@ -104,14 +104,12 @@ export default component Landing()
 
         <section class="mx-auto max-w-6xl px-4 pb-section sm:px-5">
             <ul class="stagger grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-surface lg:grid-cols-4">
-                <For each={ ASSURANCES } key={ (item) => item.label }>
-                    { (item) =>
-                        <li class="trust-cell p-4">
+                <For each={ ASSURANCES } key={ (item) => item.label } let={ item }>
+                    <li class="trust-cell p-4">
                             { icon(item.glyph, 'size-5 text-firouze') }
-                            <p class="mt-2.5 text-small font-bold">{ item.label }</p>
-                            <p class="mt-1 text-caption text-muted">{ item.detail }</p>
-                        </li>
-                    }
+                        <p class="mt-2.5 text-small font-bold">{ item.label }</p>
+                        <p class="mt-1 text-caption text-muted">{ item.detail }</p>
+                    </li>
                 </For>
             </ul>
         </section>
@@ -140,8 +138,10 @@ export default component Landing()
                     }
                 >
                     <div class="grid gap-5 md:grid-cols-3">
-                        <For each={ catalog.tiers() } key={ (tier) => tier.amount }>
-                            { (tier) => <GiftCard tier={ tier } onChoose={ choose } /> }
+                        <For each={ catalog.tiers() } key={ (tier) => tier.amount } let={ tier }>
+                            <div class="contents">
+                                <GiftCard tier={ tier } onChoose={ choose } />
+                            </div>
                         </For>
                     </div>
                 </Async>
@@ -152,17 +152,15 @@ export default component Landing()
             <div class="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
                 <h2 class="font-bold">از پرداخت تا کد فعال</h2>
                 <ol class="mt-stack grid gap-6 md:grid-cols-3">
-                    <For each={ STEPS } key={ (step) => step.title }>
-                        { (step, index) =>
-                            <li class="rounded-2xl border border-line bg-surface p-5">
-                                <div class="flex items-center gap-2.5 text-firouze">
+                    <For each={ STEPS } key={ (step) => step.title } let={ step } index={ index }>
+                        <li class="rounded-2xl border border-line bg-surface p-5">
+                            <div class="flex items-center gap-2.5 text-firouze">
                                     { icon(step.glyph, 'size-5 shrink-0') }
-                                    <span dir="ltr" class="latin inline-block text-caption font-bold">{ index + 1 }</span>
-                                </div>
-                                <h3 class="mt-3 font-bold">{ step.title }</h3>
-                                <p class="mt-2 text-small text-muted">{ step.body }</p>
-                            </li>
-                        }
+                                <span dir="ltr" class="latin inline-block text-caption font-bold">{ index + 1 }</span>
+                            </div>
+                            <h3 class="mt-3 font-bold">{ step.title }</h3>
+                            <p class="mt-2 text-small text-muted">{ step.body }</p>
+                        </li>
                     </For>
                 </ol>
             </div>
@@ -179,16 +177,16 @@ export default component Landing()
             </p>
 
             <div class="mt-6 rounded-2xl border border-line bg-surface px-5">
-                <For each={ FAQS } key={ (faq) => faq.id }>
-                    { (faq) =>
+                <For each={ FAQS } key={ (faq) => faq.id } let={ faq }>
+                    <div class="contents">
                         <FaqItem
                             id={ faq.id }
                             question={ faq.question }
                             answer={ faq.answer }
                             open={ openFaq === faq.id }
                             onToggle={ toggleFaq }
-                        />
-                    }
+                            />
+                    </div>
                 </For>
             </div>
         </section>

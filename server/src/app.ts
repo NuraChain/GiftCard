@@ -78,13 +78,13 @@ export function createApi(options: AppOptions & { checkout: ReturnType<typeof cr
 
         // Everything under here is behind the session by DEFAULT: a route added to any of the
         // four builders is guarded because of the feature it lands in, not because someone
-        // remembered a line. The two ways out are `routes.with(...)` calls in console/feature.ts,
+        // remembered a line. The two ways out are `routes.only(...)` calls in console/feature.ts,
         // written at the route they exempt.
         admin: feature('/admin', [requireAdmin], (routes) => ({
             ...consoleRoutes(routes, { store, admin }),
             ...catalogueRoutes(routes, { store, log }),
             ...inventoryRoutes(routes, { store }),
-            ...settingsRoutes(routes, { settings, admin, sms, callbackUrl, requireAdmin, log })
+            ...settingsRoutes(routes, { settings, admin, sms, callbackUrl, log })
         }))
     };
 }

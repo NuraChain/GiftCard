@@ -207,13 +207,12 @@ export default component InventoryTable(props: { tiers: TierRow[]; revision: num
                             </tr>
                         </thead>
                         <tbody>
-                            <For each={ rows } key={ (row) => `${ row.code }:${ row.state }` }>
-                                { (row) =>
-                                    <tr class="border-b border-line/60">
-                                        <td data-label="کد" class="cell-action p-3 whitespace-nowrap max-md:order-6">
-                                            <Show
-                                                when={ revealed === row.code }
-                                                fallback={
+                            <For each={ rows } key={ (row) => `${ row.code }:${ row.state }` } let={ row }>
+                                <tr class="border-b border-line/60">
+                                    <td data-label="کد" class="cell-action p-3 whitespace-nowrap max-md:order-6">
+                                        <Show
+                                            when={ revealed === row.code }
+                                            fallback={
                                                     <button
                                                         type="button"
                                                         class="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
@@ -222,35 +221,34 @@ export default component InventoryTable(props: { tiers: TierRow[]; revision: num
                                                         نمایش کد
                                                     </button>
                                                 }
+                                        >
+                                            <button
+                                                type="button"
+                                                class="flex items-center gap-2 py-1 text-caption hover:text-firouze max-md:min-h-tap max-md:w-full max-md:justify-center max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
+                                                title="کپی کردن کد"
+                                                onClick={ () => void copyCode(row.code) }
                                             >
-                                                <button
-                                                    type="button"
-                                                    class="flex items-center gap-2 py-1 text-caption hover:text-firouze max-md:min-h-tap max-md:w-full max-md:justify-center max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
-                                                    title="کپی کردن کد"
-                                                    onClick={ () => void copyCode(row.code) }
-                                                >
-                                                    <span dir="ltr" class="latin break-all">{ row.code }</span>
+                                                <span dir="ltr" class="latin break-all">{ row.code }</span>
                                                     { icon(Copy, 'size-3.5 shrink-0 text-muted') }
-                                                </button>
-                                            </Show>
-                                        </td>
-                                        <td data-label="کارت" class="cell-inline p-3 whitespace-nowrap max-md:order-2">
-                                            <span dir="ltr" class="latin">${ row.amount }</span>
-                                        </td>
-                                        <td data-label="وضعیت" class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-1 ${ STATE_TEXT[row.state].tone }` }>
+                                            </button>
+                                        </Show>
+                                    </td>
+                                    <td data-label="کارت" class="cell-inline p-3 whitespace-nowrap max-md:order-2">
+                                        <span dir="ltr" class="latin">${ row.amount }</span>
+                                    </td>
+                                    <td data-label="وضعیت" class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-1 ${ STATE_TEXT[row.state].tone }` }>
                                             { STATE_TEXT[row.state].label }
-                                        </td>
-                                        <td data-label="خریدار" class="cell-inline p-3 whitespace-nowrap max-md:order-3">
-                                            <Show when={ row.phone !== null } fallback={ <span class="text-muted">-</span> }>
-                                                <span dir="ltr" class="latin">{ row.phone ?? '' }</span>
-                                            </Show>
-                                        </td>
-                                        <td data-label="افزوده شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-4">{ moment(row.addedAt) }</td>
-                                        <td data-label="فروخته شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
+                                    </td>
+                                    <td data-label="خریدار" class="cell-inline p-3 whitespace-nowrap max-md:order-3">
+                                        <Show when={ row.phone !== null } fallback={ <span class="text-muted">-</span> }>
+                                            <span dir="ltr" class="latin">{ row.phone ?? '' }</span>
+                                        </Show>
+                                    </td>
+                                    <td data-label="افزوده شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-4">{ moment(row.addedAt) }</td>
+                                    <td data-label="فروخته شد" class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
                                             { row.soldAt === null ? '-' : moment(row.soldAt) }
-                                        </td>
-                                    </tr>
-                                }
+                                    </td>
+                                </tr>
                             </For>
                         </tbody>
                     </table>

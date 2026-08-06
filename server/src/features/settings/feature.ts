@@ -2,7 +2,7 @@
 //
 // Read ./settings.ts alongside this file: the write-only rule for credentials is enforced
 // there, not here, so a new route added to this file cannot accidentally hand a secret back.
-import { ConflictError, UnauthorizedError, type RequestContext } from '@azerothjs/http';
+import { ConflictError, UnauthorizedError } from '@azerothjs/http';
 import type { Verbs } from '@azerothjs/http/api';
 import type { Logger } from '@azerothjs/logger';
 
@@ -20,13 +20,6 @@ export interface SettingsOptions
     sms: SmsSender;
     callbackUrl: string;
 
-    /**
-     * The feature's own guard, passed in because the two throttled routes below must RE-STATE
-     * it: `routes.with(...)` replaces the feature chain rather than adding to it, so a route
-     * that wants a ceiling has to name the session guard too or it would lose it.
-     */
-    requireAdmin: (context: RequestContext) => void;
-
     log?: Logger;
 }
 
@@ -34,7 +27,7 @@ export interface SettingsOptions
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the route literal IS the type; naming it would erase per-route inference
 export function settingsRoutes(routes: Verbs<Record<never, never>, '/admin'>, options: SettingsOptions)
 {
-    const { settings, admin, sms, callbackUrl, requireAdmin, log } = options;
+    const { settings, admin, sms, callbackUrl, log } = options;
 
     return {
         settings: routes.get('/settings', { output: settingsView }, () => settings.view(callbackUrl)),
@@ -52,7 +45,7 @@ export function settingsRoutes(routes: Verbs<Record<never, never>, '/admin'>, op
         settingsLog: routes.get('/settings/log', { output: settingsLog }, () => ({ entries: settings.log(50) })),
 
         // Rotation takes the CURRENT key, so it is one more place a credential can be guessed at.
-        rotateKey: routes.with(requireAdmin, throttle(10, 60_000)).post('/key', { input: rotateKeyInput }, (context) =>
+        rotateKey: routes.with(throttle(10, 60_000)).post('/key', { input: rotateKeyInput }, (context) =>
         {
             // A session proves someone was the admin at sign-in. Replacing the credential
             // should prove they still are, so the current key is required even though this
@@ -73,7 +66,7 @@ export function settingsRoutes(routes: Verbs<Record<never, never>, '/admin'>, op
             return new Response(null, { status: 204, headers: { 'set-cookie': admin.signOut(context.request) } });
         }),
 
-        testSms: routes.with(requireAdmin, throttle(5, 60_000)).post('/test-sms', { input: testSmsInput, output: testSmsResult }, async ({ input }) =>
+        testSms: routes.with(throttle(5, 60_000)).post('/test-sms', { input: testSmsInput, output: testSmsResult }, async ({ input }) =>
         {
             const phone = normalizePhone(input.phone);
             if (phone === null)

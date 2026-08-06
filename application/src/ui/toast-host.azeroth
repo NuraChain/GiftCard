@@ -27,31 +27,29 @@ export default component ToastHost()
         role="region"
         aria-label="اعلان‌ها"
     >
-        <For each={ toasts() } key={ (toast) => toast.id }>
-            { (toast) =>
-                <div
-                    class="anim-toast pointer-events-auto flex max-w-sm items-start gap-3 rounded-xl border border-line bg-surface p-3 ps-4 shadow-lg"
-                    role={ toast.tone === 'error' ? 'alert' : 'status' }
-                    aria-live={ toast.tone === 'error' ? 'assertive' : 'polite' }
-                    onMouseEnter={ () => hold(toast.id) }
-                    onMouseLeave={ () => release(toast.id) }
-                    onFocusIn={ () => hold(toast.id) }
-                    onFocusOut={ () => release(toast.id) }
-                >
-                    <span class={ `mt-0.5 shrink-0 ${ TONE[toast.tone].accent }` }>
+        <For each={ toasts() } key={ (toast) => toast.id } let={ toast }>
+            <div
+                class="anim-toast pointer-events-auto flex max-w-sm items-start gap-3 rounded-xl border border-line bg-surface p-3 ps-4 shadow-lg"
+                role={ toast.tone === 'error' ? 'alert' : 'status' }
+                aria-live={ toast.tone === 'error' ? 'assertive' : 'polite' }
+                onMouseEnter={ () => hold(toast.id) }
+                onMouseLeave={ () => release(toast.id) }
+                onFocusIn={ () => hold(toast.id) }
+                onFocusOut={ () => release(toast.id) }
+            >
+                <span class={ `mt-0.5 shrink-0 ${ TONE[toast.tone].accent }` }>
                         { icon(TONE[toast.tone].glyph, 'size-4') }
-                    </span>
-                    <p class="text-small">{ toast.message }</p>
-                    <button
-                        type="button"
-                        class="ms-auto shrink-0 rounded-lg p-1 text-muted hover:text-ink"
-                        aria-label="بستن اعلان"
-                        onClick={ () => dismiss(toast.id) }
-                    >
+                </span>
+                <p class="text-small">{ toast.message }</p>
+                <button
+                    type="button"
+                    class="ms-auto shrink-0 rounded-lg p-1 text-muted hover:text-ink"
+                    aria-label="بستن اعلان"
+                    onClick={ () => dismiss(toast.id) }
+                >
                         { icon(X, 'size-4') }
-                    </button>
-                </div>
-            }
+                </button>
+            </div>
         </For>
     </div>
 }
