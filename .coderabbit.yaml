@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  review_status: true
+  review_details: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/coverage/**"
+    - "!**/*.lock"
+  path_instructions:
+    - path: "**/*.{ts,tsx,js,jsx}"
+      instructions: |
+        Review as production TypeScript/JavaScript.
+        - Check type safety, async behavior, validation, error handling, authentication/authorization, and secret exposure.
+        - For gift-card/payment/asset flows, verify authorization, replay resistance, idempotency, amount validation, ownership transitions, and double-spend/double-redemption risks.
+        - Flag trust in client-controlled values and insecure server/client boundaries.
+    - path: "**/*.{sol}"
+      instructions: |
+        Review Solidity as security-critical smart-contract code.
+        - Check access control, reentrancy, arithmetic/precision, signature/replay protection, token accounting, event correctness, and external-call safety.
+        - Treat mint/burn/claim/redemption logic as high risk; verify authorization and double-claim prevention.
+    - path: "**/contracts/**"
+      instructions: |
+        Treat contracts as production financial code. Check privileged roles, upgradeability assumptions, deployment configuration, and dangerous defaults.
+    - path: "**/*.{md,mdx}"
+      instructions: |
+        Verify commands, deployment instructions, API behavior, and security-sensitive documentation.
