@@ -1,7 +1,3 @@
 documentation:
   - changed-files:
       - any-glob-to-any-file: ['**/*.md', 'docs/**']
-
-config:
-  - changed-files:
-      - any-glob-to-any-file: ['*.json', '*.yml', '*.yaml', '*.toml', '*.config.*']
