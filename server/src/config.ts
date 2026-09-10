@@ -23,7 +23,7 @@ try {
 }
 
 export const config = loadConfig({
-    port: num('PORT', { default: 3000 }),
+    port: num('PORT', { default: 4201 }),
     env: oneOf('NODE_ENV', ['development', 'production', 'test'], { default: 'development' }),
 
     /**
@@ -31,7 +31,7 @@ export const config = loadConfig({
      * this process's own address. Zarinpal sends the buyer back here, so a wrong value
      * silently strands every payment at the gateway.
      */
-    publicBaseUrl: str('PUBLIC_BASE_URL', { default: 'http://localhost:5173' }),
+    publicBaseUrl: str('PUBLIC_BASE_URL', { default: 'http://localhost:4200' }),
 
     // --- Being behind a proxy ---
 
