@@ -17,18 +17,19 @@
 //      nothing further from stock. Every other state re-verifies, because a `cancelled` order
 //      was settled on the strength of an answer that could have been about a payment the
 //      buyer went on to complete.
-//   4. An SMS failure is a NOTICE, never a failed purchase. The code is already minted,
-//      stored, and on the buyer's screen.
+//   4. A DELIVERY failure is a NOTICE, never a failed purchase. The code is already minted,
+//      stored, and on the buyer's screen. This held when delivery was an SMS and it holds now
+//      that it is an email: the message is a convenience, the screen is the delivery.
 import type { Logger } from '../../platform/logging.ts';
 
 import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
-import type { SmsSender } from './sms.ts';
+import type { MailSender } from './mailer.ts';
 
 export interface CheckoutOptions {
     store: Store;
     payment: PaymentGateway;
-    sms: SmsSender;
+    mailer: MailSender;
     log?: Logger;
 }
 
@@ -41,7 +42,7 @@ export interface Checkout {
 }
 
 export function createCheckout(options: CheckoutOptions): Checkout {
-    const { store, payment, sms, log } = options;
+    const { store, payment, mailer, log } = options;
 
     // Settling is serialised per order. Without this, two callbacks arriving together (a
     // double-click on the gateway's return, a prefetching browser) would both see an
@@ -75,12 +76,12 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
 
-        const sent = await sms.sendCode(order.phone, code);
-        store.markSmsDelivered(order.id, sent.ok);
+        const sent = await mailer.sendCode(order.email, code, order.amount);
+        store.markMailDelivered(order.id, sent.ok);
         if (!sent.ok) {
             log?.error(
                 { refId: verified.refId, reason: sent.reason },
-                'gift code SMS not delivered'
+                'gift code email not delivered'
             );
         }
     }

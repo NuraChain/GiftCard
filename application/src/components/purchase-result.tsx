@@ -1,6 +1,6 @@
 // What happened to a payment, read back after the bank sends the buyer here.
 //
-// This is all that remains of the old purchase panel. The phone step and the confirm step
+// This is all that remains of the old purchase panel. The email step and the confirm step
 // moved into the cards; what could not move is this, because the buyer arrives at it from
 // the GATEWAY rather than from a click, carrying a token in the URL. It is the one part of
 // the purchase that is about a journey already finished.
@@ -160,17 +160,17 @@ export default function PurchaseResult(): ReactNode {
                                 <dd>{toman(receipt.toman)} تومان</dd>
                             </div>
                             <div className="flex gap-2">
-                                <dt>شمارهٔ موبایل:</dt>
-                                <dd dir="ltr" className="latin">
-                                    {receipt.phone}
+                                <dt>ایمیل:</dt>
+                                <dd dir="ltr" className="latin min-w-0 break-all text-end">
+                                    {receipt.email}
                                 </dd>
                             </div>
                         </dl>
 
                         <p className="mt-4 text-caption text-muted">
-                            {receipt.smsDelivered
-                                ? 'یک نسخه از این کد با پیامک هم برایتان ارسال شد.'
-                                : 'پیامک ارسال نشد، اما کد شما همین است و معتبر است. آن را همین‌جا کپی کنید.'}
+                            {receipt.mailDelivered
+                                ? 'یک نسخه از این کد به ایمیلتان هم فرستاده شد. اگر در صندوق ورودی نبود، پوشهٔ اسپم را ببینید.'
+                                : 'ایمیل ارسال نشد، اما کد شما همین است و معتبر است. آن را همین‌جا کپی کنید.'}
                         </p>
                     </>
                 )}

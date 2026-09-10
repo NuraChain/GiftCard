@@ -171,45 +171,45 @@ describe('landing page', () => {
 });
 
 describe('buying from a card', () => {
-    it('puts a phone input on every card and no purchase form at the foot of the page', async () => {
+    it('puts an email input on every card and no purchase form at the foot of the page', async () => {
         render(<App url="/" />);
 
         // The catalogue answer arrives on a microtask; the card renders with it.
-        const input = await screen.findByLabelText('شماره موبایل');
-        expect(input.getAttribute('id')).toBe('phone-10');
+        const input = await screen.findByLabelText('ایمیل');
+        expect(input.getAttribute('id')).toBe('email-10');
 
-        // The card owns the purchase now, so there is exactly one phone field - the one on
+        // The card owns the purchase now, so there is exactly one email field - the one on
         // the card - and no second copy in a panel below.
-        expect(screen.getAllByLabelText('شماره موبایل')).toHaveLength(1);
+        expect(screen.getAllByLabelText('ایمیل')).toHaveLength(1);
         expect(document.querySelector('#purchase')).toBeNull();
     });
 
-    it('refuses to advance on a number the shared schema rejects', async () => {
+    it('refuses to advance on an address the shared schema rejects', async () => {
         render(<App url="/" />);
-        const input = await screen.findByLabelText('شماره موبایل');
+        const input = await screen.findByLabelText('ایمیل');
 
-        fireEvent.change(input, { target: { value: '12345' } });
+        fireEvent.change(input, { target: { value: 'not-an-address' } });
         // The FORM is submitted rather than the button clicked: happy-dom does not perform a
         // button's implicit submission, so a click here would assert nothing at all.
         fireEvent.submit(input.closest('form') as HTMLFormElement);
 
         // The same rule the server enforces, running in the browser: no confirm step, and
         // the field says why in the buyer's own language.
-        expect(screen.queryByText('ویرایش شماره')).toBeNull();
-        expect(document.body.textContent).toContain('شماره موبایل معتبر نیست');
+        expect(screen.queryByText('ویرایش ایمیل')).toBeNull();
+        expect(document.body.textContent).toContain('ایمیل معتبر نیست');
     });
 
-    it('reads the number back before it will take money', async () => {
+    it('reads the address back before it will take money', async () => {
         render(<App url="/" />);
-        const input = await screen.findByLabelText('شماره موبایل');
+        const input = await screen.findByLabelText('ایمیل');
 
-        fireEvent.change(input, { target: { value: '09170459330' } });
+        fireEvent.change(input, { target: { value: 'buyer@example.com' } });
         fireEvent.submit(input.closest('form') as HTMLFormElement);
 
-        // A mistyped digit is discovered after the money has moved, so the number is read
-        // back on the card before the gateway is opened.
-        expect(screen.getByText('ویرایش شماره')).not.toBeNull();
-        expect(document.body.textContent).toContain('09170459330');
+        // A transposed letter in a domain is discovered after the money has moved and looks
+        // perfectly fine until then, so the address is read back before the gateway opens.
+        expect(screen.getByText('ویرایش ایمیل')).not.toBeNull();
+        expect(document.body.textContent).toContain('buyer@example.com');
     });
 
     it('sends the price it displayed, so the server can refuse a stale one', async () => {
@@ -229,8 +229,8 @@ describe('buying from a card', () => {
         );
 
         render(<App url="/" />);
-        const input = await screen.findByLabelText('شماره موبایل');
-        fireEvent.change(input, { target: { value: '09170459330' } });
+        const input = await screen.findByLabelText('ایمیل');
+        fireEvent.change(input, { target: { value: 'buyer@example.com' } });
         fireEvent.submit(input.closest('form') as HTMLFormElement);
         // Anchored, and scoped to a BUTTON: the confirm step also carries
         // «مبلغ قابل پرداخت» and a line about the gateway, so a loose text match finds three.
@@ -241,6 +241,7 @@ describe('buying from a card', () => {
         // charges its own - it is the assertion the server checks it against.
         expect(calls[0].quotedToman).toBe(TEN_DOLLAR_TOMAN);
         expect(calls[0].amount).toBe(10);
+        expect(calls[0].email).toBe('buyer@example.com');
     });
 
     it('re-quotes rather than erroring when the rate moved under the buyer', async () => {
@@ -265,8 +266,8 @@ describe('buying from a card', () => {
         );
 
         render(<App url="/" />);
-        const input = await screen.findByLabelText('شماره موبایل');
-        fireEvent.change(input, { target: { value: '09170459330' } });
+        const input = await screen.findByLabelText('ایمیل');
+        fireEvent.change(input, { target: { value: 'buyer@example.com' } });
         fireEvent.submit(input.closest('form') as HTMLFormElement);
         // Anchored, and scoped to a BUTTON: the confirm step also carries
         // «مبلغ قابل پرداخت» and a line about the gateway, so a loose text match finds three.

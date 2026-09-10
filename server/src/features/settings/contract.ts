@@ -1,7 +1,7 @@
 // Runtime configuration's wire shapes and routes, and the admin key beside them.
 //
 // A secret is WRITE-ONLY across this boundary. The console may replace the merchant id or
-// the SMS key, and may see whether one is set and its last four characters - never the
+// the SMTP password, and may see whether one is set and its last four characters - never the
 // value. A stolen session must not be a way to read out the credentials it can overwrite.
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
 //
@@ -10,7 +10,7 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
-import { phoneField } from '../../domain/phone.ts';
+import { emailField } from '../../domain/email.ts';
 
 export const settingsView = z.object({
     appName: z.string(),
@@ -23,10 +23,14 @@ export const settingsView = z.object({
     merchantIdMasked: z.string(),
     merchantIdSet: z.boolean(),
 
-    kavenegarKeyMasked: z.string(),
-    kavenegarKeySet: z.boolean(),
-    kavenegarTemplate: z.string(),
-    kavenegarBase: z.string(),
+    /** Where gift-code email is handed off, and how. The password never comes back. */
+    smtpHost: z.string(),
+    smtpPort: z.number(),
+    smtpSecure: z.boolean(),
+    smtpUser: z.string(),
+    smtpPasswordMasked: z.string(),
+    smtpPasswordSet: z.boolean(),
+    smtpFrom: z.string(),
 
     /** The two exchanges the tether rate is cross-checked between. */
     nobitexBase: z.string(),
@@ -35,8 +39,8 @@ export const settingsView = z.object({
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
 
-    /** Delivery only runs when both the key and the template are present. */
-    smsReady: z.boolean(),
+    /** Delivery only runs when both a host and a From address are present. */
+    mailReady: z.boolean(),
 
     /** Read-only, from the environment: where the gateway returns the buyer. */
     callbackUrl: z.string(),
@@ -53,9 +57,12 @@ export const settingsInput = z.object({
     appName: z.string().trim().max(60).optional(),
     zarinpalBase: z.string().trim().max(200).optional(),
     merchantId: z.string().trim().max(100).optional(),
-    kavenegarKey: z.string().trim().max(200).optional(),
-    kavenegarTemplate: z.string().trim().max(100).optional(),
-    kavenegarBase: z.string().trim().max(200).optional(),
+    smtpHost: z.string().trim().max(200).optional(),
+    smtpPort: z.number().int().min(1).max(65_535).optional(),
+    smtpSecure: z.boolean().optional(),
+    smtpUser: z.string().trim().max(200).optional(),
+    smtpPassword: z.string().max(200).optional(),
+    smtpFrom: z.string().trim().max(254).optional(),
     nobitexBase: z.string().trim().max(200).optional(),
     wallexBase: z.string().trim().max(200).optional(),
 
@@ -86,9 +93,9 @@ export const rotateKeyInput = z.object({
     newKey: z.string().trim().max(32)
 });
 
-/** Proving a Kavenegar template is approved without selling something first. */
-export const testSmsInput = z.object({ phone: phoneField });
-export const testSmsResult = z.object({ ok: z.boolean(), reason: z.string() });
+/** Proving the mail settings work without selling something first. */
+export const testEmailInput = z.object({ email: emailField });
+export const testEmailResult = z.object({ ok: z.boolean(), reason: z.string() });
 
 export type SettingsView = z.infer<typeof settingsView>;
 export type SettingsInput = z.infer<typeof settingsInput>;
@@ -100,5 +107,5 @@ export const settingsRoutes = {
     saveSettings: post('/admin/settings', { input: settingsInput, output: settingsView }),
     settingsLog: get('/admin/settings/log', { output: settingsLog }),
     rotateKey: post('/admin/key', { input: rotateKeyInput }),
-    testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult })
+    testEmail: post('/admin/test-email', { input: testEmailInput, output: testEmailResult })
 };

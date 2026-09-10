@@ -30,7 +30,7 @@ export const adminOverview = z.object({
 });
 
 /**
- * A ledger row. It carries the full phone and the delivered code because that is what
+ * A ledger row. It carries the full address and the delivered code because that is what
  * answering a support call requires - and it is exactly why this endpoint is behind a
  * session and this page is not indexed.
  */
@@ -38,16 +38,16 @@ export const ledgerRow = z.object({
     id: z.string(),
     amount: amountField,
     toman: z.number().int(),
-    phone: z.string(),
+    email: z.string(),
     status: z.enum(['pending', 'paid', 'cancelled', 'failed']),
     code: z.string().nullable(),
     refId: z.number().int().nullable(),
-    smsDelivered: z.boolean(),
+    mailDelivered: z.boolean(),
     createdAt: z.string()
 });
 
 /**
- * One page of the ledger. `search` is one box, not four: an operator holding a phone call
+ * One page of the ledger. `search` is one box, not four: an operator holding a support call
  * has the customer's number, or a code, or a reference - and should not have to know which
  * field the system files it under.
  */

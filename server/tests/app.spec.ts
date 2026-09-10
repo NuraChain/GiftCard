@@ -1,11 +1,11 @@
 // The whole integration-testing story in one line: `app.inject(...)` - Fastify's own
 // in-process dispatch, so there is no socket, no port, and no test server.
 //
-// The gateway and the SMS provider are INJECTED fakes; the database is a real SQLite
+// The gateway and the mailer are INJECTED fakes; the database is a real SQLite
 // running in memory. So every claim about money below is tested against the engine that
 // ships, and none of it needs a merchant account, an API key, or a network.
 //
-// WHAT THESE TESTS DO NOT PROVE: that Zarinpal and Kavenegar behave as documented. Their
+// WHAT THESE TESTS DO NOT PROVE: that Zarinpal and a real mail server behave as documented. Their
 // wire shapes here are transcribed from their published docs, not observed from a live
 // call. The first real payment is still the first real payment.
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
@@ -21,7 +21,7 @@ import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
 import { createSettings, type Settings } from '../src/features/settings/settings.ts';
-import type { SmsResult, SmsSender } from '../src/features/checkout/sms.ts';
+import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
 import { createStore, type Store } from '../src/db/index.ts';
 
 const ADMIN_KEY = 'ABCD-EFGH-JKLM-NPQR';
@@ -102,20 +102,20 @@ interface Fakes {
     descriptions: string[];
 
     opened: number;
-    sms: SmsSender;
-    smsSent: Array<{ phone: string; code: string }>;
-    smsResult: SmsResult;
+    mailer: MailSender;
+    mailSent: Array<{ email: string; code: string; amount: number }>;
+    mailResult: MailResult;
 }
 
 function fakes(): Fakes {
     const state: Fakes = {
         verifyCalls: [],
-        smsSent: [],
+        mailSent: [],
         requestOverride: null,
         descriptions: [],
         opened: 0,
         verifyResult: { ok: true, refId: 987654, alreadyVerified: false },
-        smsResult: { ok: true },
+        mailResult: { ok: true },
         payment: {
             request: (input) => {
                 state.descriptions.push(input.description);
@@ -135,10 +135,10 @@ function fakes(): Fakes {
                 return Promise.resolve(state.verifyResult);
             }
         },
-        sms: {
-            sendCode: (phone, code) => {
-                state.smsSent.push({ phone, code });
-                return Promise.resolve(state.smsResult);
+        mailer: {
+            sendCode: (email, code, amount) => {
+                state.mailSent.push({ email, code, amount });
+                return Promise.resolve(state.mailResult);
             }
         }
     };
@@ -166,7 +166,7 @@ beforeEach(() => {
         settings,
         rate,
         payment: fake.payment,
-        sms: fake.sms,
+        mailer: fake.mailer,
         admin: createAdmin({
             matches: (candidate) => settings.matchesAdminKey(candidate),
             secureCookie: false
@@ -239,14 +239,18 @@ function get(path: string, headers: Record<string, string> = {}): Promise<Answer
  * and buys it. Whether an amount is sellable is a lookup against the live tier table now -
  * see the note on `amountField` in the contract.
  */
-async function buy(amount = 10, phone = '09170459330', quotedToman?: number): Promise<number> {
+async function buy(
+    amount = 10,
+    email = 'buyer@example.com',
+    quotedToman?: number
+): Promise<number> {
     // Every purchase asserts the price it was shown. Defaulting it to the correct one keeps
     // the existing tests about stock and settlement free of pricing noise; the tests that
     // care about a MOVED price pass their own.
     return (
         await post('/api/pay/start', {
             amount,
-            phone,
+            email,
             quotedToman: quotedToman ?? tomanPrice(amount, RATE_TOMAN, MARGIN_PERCENT)
         })
     ).status;
@@ -303,8 +307,13 @@ describe('the shop', () => {
         // a code is claimed or a gateway is called.
         store.addCodes(10, uuids(1));
         expect(
-            (await post('/api/pay/start', { amount: 7, phone: '09170459330', quotedToman: 1 }))
-                .status
+            (
+                await post('/api/pay/start', {
+                    amount: 7,
+                    email: 'buyer@example.com',
+                    quotedToman: 1
+                })
+            ).status
         ).toBe(409);
         expect(fake.opened).toBe(0);
         expect(store.availableFor(10)).toBe(1);
@@ -338,7 +347,7 @@ describe('the shop', () => {
         // The oldest trick there is: send back a price of your own choosing. It is not
         // treated as the amount - it is compared against ours, and disagreeing refuses the
         // sale outright rather than charging either number.
-        expect(await buy(10, '09170459330', 1_000)).toBe(409);
+        expect(await buy(10, 'buyer@example.com', 1_000)).toBe(409);
 
         // Nothing was opened and no code was taken: the refusal lands before either.
         expect(fake.opened).toBe(0);
@@ -349,7 +358,7 @@ describe('the shop', () => {
         store.addCodes(10, uuids(1));
         const response = await post('/api/pay/start', {
             amount: 10,
-            phone: '09170459330',
+            email: 'buyer@example.com',
             quotedToman: PRICES[10] - 1_000
         });
         const body = (await response.json()) as { error: { code: string } };
@@ -370,7 +379,7 @@ describe('the shop', () => {
         );
 
         // And the old price stops being accepted, with no restart in between.
-        expect(await buy(10, '09170459330', PRICES[10])).toBe(409);
+        expect(await buy(10, 'buyer@example.com', PRICES[10])).toBe(409);
     });
 
     it('closes the shop rather than pricing without an agreed rate', async () => {
@@ -392,17 +401,17 @@ describe('the shop', () => {
         expect(store.availableFor(10)).toBe(1);
     });
 
-    it('rejects a malformed phone with a field map the form can display', async () => {
+    it('rejects a malformed address with a field map the form can display', async () => {
         const response = await post('/api/pay/start', {
             amount: 5,
-            phone: '12345',
+            email: 'not-an-address',
             quotedToman: PRICES[5]
         });
         expect(response.status).toBe(422);
         const body = (await response.json()) as {
             error: { details?: { fields?: Record<string, string> } };
         };
-        expect(Object.keys(body.error.details?.fields ?? {})).toContain('phone');
+        expect(Object.keys(body.error.details?.fields ?? {})).toContain('email');
     });
 
     it('refuses to sell what it does not have', async () => {
@@ -451,7 +460,7 @@ describe('the shop', () => {
         expect(statuses.filter((status) => status === 200)).toHaveLength(8);
         const refused = await post('/api/pay/start', {
             amount: 10,
-            phone: '09170459330',
+            email: 'buyer@example.com',
             quotedToman: PRICES[10]
         });
         expect(refused.status).toBe(429);
@@ -485,7 +494,7 @@ describe('the callback', () => {
         expect(fake.verifyCalls).toEqual([{ authority, toman: PRICES[5] }]);
     });
 
-    it('delivers the code and SMSes it once the payment verifies', async () => {
+    it('delivers the code and emails it once the payment verifies', async () => {
         const { authority, token } = await pending();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
@@ -493,16 +502,20 @@ describe('the callback', () => {
             outcome: string;
             code: string | null;
             refId: number | null;
-            smsDelivered: boolean;
-            phone: string;
+            mailDelivered: boolean;
+            email: string;
         };
         expect(receipt.outcome).toBe('paid');
         expect(receipt.code).toMatch(/^[0-9a-f-]{36}$/);
         expect(receipt.refId).toBe(987654);
-        expect(receipt.smsDelivered).toBe(true);
+        expect(receipt.mailDelivered).toBe(true);
         // The buyer sees the number in the form they typed it, not the stored E.164 form.
-        expect(receipt.phone).toBe('09170459330');
-        expect(fake.smsSent).toEqual([{ phone: '+989170459330', code: receipt.code }]);
+        expect(receipt.email).toBe('buyer@example.com');
+        // The address is stored and delivered to in its ONE canonical form, whatever case the
+        // buyer typed - that is what makes a console search for it find the order.
+        expect(fake.mailSent).toEqual([
+            { email: 'buyer@example.com', code: receipt.code, amount: 10 }
+        ]);
     });
 
     it('returns the SAME code on a replayed callback and never takes a second from stock', async () => {
@@ -526,7 +539,7 @@ describe('the callback', () => {
 
         expect(again.code).toBe(first.code);
         expect(store.stock().find((line) => line.amount === 10)?.sold).toBe(1);
-        expect(fake.smsSent).toHaveLength(1);
+        expect(fake.mailSent).toHaveLength(1);
     });
 
     it('turns away a callback for an authority it does not know', async () => {
@@ -548,7 +561,7 @@ describe('the callback', () => {
         };
         expect(receipt.outcome).toBe('failed');
         expect(receipt.code).toBeNull();
-        expect(fake.smsSent).toHaveLength(0);
+        expect(fake.mailSent).toHaveLength(0);
         // The code goes back on the shelf.
         expect(store.availableFor(10)).toBe(1);
     });
@@ -580,20 +593,20 @@ describe('the callback', () => {
         expect(receipt.outcome).toBe('cancelled');
     });
 
-    it('keeps the code when the SMS does not go out', async () => {
+    it('keeps the code when the email does not go out', async () => {
         const { authority, token } = await pending();
-        fake.smsResult = { ok: false, reason: 'SMS account is out of credit' };
+        fake.mailResult = { ok: false, reason: 'mailbox unavailable' };
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
         const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
             outcome: string;
             code: string | null;
-            smsDelivered: boolean;
+            mailDelivered: boolean;
         };
         // The payment succeeded. A provider outage is a notice, never a failed purchase.
         expect(receipt.outcome).toBe('paid');
         expect(receipt.code).not.toBeNull();
-        expect(receipt.smsDelivered).toBe(false);
+        expect(receipt.mailDelivered).toBe(false);
     });
 
     it('records a verified payment it cannot fulfil rather than calling it a failure', async () => {
@@ -611,7 +624,7 @@ describe('the callback', () => {
                     id: `drain-${index}`,
                     amount: 10,
                     toman: PRICES[10],
-                    phone: '+989170459330',
+                    email: 'drain@example.com',
                     createdAt: new Date().toISOString()
                 },
                 60_000
@@ -628,7 +641,7 @@ describe('the callback', () => {
         expect(receipt.code).toBeNull();
         // The reference is what support needs to find them, so it must be there.
         expect(receipt.refId).toBe(987654);
-        expect(fake.smsSent).toHaveLength(0);
+        expect(fake.mailSent).toHaveLength(0);
 
         const cookie = await post('/api/admin/session', { key: ADMIN_KEY }).then(
             (response) => (response.headers.get('set-cookie') ?? '').split(';')[0]
@@ -701,7 +714,7 @@ describe('the console', () => {
     it('shows stock and the count that needs a human', async () => {
         const cookie = await signIn();
         store.addCodes(10, uuids(1));
-        await buy(10, '+989170459330');
+        await buy(10, 'buyer@example.com');
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
@@ -717,12 +730,12 @@ describe('the console', () => {
     it('lists the ledger with the buyer, the money and the code', async () => {
         const cookie = await signIn();
         store.addCodes(10, uuids(1));
-        await buy(10, '+989170459330');
+        await buy(10, 'buyer@example.com');
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
         const page = (await (await get('/api/admin/orders', { cookie })).json()) as {
-            rows: Array<{ phone: string; status: string; code: string | null }>;
+            rows: Array<{ email: string; status: string; code: string | null }>;
             total: number;
             page: number;
         };
@@ -730,15 +743,14 @@ describe('the console', () => {
         expect(page.total).toBe(1);
         expect(page.page).toBe(1);
         expect(page.rows[0].status).toBe('paid');
-        // Typed as +98, shown back to the operator the way an Iranian reads it.
-        expect(page.rows[0].phone).toBe('09170459330');
+        expect(page.rows[0].email).toBe('buyer@example.com');
         expect(page.rows[0].code).not.toBeNull();
     });
 
     it('finds an order by any of the things a support call starts with', async () => {
         const cookie = await signIn();
         store.addCodes(5, uuids(1));
-        await buy(5, '09121234567');
+        await buy(5, 'Ali.Reza@Example.COM');
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         const code = store.recentOrders(1)[0].code ?? '';
@@ -750,17 +762,18 @@ describe('the console', () => {
             return found.total;
         };
 
-        // The number as typed, without its trunk zero, in international form, and as a
-        // fragment - one stored value, four ways a person writes it.
-        expect(await search('09121234567')).toBe(1);
-        expect(await search('9121234567')).toBe(1);
-        expect(await search('+989121234567')).toBe(1);
-        expect(await search('912123')).toBe(1);
+        // The address the buyer typed was mixed-case; it is stored lowercased, and an
+        // operator who types it back in ANY case still finds the order. This is what the
+        // phone version needed a needle helper for, and now falls out of canonicalisation.
+        expect(await search('ali.reza@example.com')).toBe(1);
+        expect(await search('Ali.Reza@Example.COM')).toBe(1);
+        expect(await search('ali.reza')).toBe(1);
+        expect(await search('@example.com')).toBe(1);
         // The delivered code and the bank reference.
         expect(await search(code)).toBe(1);
         expect(await search('987654')).toBe(1);
         // And a term that matches nothing must match NOTHING - not everything.
-        expect(await search('09350000000')).toBe(0);
+        expect(await search('nobody@nowhere.test')).toBe(0);
     });
 
     it('pages the ledger without losing or repeating a row', async () => {
@@ -774,7 +787,7 @@ describe('the console', () => {
                     id: `order-${String(index).padStart(3, '0')}`,
                     amount: 5,
                     toman: PRICES[5],
-                    phone: '+989170459330',
+                    email: 'buyer@example.com',
                     createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()
                 },
                 60_000
@@ -801,14 +814,14 @@ describe('the console', () => {
         const cookie = await signIn();
         const loaded = uuids(3);
         store.addCodes(10, loaded);
-        await buy(10, '09121234567');
+        await buy(10, 'first@example.com');
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         // A second checkout that has not settled: its code is HELD, not sold.
-        await buy(10, '09355556677');
+        await buy(10, 'second@example.com');
 
         const all = (await (await get('/api/admin/codes', { cookie })).json()) as {
-            rows: Array<{ code: string; state: string; phone: string | null }>;
+            rows: Array<{ code: string; state: string; email: string | null }>;
             total: number;
         };
         expect(all.total).toBe(3);
@@ -817,8 +830,8 @@ describe('the console', () => {
 
         // The sold one names its buyer; the others have nobody.
         const sold = all.rows.find((row) => row.state === 'sold');
-        expect(sold?.phone).toBe('09121234567');
-        expect(all.rows.find((row) => row.state === 'free')?.phone).toBeNull();
+        expect(sold?.email).toBe('first@example.com');
+        expect(all.rows.find((row) => row.state === 'free')?.email).toBeNull();
 
         // Filters narrow it the way the console's chips do.
         const free = (await (await get('/api/admin/codes?state=free', { cookie })).json()) as {
@@ -830,12 +843,12 @@ describe('the console', () => {
         };
         expect(wrongTier.total).toBe(0);
 
-        // And a code is findable by the buyer's number or by part of the code itself.
-        const byPhone = (await (
-            await get('/api/admin/codes?search=912123', { cookie })
+        // And a code is findable by the buyer's address or by part of the code itself.
+        const byEmail = (await (
+            await get('/api/admin/codes?search=first@', { cookie })
         ).json()) as { rows: Array<{ code: string }> };
-        expect(byPhone.rows).toHaveLength(1);
-        expect(byPhone.rows[0].code).toBe(sold?.code);
+        expect(byEmail.rows).toHaveLength(1);
+        expect(byEmail.rows[0].code).toBe(sold?.code);
         const byCode = (await (
             await get(`/api/admin/codes?search=${loaded[0].slice(0, 8)}`, { cookie })
         ).json()) as { total: number };
@@ -963,9 +976,9 @@ describe('runtime settings', () => {
 
         // Saving a template name must not wipe a working credential just because its input
         // was left blank on screen.
-        await post('/api/admin/settings', { kavenegarTemplate: 'renamed' }, { cookie });
+        await post('/api/admin/settings', { smtpHost: 'smtp.renamed.test' }, { cookie });
         expect(settings.current().merchantId).toBe('first-merchant-0000-0000-000012349999');
-        expect(settings.current().kavenegarTemplate).toBe('renamed');
+        expect(settings.current().smtpHost).toBe('smtp.renamed.test');
 
         // An explicit empty string IS a clear, and it does not fall back to the seed.
         await post('/api/admin/settings', { merchantId: '' }, { cookie });
@@ -1035,7 +1048,9 @@ describe('runtime settings', () => {
             (await post('/api/admin/key', { currentKey: ADMIN_KEY, newKey: 'ABCD-ABCD-ABCD-ABCD' }))
                 .status
         ).toBe(401);
-        expect((await post('/api/admin/test-sms', { phone: '09170459330' })).status).toBe(401);
+        expect((await post('/api/admin/test-email', { email: 'buyer@example.com' })).status).toBe(
+            401
+        );
     });
 });
 

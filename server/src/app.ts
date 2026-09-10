@@ -27,7 +27,7 @@ import type { Store } from './db/index.ts';
 import { catalogueHandlers } from './features/catalogue/routes.ts';
 import { createCheckout } from './features/checkout/checkout.ts';
 import { mountPayCallback, payHandlers } from './features/checkout/routes.ts';
-import type { SmsSender } from './features/checkout/sms.ts';
+import type { MailSender } from './features/checkout/mailer.ts';
 import type { PaymentGateway } from './features/checkout/zarinpal.ts';
 import { consoleHandlers } from './features/console/routes.ts';
 import { SESSION_COOKIE, type Admin } from './features/console/session.ts';
@@ -41,7 +41,7 @@ import { throttle } from './platform/throttle.ts';
 export interface AppOptions {
     store: Store;
     payment: PaymentGateway;
-    sms: SmsSender;
+    mailer: MailSender;
     admin: Admin;
 
     /** Runtime configuration: credentials and hosts the console can change without a deploy. */
@@ -70,7 +70,7 @@ export interface AppOptions {
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
-    const { store, payment, sms, admin, settings, rate, callbackUrl, log } = options;
+    const { store, payment, mailer, admin, settings, rate, callbackUrl, log } = options;
     const resultPath = options.resultPath ?? '/';
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
@@ -137,7 +137,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
     // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
     // itself rather than through the contract.
-    const checkout = createCheckout({ store, payment, sms, log });
+    const checkout = createCheckout({ store, payment, mailer, log });
     const pay = { store, settings, rate, payment, checkout, callbackUrl, resultPath, log };
     mountPayCallback(app, pay);
 
@@ -147,7 +147,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
         prefix: '/api',
 
         guards: {
-            // Money or credentials: one call here costs a gateway request, an SMS, or a guess.
+            // Money or credentials: one call here costs a gateway request, an email, or a guess.
             'pay.start': [guard(throttle(8, 60_000))],
             'admin.signIn': [guard(throttle(10, 60_000))],
 
@@ -168,7 +168,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
             // Rotation takes the CURRENT key, so it is one more place a credential can be
             // guessed against - guarded and throttled.
             'admin.rotateKey': [requireAdmin, guard(throttle(10, 60_000))],
-            'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))]
+            'admin.testEmail': [requireAdmin, guard(throttle(5, 60_000))]
         },
 
         // One line per feature. `mountApi` proves the union covers every route in the
@@ -179,7 +179,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
                 ...consoleHandlers({ store, admin }),
                 ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
-                ...settingsHandlers({ settings, admin, sms, callbackUrl, log }),
+                ...settingsHandlers({ settings, admin, mailer, callbackUrl, log }),
                 ...rateHandlers({ rate, settings })
             }
         }

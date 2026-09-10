@@ -1,7 +1,7 @@
 // The shop's half of the contract: the catalogue, starting a purchase, and reading the
 // receipt. Pairs with ./routes.ts - the shapes here, the handlers there.
 //
-// Scope note: no route here accepts card details. The buyer types a phone number, the
+// Scope note: no route here accepts card details. The buyer types an email address, the
 // gateway takes the money on its own page, and this server never sees a card number.
 //
 // CLIENT-SAFE. Like every features/*/contract.ts, this may import only
@@ -9,7 +9,7 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
-import { phoneField } from '../../domain/phone.ts';
+import { emailField } from '../../domain/email.ts';
 import { amountField } from '../../contract/shared.ts';
 import { tetherRate } from '../rate/contract.ts';
 
@@ -20,7 +20,7 @@ import { tetherRate } from '../rate/contract.ts';
  */
 export const payStartInput = z.object({
     amount: amountField,
-    phone: phoneField,
+    email: emailField,
 
     /**
      * THE PRICE THE CARD WAS SHOWING when the buyer pressed pay.
@@ -41,10 +41,10 @@ export const payStartInput = z.object({
 /**
  * The form half of {@link payStartInput}: the one field a human types.
  *
- * There is one of these per CARD now. The phone input lives inside the card the buyer is
+ * There is one of these per CARD now. The email input lives inside the card the buyer is
  * choosing, so the amount is never in question - it is the card the input sits in.
  */
-export const purchaseFormInput = z.object({ phone: phoneField });
+export const purchaseFormInput = z.object({ email: emailField });
 
 /**
  * Where to send the buyer. The server returns the gateway URL rather than answering with a
@@ -111,8 +111,8 @@ export const receipt = z.object({
     amount: amountField,
     toman: z.number().int(),
 
-    /** Display form (`09...`), so the buyer recognises the number they typed. */
-    phone: z.string(),
+    /** The address the code was sent to, so the buyer recognises what they typed. */
+    email: z.string(),
 
     /** The gift code. Non-null only when `outcome` is `paid`. */
     code: z.string().nullable(),
@@ -120,8 +120,8 @@ export const receipt = z.object({
     /** The gateway's transaction reference, quoted in support. */
     refId: z.number().int().nullable(),
 
-    /** False means the SMS did not go out. It never means the code is invalid. */
-    smsDelivered: z.boolean()
+    /** False means the email did not go out. It never means the code is invalid. */
+    mailDelivered: z.boolean()
 });
 
 export type PayStartInput = z.infer<typeof payStartInput>;

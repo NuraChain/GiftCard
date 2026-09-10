@@ -8,7 +8,7 @@ import { throttle } from '../../platform/throttle.ts';
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/index.ts';
 import { mintReceiptToken } from '../../domain/codes.ts';
-import { displayPhone, normalizePhone } from '../../domain/phone.ts';
+import { displayEmail, normalizeEmail } from '../../domain/email.ts';
 import { tomanPrice } from '../../domain/pricing.ts';
 import type { TetherRate } from '../rate/rate.ts';
 import type { PaymentGateway } from './zarinpal.ts';
@@ -123,11 +123,11 @@ export function payHandlers(options: PayOptions): PayHandlers {
 
         // POST /api/pay/start
         start: async ({ input }) => {
-            // The schema proved the phone is valid; it does not canonicalise, so this is
+            // The schema proved the address is valid; it does not canonicalise, so this is
             // where the buyer's typing becomes the one stored form.
-            const phone = normalizePhone(input.phone);
-            if (phone === null) {
-                throw new ConflictError('شماره موبایل معتبر نیست');
+            const email = normalizeEmail(input.email);
+            if (email === null) {
+                throw new ConflictError('ایمیل معتبر نیست');
             }
 
             // THIS IS WHERE THE `5 | 10 | 25` UNION WENT. The catalogue is editable, so the
@@ -169,7 +169,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 // The price comes from OUR arithmetic, never from the request - the same rule
                 // the verify step keeps, and the reason a moved rate cannot become a discount.
                 toman: price,
-                phone,
+                email,
                 createdAt: new Date().toISOString()
             };
 
@@ -183,7 +183,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 tomanAmount: order.toman,
                 description: `خرید گیفت کارت ${settings.current().appName} ${input.amount} دلاری`,
                 callbackUrl,
-                phone
+                email
             });
 
             // One exit for every way the gateway can fail us, including handing back an
@@ -223,10 +223,10 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 outcome: order.status,
                 amount: order.amount,
                 toman: order.toman,
-                phone: displayPhone(order.phone),
+                email: displayEmail(order.email),
                 code: order.code,
                 refId: order.refId,
-                smsDelivered: order.smsDelivered
+                mailDelivered: order.mailDelivered
             };
         }
     };

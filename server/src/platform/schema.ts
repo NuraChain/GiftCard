@@ -1,9 +1,13 @@
 // The whole database schema, in one readable place.
 //
-// `CREATE TABLE IF NOT EXISTS` is the migration story: this file runs on every boot, so
-// adding a table or an index here is the whole deployment step. It is honest about its
-// limit - it cannot ALTER an existing column - and when that day comes it becomes a
-// numbered-migration runner rather than growing a special case.
+// `CREATE TABLE IF NOT EXISTS` is most of the migration story: this file runs on every boot,
+// so adding a table or an index here is the whole deployment step. What it cannot do is ALTER
+// a table that already exists - and that day came when codes stopped being texted and started
+// being emailed. Those changes live in ./migrate.ts, which runs straight after this and is
+// guarded on the shape the database is actually in.
+//
+// SO THIS FILE DESCRIBES THE DESTINATION, not the history. A fresh database gets exactly what
+// is written below; an existing one is brought to the same shape by the migrations next door.
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS codes (
     id         INTEGER PRIMARY KEY,
@@ -20,11 +24,11 @@ CREATE TABLE IF NOT EXISTS orders (
     authority     TEXT    UNIQUE,
     amount        INTEGER NOT NULL,
     toman         INTEGER NOT NULL,
-    phone         TEXT    NOT NULL,
+    email         TEXT    NOT NULL,
     status        TEXT    NOT NULL,
     code          TEXT,
     ref_id        INTEGER,
-    sms_delivered INTEGER NOT NULL DEFAULT 0,
+    mail_delivered INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT    NOT NULL,
     settled_at    TEXT
 );

@@ -6,7 +6,7 @@ import type { Handlers } from '../../platform/api.ts';
 
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
-import { displayPhone } from '../../domain/phone.ts';
+import { displayEmail } from '../../domain/email.ts';
 import { SESSION_COOKIE, type Admin } from './session.ts';
 
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
@@ -54,18 +54,18 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
                 offset: (page - 1) * PAGE_SIZE
             });
             return {
-                // The full phone and the delivered code are here because that is what
+                // The full address and the delivered code are here because that is what
                 // answering a support call requires - and exactly why this route is behind
                 // a session and this page is never indexed.
                 rows: found.rows.map((order) => ({
                     id: order.id,
                     amount: order.amount,
                     toman: order.toman,
-                    phone: displayPhone(order.phone),
+                    email: displayEmail(order.email),
                     status: order.status,
                     code: order.code,
                     refId: order.refId,
-                    smsDelivered: order.smsDelivered,
+                    mailDelivered: order.mailDelivered,
                     createdAt: order.createdAt
                 })),
                 total: found.total,

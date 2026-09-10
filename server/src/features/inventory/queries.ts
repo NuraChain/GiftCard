@@ -6,7 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 import { shaped } from '../../platform/db.ts';
-import { phoneNeedle, UUID } from '../../db/shared.ts';
+import { UUID } from '../../db/shared.ts';
 import type {
     Amount,
     AddCodesResult,
@@ -69,13 +69,13 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries {
         WHEN c.order_id IS NOT NULL THEN 'held'
         ELSE 'free' END`;
     const CODE_MATCHES = `(
-        (? = '' OR c.code LIKE ? OR (? <> '' AND o.phone LIKE ?))
+        (? = '' OR c.code LIKE ? OR o.email LIKE ?)
         AND (? = '' OR ${CODE_STATE} = ?)
         AND (? = 0 OR c.amount = ?)
     )`;
     const codePage = db.prepare(`
         SELECT c.code, c.amount, c.added_at, ${CODE_STATE} AS state,
-               o.phone AS phone, o.settled_at AS sold_at, o.ref_id AS ref_id
+               o.email AS email, o.settled_at AS sold_at, o.ref_id AS ref_id
         FROM codes c LEFT JOIN orders o ON o.code = c.code
         WHERE ${CODE_MATCHES}
         ORDER BY c.id DESC
@@ -175,17 +175,16 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries {
         searchCodes(query) {
             const term = query.search.trim().toLowerCase();
             const like = `%${term}%`;
-            const digits = phoneNeedle(term);
             const state = query.state ?? '';
             const amount = query.amount ?? 0;
-            const bind = [term, like, digits, `%${digits}%`, state, state, amount, amount];
+            const bind = [term, like, like, state, state, amount, amount];
             const rows = shaped<
                 Array<{
                     code: string;
                     amount: number;
                     added_at: string;
                     state: string;
-                    phone: string | null;
+                    email: string | null;
                     sold_at: string | null;
                     ref_id: number | null;
                 }>
@@ -197,7 +196,7 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries {
                     amount: row.amount as Amount,
                     state: row.state as CodeState,
                     addedAt: row.added_at,
-                    phone: row.phone,
+                    email: row.email,
                     soldAt: row.sold_at,
                     refId: row.ref_id
                 })),

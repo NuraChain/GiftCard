@@ -1,7 +1,7 @@
 // A form, validated by the SAME schema the server enforces.
 //
 // This is deliberately small - values, what went wrong, and what the reader has touched. The
-// point is not to be a form library; it is that the rule deciding whether a phone number is
+// point is not to be a form library; it is that the rule deciding whether an address is
 // valid is imported from the contract rather than written a second time in the browser. When
 // the server's idea of a valid number changes, this form's does too, with nothing to keep in
 // step.

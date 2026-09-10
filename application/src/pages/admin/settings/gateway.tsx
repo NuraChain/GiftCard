@@ -1,12 +1,18 @@
-// Where the money goes and how the code gets delivered: the payment gateway and the SMS
-// provider, both editable without a deploy.
+// Where the money goes and how the code gets delivered: the payment gateway and the mail
+// server, both editable without a deploy.
 //
 // A SECRET IS NEVER SHOWN. The inputs start empty with a masked placeholder, and leaving one
-// blank means "keep it" - so saving a template name cannot wipe a working API key. The
-// server enforces that too; this component only has to not fight it.
+// blank means "keep it" - so saving a host name cannot wipe a working password. The server
+// enforces that too; this component only has to not fight it.
 //
 // The merchant id is the one field on the page that changes WHERE THE MONEY GOES, so it is
 // the one field that asks a second question before saving.
+//
+// SMTP RATHER THAN AN SMS PROVIDER. Codes used to be texted through Kavenegar; they are
+// emailed now, and the settings that replaced the API key are the ones any mail account has -
+// a host, a port, a login and a From address. The From is called out in its own hint because
+// it is the field that silently breaks delivery: most relays refuse to send as an address
+// that is not the account they authenticated.
 import { AlertTriangle, Save, Send } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -34,12 +40,15 @@ export default function GatewaySettings(): ReactNode {
     const [formAppName, setFormAppName] = useState('');
     const [formBase, setFormBase] = useState('');
     const [formMerchantId, setFormMerchantId] = useState('');
-    const [formKavenegarKey, setFormKavenegarKey] = useState('');
-    const [formKavenegarTemplate, setFormKavenegarTemplate] = useState('');
-    const [formKavenegarBase, setFormKavenegarBase] = useState('');
+    const [formSmtpHost, setFormSmtpHost] = useState('');
+    const [formSmtpPort, setFormSmtpPort] = useState('');
+    const [formSmtpSecure, setFormSmtpSecure] = useState(false);
+    const [formSmtpUser, setFormSmtpUser] = useState('');
+    const [formSmtpPassword, setFormSmtpPassword] = useState('');
+    const [formSmtpFrom, setFormSmtpFrom] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const [testPhone, setTestPhone] = useState('');
+    const [testEmail, setTestEmail] = useState('');
     const [testing, setTesting] = useState(false);
 
     const load = useCallback(async (): Promise<void> => {
@@ -50,8 +59,11 @@ export default function GatewaySettings(): ReactNode {
             setSettings(view);
             setFormAppName(view.appName);
             setFormBase(view.zarinpalBase);
-            setFormKavenegarTemplate(view.kavenegarTemplate);
-            setFormKavenegarBase(view.kavenegarBase);
+            setFormSmtpHost(view.smtpHost);
+            setFormSmtpPort(String(view.smtpPort));
+            setFormSmtpSecure(view.smtpSecure);
+            setFormSmtpUser(view.smtpUser);
+            setFormSmtpFrom(view.smtpFrom);
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات خوانده نشد'));
         } finally {
@@ -68,6 +80,11 @@ export default function GatewaySettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
+        const port = Number(formSmtpPort);
+        if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+            notify.error('پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد');
+            return;
+        }
         // Changing the merchant id changes WHERE THE MONEY GOES. It is the one field on this
         // page that deserves a second question.
         if (
@@ -85,15 +102,18 @@ export default function GatewaySettings(): ReactNode {
                     input: {
                         appName: formAppName,
                         zarinpalBase: formBase,
-                        kavenegarTemplate: formKavenegarTemplate,
-                        kavenegarBase: formKavenegarBase,
+                        smtpHost: formSmtpHost,
+                        smtpPort: port,
+                        smtpSecure: formSmtpSecure,
+                        smtpUser: formSmtpUser,
+                        smtpFrom: formSmtpFrom,
                         merchantId: formMerchantId === '' ? undefined : formMerchantId,
-                        kavenegarKey: formKavenegarKey === '' ? undefined : formKavenegarKey
+                        smtpPassword: formSmtpPassword === '' ? undefined : formSmtpPassword
                     }
                 })
             );
             setFormMerchantId('');
-            setFormKavenegarKey('');
+            setFormSmtpPassword('');
             // The name appears in the tab title and on every page, so the shop is told to
             // re-read it rather than left showing the old one until a reload.
             void catalog.load();
@@ -109,9 +129,9 @@ export default function GatewaySettings(): ReactNode {
         event.preventDefault();
         setTesting(true);
         try {
-            const result = await client.admin.testSms({ input: { phone: testPhone } });
+            const result = await client.admin.testEmail({ input: { email: testEmail } });
             if (result.ok) {
-                notify.success('پیامک آزمایشی ارسال شد');
+                notify.success('ایمیل آزمایشی ارسال شد');
             } else {
                 notify.error(`ارسال نشد: ${result.reason}`);
             }
@@ -124,7 +144,7 @@ export default function GatewaySettings(): ReactNode {
 
     return (
         <section className="mt-section">
-            <h2 className="text-h3 font-bold">درگاه و پیامک</h2>
+            <h2 className="text-h3 font-bold">درگاه و ایمیل</h2>
 
             <div className="mt-4">
                 <Async
@@ -152,7 +172,7 @@ export default function GatewaySettings(): ReactNode {
                         <Field
                             label="نام فروشگاه"
                             htmlFor="app-name"
-                            hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، و توضیح تراکنش در درگاه دیده می‌شود."
+                            hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، موضوع ایمیل کد، و توضیح تراکنش در درگاه دیده می‌شود."
                         >
                             <TextInput
                                 id="app-name"
@@ -195,40 +215,84 @@ export default function GatewaySettings(): ReactNode {
                             />
                         </Field>
 
-                        <Field label="کلید کاوه‌نگار" htmlFor="kavenegar-key" className="mt-4">
-                            <TextInput
-                                id="kavenegar-key"
-                                type="password"
-                                latin
-                                autoComplete="off"
-                                placeholder={
-                                    settings?.kavenegarKeySet === true
-                                        ? `${settings.kavenegarKeyMasked} (برای تغییر بنویسید)`
-                                        : 'تنظیم نشده'
-                                }
-                                value={formKavenegarKey}
-                                onChange={setFormKavenegarKey}
-                            />
-                        </Field>
+                        <h3 className="mt-6 border-t border-line pt-5 font-bold">
+                            سرور ایمیل (SMTP)
+                        </h3>
 
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                            <Field label="نام قالب" htmlFor="kavenegar-template">
+                        <div className="mt-4 grid gap-4 sm:grid-cols-[2fr_1fr]">
+                            <Field label="آدرس سرور" htmlFor="smtp-host">
                                 <TextInput
-                                    id="kavenegar-template"
+                                    id="smtp-host"
                                     latin
-                                    value={formKavenegarTemplate}
-                                    onChange={setFormKavenegarTemplate}
+                                    placeholder="smtp.example.com"
+                                    value={formSmtpHost}
+                                    onChange={setFormSmtpHost}
                                 />
                             </Field>
-                            <Field label="آدرس کاوه‌نگار" htmlFor="kavenegar-base">
+                            <Field label="پورت" htmlFor="smtp-port">
                                 <TextInput
-                                    id="kavenegar-base"
+                                    id="smtp-port"
+                                    type="number"
                                     latin
-                                    value={formKavenegarBase}
-                                    onChange={setFormKavenegarBase}
+                                    value={formSmtpPort}
+                                    onChange={setFormSmtpPort}
                                 />
                             </Field>
                         </div>
+
+                        <label className="mt-4 flex items-center gap-2 text-small">
+                            <input
+                                type="checkbox"
+                                checked={formSmtpSecure}
+                                onChange={(event) => setFormSmtpSecure(event.target.checked)}
+                            />
+                            اتصال امن مستقیم (SSL/TLS) - معمولاً برای پورت ۴۶۵
+                        </label>
+                        <p className="mt-1 text-caption text-muted">
+                            برای پورت ۵۸۷ این را خاموش بگذارید؛ اتصال با STARTTLS امن می‌شود.
+                        </p>
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                            <Field label="نام کاربری" htmlFor="smtp-user">
+                                <TextInput
+                                    id="smtp-user"
+                                    latin
+                                    autoComplete="off"
+                                    value={formSmtpUser}
+                                    onChange={setFormSmtpUser}
+                                />
+                            </Field>
+                            <Field label="رمز عبور" htmlFor="smtp-password">
+                                <TextInput
+                                    id="smtp-password"
+                                    type="password"
+                                    latin
+                                    autoComplete="off"
+                                    placeholder={
+                                        settings?.smtpPasswordSet === true
+                                            ? `${settings.smtpPasswordMasked} (برای تغییر بنویسید)`
+                                            : 'تنظیم نشده'
+                                    }
+                                    value={formSmtpPassword}
+                                    onChange={setFormSmtpPassword}
+                                />
+                            </Field>
+                        </div>
+
+                        <Field
+                            label="فرستنده"
+                            htmlFor="smtp-from"
+                            className="mt-4"
+                            hint="بیشتر سرورها فقط اجازه می‌دهند از آدرس همان حسابی که با آن وارد شده‌اید ایمیل بفرستید."
+                        >
+                            <TextInput
+                                id="smtp-from"
+                                latin
+                                placeholder="Guardian Service <no-reply@example.com>"
+                                value={formSmtpFrom}
+                                onChange={setFormSmtpFrom}
+                            />
+                        </Field>
 
                         {/* A flex child defaults to `min-width: auto`, so an unbreakable
                             value refuses to shrink and pushes the row past the viewport -
@@ -236,15 +300,15 @@ export default function GatewaySettings(): ReactNode {
                             shrink at all; `break-all` is what it does once it can. */}
                         <dl className="mt-5 grid gap-2 border-t border-line pt-4 text-caption text-muted">
                             <div className="flex justify-between gap-2">
-                                <dt>وضعیت پیامک</dt>
+                                <dt>وضعیت ایمیل</dt>
                                 <dd
                                     className={
-                                        settings?.smsReady === true
+                                        settings?.mailReady === true
                                             ? 'font-bold text-firouze'
                                             : 'font-bold text-gold'
                                     }
                                 >
-                                    {settings?.smsReady === true ? 'آماده' : 'خاموش'}
+                                    {settings?.mailReady === true ? 'آماده' : 'خاموش'}
                                 </dd>
                             </div>
                             <div className="flex justify-between gap-2">
@@ -267,26 +331,26 @@ export default function GatewaySettings(): ReactNode {
                         </Button>
                     </form>
 
-                    {/* The only way to prove a Kavenegar template is approved without selling
-                        something first. It sends an obviously-fake token, never a real code. */}
+                    {/* The only way to prove the mail settings work without selling something
+                        first. It sends an obviously-fake code, never a real one. */}
                     <form
                         className="mt-4 flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-5"
                         noValidate
                         onSubmit={(event) => void sendTest(event)}
                     >
                         <Field
-                            label="پیامک آزمایشی به"
-                            htmlFor="test-phone"
+                            label="ایمیل آزمایشی به"
+                            htmlFor="test-email"
                             className="min-w-0 flex-1"
                         >
                             <TextInput
-                                id="test-phone"
-                                type="tel"
+                                id="test-email"
+                                type="email"
                                 latin
-                                inputMode="tel"
-                                placeholder="09170459330"
-                                value={testPhone}
-                                onChange={setTestPhone}
+                                inputMode="email"
+                                placeholder="name@example.com"
+                                value={testEmail}
+                                onChange={setTestEmail}
                             />
                         </Field>
                         <Button
@@ -294,7 +358,7 @@ export default function GatewaySettings(): ReactNode {
                             glyph={Send}
                             busy={testing}
                             busyText="در حال ارسال..."
-                            disabled={testPhone === ''}
+                            disabled={testEmail === ''}
                         >
                             ارسال
                         </Button>

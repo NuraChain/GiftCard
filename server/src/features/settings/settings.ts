@@ -25,9 +25,12 @@ export const SETTING_KEYS = [
     'appName',
     'zarinpalBase',
     'merchantId',
-    'kavenegarKey',
-    'kavenegarTemplate',
-    'kavenegarBase',
+    'smtpHost',
+    'smtpPort',
+    'smtpSecure',
+    'smtpUser',
+    'smtpPassword',
+    'smtpFrom',
     'nobitexBase',
     'wallexBase',
     'marginPercent',
@@ -37,7 +40,7 @@ export const SETTING_KEYS = [
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 /** The ones masked on the way out and in the audit. The rest are hosts and template names. */
-const SECRETS = new Set<SettingKey>(['merchantId', 'kavenegarKey', 'adminKeyHash']);
+const SECRETS = new Set<SettingKey>(['merchantId', 'smtpPassword', 'adminKeyHash']);
 
 /** What the shop and the gateway client read on every call. */
 export interface RuntimeSettings {
@@ -46,9 +49,20 @@ export interface RuntimeSettings {
 
     zarinpalBase: string;
     merchantId: string;
-    kavenegarKey: string;
-    kavenegarTemplate: string;
-    kavenegarBase: string;
+    /** Where the gift-code email is handed off. Empty means delivery is off. */
+    smtpHost: string;
+
+    /** 465 for implicit TLS, 587 for STARTTLS. Anything a relay listens on. */
+    smtpPort: number;
+
+    /** True for implicit TLS on connect; false lets STARTTLS upgrade a plain connection. */
+    smtpSecure: boolean;
+
+    smtpUser: string;
+    smtpPassword: string;
+
+    /** The From address. Most relays refuse a From that is not the authenticated account. */
+    smtpFrom: string;
 
     /** The two exchanges the tether rate is cross-checked between. See features/rate/. */
     nobitexBase: string;
@@ -77,9 +91,12 @@ const DEFAULTS = {
     appName: 'گاردین سرویس',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
-    kavenegarKey: '',
-    kavenegarTemplate: '',
-    kavenegarBase: 'https://api.kavenegar.com',
+    smtpHost: '',
+    smtpPort: 587,
+    smtpSecure: false,
+    smtpUser: '',
+    smtpPassword: '',
+    smtpFrom: '',
     nobitexBase: 'https://api.nobitex.ir',
     wallexBase: 'https://api.wallex.ir',
     marginPercent: 6
@@ -132,14 +149,17 @@ export interface SettingsView {
     sandbox: boolean;
     merchantIdMasked: string;
     merchantIdSet: boolean;
-    kavenegarKeyMasked: string;
-    kavenegarKeySet: boolean;
-    kavenegarTemplate: string;
-    kavenegarBase: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpSecure: boolean;
+    smtpUser: string;
+    smtpPasswordMasked: string;
+    smtpPasswordSet: boolean;
+    smtpFrom: string;
     nobitexBase: string;
     wallexBase: string;
     marginPercent: number;
-    smsReady: boolean;
+    mailReady: boolean;
     callbackUrl: string;
     keyRotated: boolean;
 }
@@ -167,6 +187,19 @@ function mintAdminKey(): string {
 function hashKey(key: string): string {
     const salt = randomBytes(16);
     return `scrypt$${salt.toString('base64')}$${scryptSync(key, salt, 32).toString('base64')}`;
+}
+
+/**
+ * @internal A port that cannot break the mailer. Stored settings are text an operator typed,
+ * so an empty box or a stray letter must fall back to the shipped default rather than reach
+ * nodemailer as a NaN and fail every send with something unreadable.
+ */
+function portFrom(raw: string): number {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+        return DEFAULTS.smtpPort;
+    }
+    return parsed;
 }
 
 /**
@@ -230,9 +263,12 @@ export function createSettings(options: SettingsOptions): Settings {
                 appName: pick('appName', DEFAULTS.appName),
                 zarinpalBase: pick('zarinpalBase', DEFAULTS.zarinpalBase),
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
-                kavenegarKey: pick('kavenegarKey', DEFAULTS.kavenegarKey),
-                kavenegarTemplate: pick('kavenegarTemplate', DEFAULTS.kavenegarTemplate),
-                kavenegarBase: pick('kavenegarBase', DEFAULTS.kavenegarBase),
+                smtpHost: pick('smtpHost', DEFAULTS.smtpHost),
+                smtpPort: portFrom(pick('smtpPort', String(DEFAULTS.smtpPort))),
+                smtpSecure: pick('smtpSecure', String(DEFAULTS.smtpSecure)) === 'true',
+                smtpUser: pick('smtpUser', DEFAULTS.smtpUser),
+                smtpPassword: pick('smtpPassword', DEFAULTS.smtpPassword),
+                smtpFrom: pick('smtpFrom', DEFAULTS.smtpFrom),
                 nobitexBase: pick('nobitexBase', DEFAULTS.nobitexBase),
                 wallexBase: pick('wallexBase', DEFAULTS.wallexBase),
                 marginPercent: marginFrom(pick('marginPercent', String(DEFAULTS.marginPercent)))
@@ -252,14 +288,17 @@ export function createSettings(options: SettingsOptions): Settings {
                 sandbox: live.zarinpalBase.includes('sandbox'),
                 merchantIdMasked: mask(live.merchantId),
                 merchantIdSet: live.merchantId !== '',
-                kavenegarKeyMasked: mask(live.kavenegarKey),
-                kavenegarKeySet: live.kavenegarKey !== '',
-                kavenegarTemplate: live.kavenegarTemplate,
-                kavenegarBase: live.kavenegarBase,
+                smtpHost: live.smtpHost,
+                smtpPort: live.smtpPort,
+                smtpSecure: live.smtpSecure,
+                smtpUser: live.smtpUser,
+                smtpPasswordMasked: mask(live.smtpPassword),
+                smtpPasswordSet: live.smtpPassword !== '',
+                smtpFrom: live.smtpFrom,
                 nobitexBase: live.nobitexBase,
                 wallexBase: live.wallexBase,
                 marginPercent: live.marginPercent,
-                smsReady: live.kavenegarKey !== '' && live.kavenegarTemplate !== '',
+                mailReady: live.smtpHost !== '' && live.smtpFrom !== '',
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
             };

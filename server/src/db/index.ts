@@ -10,8 +10,8 @@ import { createSettingQueries } from '../features/settings/queries.ts';
 import { createTierQueries } from '../features/catalogue/queries.ts';
 import type { Store } from './types.ts';
 
-export function createStore(file: string): Store {
-    const db = openDatabase(file);
+export function createStore(file: string, onMigrate?: (names: string[]) => void): Store {
+    const db = openDatabase(file, onMigrate);
 
     const settings = createSettingQueries(db);
     const tiers = createTierQueries(db);

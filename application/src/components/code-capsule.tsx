@@ -5,7 +5,7 @@
 //
 // Two places use this: the hero, where the code is a clearly labelled sample, and the
 // receipt, where it is the real thing the buyer just paid for. It is no longer on the cards -
-// each card carries the phone input instead, because the thing a buyer does on a card is
+// each card carries the email input instead, because the thing a buyer does on a card is
 // start a purchase.
 //
 // The code carries dir="ltr": it isolates the Latin run so it cannot scramble the Persian

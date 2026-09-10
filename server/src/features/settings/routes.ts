@@ -7,15 +7,15 @@ import type { Logger } from '../../platform/logging.ts';
 import type { Handlers } from '../../platform/api.ts';
 import { ConflictError, UnauthorizedError } from '../../platform/http.ts';
 import type { contract } from '../../contract/index.ts';
-import { normalizePhone } from '../../domain/phone.ts';
-import type { SmsSender } from '../checkout/sms.ts';
+import { normalizeEmail } from '../../domain/email.ts';
+import type { MailSender } from '../checkout/mailer.ts';
 import { ADMIN_KEY_PATTERN, SESSION_COOKIE, type Admin } from '../console/session.ts';
 import type { Settings } from './settings.ts';
 
 export interface SettingsOptions {
     settings: Settings;
     admin: Admin;
-    sms: SmsSender;
+    mailer: MailSender;
     callbackUrl: string;
     log?: Logger;
 }
@@ -23,11 +23,11 @@ export interface SettingsOptions {
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type SettingsHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testSms'
+    'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testEmail'
 >;
 
 export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
-    const { settings, admin, sms, callbackUrl, log } = options;
+    const { settings, admin, mailer, callbackUrl, log } = options;
 
     return {
         // GET /api/admin/settings
@@ -67,15 +67,15 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             reply.setCookie(cookie.name, cookie.value, cookie.options);
         },
 
-        // POST /api/admin/test-sms
-        testSms: async ({ input }) => {
-            const phone = normalizePhone(input.phone);
-            if (phone === null) {
-                throw new ConflictError('شماره موبایل معتبر نیست');
+        // POST /api/admin/test-email
+        testEmail: async ({ input }) => {
+            const email = normalizeEmail(input.email);
+            if (email === null) {
+                throw new ConflictError('ایمیل معتبر نیست');
             }
-            // A sample that looks like a code but is obviously not one: proving the template
-            // is approved must not hand out anything redeemable.
-            const result = await sms.sendCode(phone, 'TEST-0000-0000');
+            // A sample that looks like a code but is obviously not one: proving the mail
+            // settings work must not hand out anything redeemable.
+            const result = await mailer.sendCode(email, 'TEST-0000-0000', 0);
             return { ok: result.ok, reason: result.ok ? '' : result.reason };
         }
     };

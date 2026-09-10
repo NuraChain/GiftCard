@@ -7,7 +7,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import type { CodeQueries } from '../inventory/queries.ts';
 import { shaped } from '../../platform/db.ts';
-import { phoneNeedle, toOrder, type OrderRow } from '../../db/shared.ts';
+import { toOrder, type OrderRow } from '../../db/shared.ts';
 import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
 
 export interface OrderQueries {
@@ -18,7 +18,7 @@ export interface OrderQueries {
     orderByAuthority(authority: string): Order | undefined;
     settlePaid(orderId: string, refId: number): string | null;
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
-    markSmsDelivered(orderId: string, delivered: boolean): void;
+    markMailDelivered(orderId: string, delivered: boolean): void;
     recentOrders(limit: number): Order[];
     searchOrders(query: OrderQuery): { rows: Order[]; total: number };
     owedCount(): number;
@@ -26,7 +26,7 @@ export interface OrderQueries {
 
 export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
     const insertOrder = db.prepare(`
-        INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at)
+        INSERT INTO orders (id, authority, amount, toman, email, status, code, ref_id, mail_delivered, created_at, settled_at)
         VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL)`);
     const setAuthority = db.prepare('UPDATE orders SET authority = ? WHERE id = ?');
     const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
@@ -36,7 +36,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
     );
     const setUnpaid = db.prepare('UPDATE orders SET status = ?, settled_at = ? WHERE id = ?');
-    const setSms = db.prepare('UPDATE orders SET sms_delivered = ? WHERE id = ?');
+    const setMail = db.prepare('UPDATE orders SET mail_delivered = ? WHERE id = ?');
     // Owed orders first: money taken, no code. They are the only rows needing a human.
     const selectRecent = db.prepare(`
         SELECT * FROM orders
@@ -47,12 +47,14 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
     );
 
     // One WHERE clause, shared by the page and its count so the two can never disagree.
-    // A phone is stored as +989..., and an operator types 0917... or just a fragment, so the
-    // phone arm matches on the digits that survive both spellings (see `phoneNeedle`).
+    //
+    // The address arm is a plain substring match, which it can be because an address has ONE
+    // stored spelling (domain/email.ts lowercases and trims). The phone version of this used
+    // to need a helper to reconcile four spellings of the same number.
     const MATCHES = `(
         ? = ''
         OR id = ?
-        OR (? <> '' AND phone LIKE ?)
+        OR email LIKE ?
         OR code LIKE ?
         OR CAST(ref_id AS TEXT) LIKE ?
     )`;
@@ -71,7 +73,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
                     db.exec('ROLLBACK');
                     return false;
                 }
-                insertOrder.run(order.id, order.amount, order.toman, order.phone, order.createdAt);
+                insertOrder.run(order.id, order.amount, order.toman, order.email, order.createdAt);
                 db.exec('COMMIT');
                 return true;
             } catch (error) {
@@ -153,8 +155,8 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        markSmsDelivered(orderId, delivered) {
-            setSms.run(delivered ? 1 : 0, orderId);
+        markMailDelivered(orderId, delivered) {
+            setMail.run(delivered ? 1 : 0, orderId);
         },
 
         recentOrders(limit) {
@@ -164,8 +166,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         searchOrders(query) {
             const term = query.search.trim();
             const like = `%${term.toLowerCase()}%`;
-            const digits = phoneNeedle(term);
-            const bind = [term, term, digits, `%${digits}%`, like, like];
+            const bind = [term, term, like, like, like];
             return {
                 rows: shaped<OrderRow[]>(searchPage.all(...bind, query.limit, query.offset)).map(
                     toOrder

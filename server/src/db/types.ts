@@ -51,8 +51,8 @@ export interface Order {
     /** What the buyer pays, in Toman. Stored so verify uses OUR number, not a request's. */
     toman: number;
 
-    /** Canonical `+989...`. */
-    phone: string;
+    /** Canonical: trimmed and lowercased. See domain/email.ts. */
+    email: string;
 
     status: OrderStatus;
 
@@ -66,8 +66,8 @@ export interface Order {
     /** Zarinpal's transaction reference, quoted in support. */
     refId: number | null;
 
-    /** Whether the code reached the buyer by SMS. False never invalidates the code. */
-    smsDelivered: boolean;
+    /** Whether the code reached the buyer by email. False never invalidates the code. */
+    mailDelivered: boolean;
 
     createdAt: string;
     settledAt: string | null;
@@ -78,7 +78,7 @@ export interface NewOrder {
     id: string;
     amount: Amount;
     toman: number;
-    phone: string;
+    email: string;
     createdAt: string;
 }
 
@@ -112,8 +112,8 @@ export interface CodeRow {
     state: CodeState;
     addedAt: string;
 
-    /** The buyer, once there is one. Canonical `+989...`. */
-    phone: string | null;
+    /** The buyer, once there is one. Canonical, lowercased. */
+    email: string | null;
 
     /** When the order that took it settled. */
     soldAt: string | null;
@@ -124,7 +124,7 @@ export interface CodeRow {
 
 /** One page of the ledger. An empty `search` means the whole ledger. */
 export interface OrderQuery {
-    /** Free text: part of a phone number, a code, a reference, or a receipt handle. */
+    /** Free text: part of an email address, a code, a reference, or a receipt handle. */
     search: string;
 
     limit: number;
@@ -133,7 +133,7 @@ export interface OrderQuery {
 
 /** One page of the inventory. */
 export interface CodeQuery {
-    /** Free text over the code itself and over the buyer's number. */
+    /** Free text over the code itself and over the buyer's address. */
     search: string;
 
     /** Narrow to one state, or `null` for all three. */
@@ -233,7 +233,7 @@ export interface Store extends SettingsStore {
     /** Settles an unpaid attempt and returns the held code to stock. */
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
 
-    markSmsDelivered(orderId: string, delivered: boolean): void;
+    markMailDelivered(orderId: string, delivered: boolean): void;
 
     /** The ledger, newest first, owed orders pinned to the top. */
     recentOrders(limit: number): Order[];

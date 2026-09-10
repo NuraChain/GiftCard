@@ -1,7 +1,7 @@
 // Bootstrap: config, logging, the database, the outside world, serve, graceful shutdown.
 // No build step - Node >= 24 runs this file directly.
 //
-// This is the ONLY file that reads the environment or constructs a real gateway, SMS client
+// This is the ONLY file that reads the environment or constructs a real gateway, mailer
 // or database. `buildApp` takes them as arguments, which is what lets the tests drive the
 // entire payment flow without a network, a merchant account, or a file on disk.
 //
@@ -26,7 +26,7 @@ import { nobitexSource, wallexSource } from './features/rate/sources.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings } from './features/settings/settings.ts';
-import { createSms } from './features/checkout/sms.ts';
+import { createMailer } from './features/checkout/mailer.ts';
 import { createStore } from './db/index.ts';
 
 // Redaction happens in the logger rather than at each call site, so no formatter and no
@@ -44,7 +44,7 @@ const log = pino({
             'newKey',
             'authority',
             'code',
-            'phone',
+            'email',
             '*.merchantId',
             '*.apiKey',
             '*.adminKey',
@@ -53,7 +53,7 @@ const log = pino({
             '*.newKey',
             '*.authority',
             '*.code',
-            '*.phone'
+            '*.email'
         ],
         censor: '[redacted]'
     },
@@ -70,7 +70,9 @@ const log = pino({
 });
 
 mkdirSync(dirname(config.databaseFile), { recursive: true });
-const store = createStore(config.databaseFile);
+const store = createStore(config.databaseFile, (names) =>
+    log.warn({ migrations: names }, 'database schema migrated')
+);
 
 // A catalogue is seeded exactly once. After this the console owns it, so a later change to
 // seed.ts has no effect on a shop that is already trading - which is the point of moving the
@@ -97,11 +99,11 @@ if (mintedKey !== null) {
 }
 
 const live = settings.current();
-if (!settings.view('').smsReady) {
-    // A shop can trade without SMS: the code is on screen and valid either way. It is a
+if (!settings.view('').mailReady) {
+    // A shop can trade without email: the code is on screen and valid either way. It is a
     // notice rather than a refusal because the operator can now fix it from the console
     // without a deploy.
-    log.warn('SMS delivery is OFF - codes appear on screen only');
+    log.warn('email delivery is OFF - codes appear on screen only');
 }
 if (live.merchantId === '') {
     log.warn(
@@ -140,13 +142,17 @@ const app = buildApp({
             return { merchantId: now.merchantId, baseUrl: now.zarinpalBase };
         }
     }),
-    sms: createSms({
+    mailer: createMailer({
         settings: () => {
             const now = settings.current();
             return {
-                apiKey: now.kavenegarKey,
-                template: now.kavenegarTemplate,
-                baseUrl: now.kavenegarBase
+                host: now.smtpHost,
+                port: now.smtpPort,
+                secure: now.smtpSecure,
+                user: now.smtpUser,
+                password: now.smtpPassword,
+                from: now.smtpFrom,
+                appName: now.appName
             };
         }
     }),

@@ -4,7 +4,7 @@
 // process listens, where its files are, how it is fronted, and the one key that unlocks
 // everything else.
 //
-// The gateway and SMS credentials are NOT here. They live in the console, in one place. Two
+// The gateway and mail credentials are NOT here. They live in the console, in one place. Two
 // places to set one value is a trap: the database wins, so changing the environment copy
 // appears to do nothing. And nobody can run this shop without opening the console regardless
 // - gift codes only enter through it - so a second way to configure the gateway bought

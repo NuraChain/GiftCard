@@ -1,4 +1,11 @@
-// The order row's shape and the phone-search helper. `shaped` lives in platform/db.ts.
+// The order row's shape, and the UUID the inventory validates against. `shaped` lives in
+// platform/db.ts.
+//
+// THE PHONE-SEARCH HELPER IS GONE and is not missed. A mobile number has four spellings that
+// all mean the same number, so searching for one needed a helper that stripped the country
+// code and the trunk zero to find a fragment common to all of them. An email address has ONE
+// spelling - that is what `normalizeEmail` guarantees - so the ledger's search is a plain
+// substring match and there is nothing to reconcile.
 import type { Order, OrderStatus } from './types.ts';
 
 /** The row shape SQLite returns for an order; booleans are integers and there are no unions. */
@@ -7,11 +14,11 @@ export interface OrderRow {
     authority: string | null;
     amount: number;
     toman: number;
-    phone: string;
+    email: string;
     status: string;
     code: string | null;
     ref_id: number | null;
-    sms_delivered: number;
+    mail_delivered: number;
     created_at: string;
     settled_at: string | null;
 }
@@ -22,26 +29,14 @@ export function toOrder(row: OrderRow): Order {
         authority: row.authority,
         amount: row.amount,
         toman: row.toman,
-        phone: row.phone,
+        email: row.email,
         status: row.status as OrderStatus,
         code: row.code,
         refId: row.ref_id,
-        smsDelivered: row.sms_delivered === 1,
+        mailDelivered: row.mail_delivered === 1,
         createdAt: row.created_at,
         settledAt: row.settled_at
     };
-}
-
-/**
- * The digits of a phone search that survive every spelling of the same number. Numbers are
- * stored as `+989170459330`; an operator types `09170459330`, `9170459330`, or just
- * `917045`. Stripping the country code and the trunk zero leaves a fragment that is a
- * substring of the stored form in all four cases. Returns '' when the term is not a phone
- * search at all, which the query then skips instead of matching everything.
- */
-export function phoneNeedle(term: string): string {
-    const digits = term.replace(/[\s\-().]/g, '').replace(/^(\+98|0098|98|0)/, '');
-    return /^\d{3,}$/.test(digits) ? digits : '';
 }
 
 /** Canonical 8-4-4-4-4 hex. Anything else is handed back to the admin, not stored. */

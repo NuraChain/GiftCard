@@ -116,7 +116,7 @@ export default function Orders(): ReactNode {
                         id="ledger-search"
                         tone="surface"
                         className="ps-11 pe-4 text-small"
-                        placeholder="شماره موبایل، کد، یا شمارهٔ پیگیری"
+                        placeholder="ایمیل، کد، یا شمارهٔ پیگیری"
                         value={search}
                         onChange={setSearch}
                     />
@@ -157,7 +157,7 @@ export default function Orders(): ReactNode {
                             <thead className="border-b border-line text-caption text-muted">
                                 <tr>
                                     <th className="p-3 text-start font-normal">زمان</th>
-                                    <th className="p-3 text-start font-normal">موبایل</th>
+                                    <th className="p-3 text-start font-normal">ایمیل</th>
                                     <th className="p-3 text-start font-normal">کارت</th>
                                     <th className="p-3 text-start font-normal">مبلغ</th>
                                     <th className="p-3 text-start font-normal">وضعیت</th>
@@ -178,11 +178,11 @@ export default function Orders(): ReactNode {
                                             {moment(order.createdAt)}
                                         </td>
                                         <td
-                                            data-label="موبایل"
+                                            data-label="ایمیل"
                                             className="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold"
                                         >
                                             <span dir="ltr" className="latin">
-                                                {order.phone}
+                                                {order.email}
                                             </span>
                                         </td>
                                         <td
@@ -205,10 +205,10 @@ export default function Orders(): ReactNode {
                                         >
                                             {STATUS_TEXT[order.status]?.label ?? order.status}
                                             {order.status === 'paid' &&
-                                                !order.smsDelivered &&
+                                                !order.mailDelivered &&
                                                 order.code !== null && (
                                                     <span className="block text-caption font-normal text-muted">
-                                                        پیامک نرفت
+                                                        ایمیل نرفت
                                                     </span>
                                                 )}
                                         </td>
