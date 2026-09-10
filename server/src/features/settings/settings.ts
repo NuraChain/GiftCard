@@ -31,6 +31,9 @@ export const SETTING_KEYS = [
     'smtpUser',
     'smtpPassword',
     'smtpFrom',
+    'telegramBotToken',
+    'telegramChatId',
+    'telegramBase',
     'nobitexBase',
     'wallexBase',
     'marginPercent',
@@ -40,7 +43,12 @@ export const SETTING_KEYS = [
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 /** The ones masked on the way out and in the audit. The rest are hosts and template names. */
-const SECRETS = new Set<SettingKey>(['merchantId', 'smtpPassword', 'adminKeyHash']);
+const SECRETS = new Set<SettingKey>([
+    'merchantId',
+    'smtpPassword',
+    'telegramBotToken',
+    'adminKeyHash'
+]);
 
 /** What the shop and the gateway client read on every call. */
 export interface RuntimeSettings {
@@ -63,6 +71,14 @@ export interface RuntimeSettings {
 
     /** The From address. Most relays refuse a From that is not the authenticated account. */
     smtpFrom: string;
+
+    /**
+     * The operations bot: a ping on every sale, and the database once an hour. Empty means
+     * off - see features/telegram/ for what is and is not sent down it.
+     */
+    telegramBotToken: string;
+    telegramChatId: string;
+    telegramBase: string;
 
     /** The two exchanges the tether rate is cross-checked between. See features/rate/. */
     nobitexBase: string;
@@ -97,6 +113,9 @@ const DEFAULTS = {
     smtpUser: '',
     smtpPassword: '',
     smtpFrom: '',
+    telegramBotToken: '',
+    telegramChatId: '',
+    telegramBase: 'https://api.telegram.org',
     nobitexBase: 'https://api.nobitex.ir',
     wallexBase: 'https://api.wallex.ir',
     marginPercent: 6
@@ -269,6 +288,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 smtpUser: pick('smtpUser', DEFAULTS.smtpUser),
                 smtpPassword: pick('smtpPassword', DEFAULTS.smtpPassword),
                 smtpFrom: pick('smtpFrom', DEFAULTS.smtpFrom),
+                telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
+                telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
+                telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
                 nobitexBase: pick('nobitexBase', DEFAULTS.nobitexBase),
                 wallexBase: pick('wallexBase', DEFAULTS.wallexBase),
                 marginPercent: marginFrom(pick('marginPercent', String(DEFAULTS.marginPercent)))

@@ -34,6 +34,9 @@ import { SESSION_COOKIE, type Admin } from './features/console/session.ts';
 import { inventoryHandlers } from './features/inventory/routes.ts';
 import type { TetherRate } from './features/rate/rate.ts';
 import { rateHandlers } from './features/rate/routes.ts';
+import type { BackupJob, SaleNotifier } from './features/telegram/notify.ts';
+import { telegramHandlers } from './features/telegram/routes.ts';
+import type { Telegram } from './features/telegram/telegram.ts';
 import { settingsHandlers } from './features/settings/routes.ts';
 import type { Settings } from './features/settings/settings.ts';
 import { throttle } from './platform/throttle.ts';
@@ -54,6 +57,11 @@ export interface AppOptions {
      */
     rate: TetherRate;
 
+    /** The operations bot: a ping per sale, and the hourly database backup. */
+    telegram: Telegram;
+    notifier: SaleNotifier;
+    backup: BackupJob;
+
     /** The absolute URL the gateway returns the buyer to. */
     callbackUrl: string;
 
@@ -71,6 +79,7 @@ export interface AppOptions {
 
 export function buildApp(options: AppOptions): FastifyInstance {
     const { store, payment, mailer, admin, settings, rate, callbackUrl, log } = options;
+    const { telegram, notifier, backup } = options;
     const resultPath = options.resultPath ?? '/';
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
@@ -137,7 +146,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
     // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
     // itself rather than through the contract.
-    const checkout = createCheckout({ store, payment, mailer, log });
+    const checkout = createCheckout({ store, payment, mailer, notifier, log });
     const pay = { store, settings, rate, payment, checkout, callbackUrl, resultPath, log };
     mountPayCallback(app, pay);
 
@@ -164,6 +173,13 @@ export function buildApp(options: AppOptions): FastifyInstance {
             'admin.saveSettings': [requireAdmin],
             'admin.settingsLog': [requireAdmin],
             'admin.rate': [requireAdmin],
+            'admin.telegram': [requireAdmin],
+
+            // Both of these send something outward, and the backup sends the WHOLE DATABASE.
+            // Guarded, and throttled hard enough that a stolen session cannot use them to
+            // walk the business out one upload at a time.
+            'admin.testTelegram': [requireAdmin, guard(throttle(5, 60_000))],
+            'admin.backupNow': [requireAdmin, guard(throttle(3, 60_000))],
 
             // Rotation takes the CURRENT key, so it is one more place a credential can be
             // guessed against - guarded and throttled.
@@ -180,7 +196,8 @@ export function buildApp(options: AppOptions): FastifyInstance {
                 ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
                 ...settingsHandlers({ settings, admin, mailer, callbackUrl, log }),
-                ...rateHandlers({ rate, settings })
+                ...rateHandlers({ rate, settings }),
+                ...telegramHandlers({ telegram, backup, settings })
             }
         }
     });

@@ -20,6 +20,8 @@ import type {
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
+import type { BackupJob, Sale, SaleNotifier } from '../src/features/telegram/notify.ts';
+import type { Telegram } from '../src/features/telegram/telegram.ts';
 import { createSettings, type Settings } from '../src/features/settings/settings.ts';
 import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
 import { createStore, type Store } from '../src/db/index.ts';
@@ -105,12 +107,27 @@ interface Fakes {
     mailer: MailSender;
     mailSent: Array<{ email: string; code: string; amount: number }>;
     mailResult: MailResult;
+
+    /** Every sale the operations bot was told about, in order. */
+    notifier: SaleNotifier;
+    sales: Sale[];
+
+    telegram: Telegram;
+    telegramSent: string[];
+    telegramConfigured: boolean;
+
+    backup: BackupJob;
+    backupsRun: number;
 }
 
 function fakes(): Fakes {
     const state: Fakes = {
         verifyCalls: [],
         mailSent: [],
+        sales: [],
+        telegramSent: [],
+        telegramConfigured: true,
+        backupsRun: 0,
         requestOverride: null,
         descriptions: [],
         opened: 0,
@@ -140,6 +157,29 @@ function fakes(): Fakes {
                 state.mailSent.push({ email, code, amount });
                 return Promise.resolve(state.mailResult);
             }
+        },
+        // The notifier records SYNCHRONOUSLY, which is what makes it assertable: the real one
+        // returns void and does its work in the background precisely so that nothing can put
+        // a chat server on the path between a buyer and their code.
+        notifier: {
+            sold: (sale) => {
+                state.sales.push(sale);
+            }
+        },
+        telegram: {
+            configured: () => state.telegramConfigured,
+            sendMessage: (text) => {
+                state.telegramSent.push(text);
+                return Promise.resolve({ ok: true });
+            },
+            sendDocument: () => Promise.resolve({ ok: true })
+        },
+        backup: {
+            runNow: () => {
+                state.backupsRun += 1;
+                return Promise.resolve({ ok: true });
+            },
+            start: () => (): void => {}
         }
     };
     return state;
@@ -167,6 +207,9 @@ beforeEach(() => {
         rate,
         payment: fake.payment,
         mailer: fake.mailer,
+        telegram: fake.telegram,
+        notifier: fake.notifier,
+        backup: fake.backup,
         admin: createAdmin({
             matches: (candidate) => settings.matchesAdminKey(candidate),
             secureCookie: false
@@ -516,6 +559,66 @@ describe('the callback', () => {
         expect(fake.mailSent).toEqual([
             { email: 'buyer@example.com', code: receipt.code, amount: 10 }
         ]);
+    });
+
+    it('tells the operations bot what sold, and never the code', async () => {
+        const { authority, token } = await pending();
+        await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
+
+        const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
+            code: string;
+        };
+
+        expect(fake.sales).toHaveLength(1);
+        const sale = fake.sales[0];
+        expect(sale.amount).toBe(10);
+        expect(sale.toman).toBe(PRICES[10]);
+        expect(sale.email).toBe('buyer@example.com');
+        expect(sale.refId).toBe(987654);
+        expect(sale.receipt).toBe(token);
+        expect(sale.codeDelivered).toBe(true);
+        // Stock is counted AFTER the sale, which is the number the operator wants.
+        expect(sale.remaining).toBe(0);
+
+        // THE LINE THIS TEST EXISTS FOR. A gift code is bearer value; a chat history is not
+        // where the shop's inventory belongs. Nothing in the notification carries one.
+        expect(JSON.stringify(sale)).not.toContain(receipt.code);
+    });
+
+    it('flags the owed sale to the bot as the thing needing a human', async () => {
+        const { authority } = await pending();
+        // The hold lapses and the last code goes elsewhere before this payment lands.
+        store.settleUnpaid(store.recentOrders(1)[0].id, 'failed');
+        const drain = store.availableFor(10);
+        for (let index = 0; index < drain; index += 1) {
+            store.startOrder(
+                {
+                    id: `drain-${index}`,
+                    amount: 10,
+                    toman: PRICES[10],
+                    email: 'drain@example.com',
+                    createdAt: new Date().toISOString()
+                },
+                60_000
+            );
+        }
+        fake.sales.length = 0;
+
+        await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
+
+        // Money verified, nothing to hand over. This is the one notification an operator has
+        // to act on, so it is not silently the same shape as a happy sale.
+        expect(fake.sales).toHaveLength(1);
+        expect(fake.sales[0].codeDelivered).toBe(false);
+    });
+
+    it('does not tell the bot about a payment that did not verify', async () => {
+        const { authority } = await pending();
+        fake.verifyResult = { ok: false, reason: 'nope' };
+
+        await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
+
+        expect(fake.sales).toHaveLength(0);
     });
 
     it('returns the SAME code on a replayed callback and never takes a second from stock', async () => {
@@ -1051,6 +1154,52 @@ describe('runtime settings', () => {
         expect((await post('/api/admin/test-email', { email: 'buyer@example.com' })).status).toBe(
             401
         );
+        // The backup route uploads the WHOLE DATABASE - every unsold code in it. If any route
+        // in this file must never answer an anonymous caller, it is this one.
+        expect((await get('/api/admin/telegram')).status).toBe(401);
+        expect((await post('/api/admin/telegram/test', {})).status).toBe(401);
+        expect((await post('/api/admin/telegram/backup', {})).status).toBe(401);
+    });
+});
+
+describe('the operations bot', () => {
+    async function signedIn(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return (response.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+
+    it('reports what is configured without handing the token back', async () => {
+        const cookie = await signedIn();
+        settings.save({ telegramBotToken: '1234:SECRETTOKEN9999', telegramChatId: '-100123' });
+
+        const view = await (await get('/api/admin/telegram', { cookie })).text();
+
+        expect(view).toContain('••••9999');
+        expect(view).toContain('-100123');
+        // Write-only, exactly like the merchant id and the SMTP password: a stolen session
+        // can replace a credential and can never read one out.
+        expect(view).not.toContain('SECRETTOKEN');
+    });
+
+    it('sends a test message so a token can be checked before a sale depends on it', async () => {
+        const cookie = await signedIn();
+        const result = (await (await post('/api/admin/telegram/test', {}, { cookie })).json()) as {
+            ok: boolean;
+        };
+
+        expect(result.ok).toBe(true);
+        expect(fake.telegramSent).toHaveLength(1);
+        expect(fake.telegramSent[0]).toContain('گاردین سرویس');
+    });
+
+    it('runs a backup on demand rather than making the operator wait an hour', async () => {
+        const cookie = await signedIn();
+        const result = (await (
+            await post('/api/admin/telegram/backup', {}, { cookie })
+        ).json()) as { ok: boolean };
+
+        expect(result.ok).toBe(true);
+        expect(fake.backupsRun).toBe(1);
     });
 });
 

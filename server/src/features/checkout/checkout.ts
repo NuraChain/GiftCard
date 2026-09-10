@@ -25,11 +25,19 @@ import type { Logger } from '../../platform/logging.ts';
 import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 import type { MailSender } from './mailer.ts';
+import type { SaleNotifier } from '../telegram/notify.ts';
 
 export interface CheckoutOptions {
     store: Store;
     payment: PaymentGateway;
     mailer: MailSender;
+
+    /**
+     * Told about every settled sale. Optional, and FIRE AND FORGET by its own signature - a
+     * chat server must never sit between a buyer and their code.
+     */
+    notifier?: SaleNotifier;
+
     log?: Logger;
 }
 
@@ -42,7 +50,7 @@ export interface Checkout {
 }
 
 export function createCheckout(options: CheckoutOptions): Checkout {
-    const { store, payment, mailer, log } = options;
+    const { store, payment, mailer, notifier, log } = options;
 
     // Settling is serialised per order. Without this, two callbacks arriving together (a
     // double-click on the gateway's return, a prefetching browser) would both see an
@@ -65,6 +73,20 @@ export function createCheckout(options: CheckoutOptions): Checkout {
         }
 
         const code = store.settlePaid(order.id, verified.refId);
+
+        // Announced HERE - after the money and the code are decided, before the email is
+        // attempted. The operator hears about the sale even when the mail server is hanging,
+        // and the owed case below is the one they most need to hear about at all.
+        notifier?.sold({
+            amount: order.amount,
+            toman: order.toman,
+            email: order.email,
+            refId: verified.refId,
+            receipt: order.id,
+            remaining: store.availableFor(order.amount),
+            codeDelivered: code !== null
+        });
+
         if (code === null) {
             // Money verified with no code left to give. It is recorded as PAID because it
             // was paid; calling it a failure would be a lie about money that has moved.

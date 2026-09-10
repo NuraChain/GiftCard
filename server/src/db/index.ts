@@ -28,6 +28,12 @@ export function createStore(file: string, onMigrate?: (names: string[]) => void)
         // in the codes table, so this is the one call that needs both modules.
         stock: () => codes.stock(tiers.tiers()),
 
+        // `VACUUM INTO` is SQLite's own consistent-snapshot call: it takes the same locks a
+        // read does, so a purchase committing mid-backup is either fully in the snapshot or
+        // fully absent - never half. The single quotes in the path are doubled because the
+        // destination is a SQL string literal, and this is the one place a path becomes one.
+        backupTo: (destination) => db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`),
+
         close: () => db.close()
     };
 }

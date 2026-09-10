@@ -23,6 +23,8 @@ import { config } from './config.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
 import { nobitexSource, wallexSource } from './features/rate/sources.ts';
+import { createTelegram } from './features/telegram/telegram.ts';
+import { createBackupJob, createSaleNotifier } from './features/telegram/notify.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings } from './features/settings/settings.ts';
@@ -45,6 +47,8 @@ const log = pino({
             'authority',
             'code',
             'email',
+            'botToken',
+            'telegramBotToken',
             '*.merchantId',
             '*.apiKey',
             '*.adminKey',
@@ -53,7 +57,9 @@ const log = pino({
             '*.newKey',
             '*.authority',
             '*.code',
-            '*.email'
+            '*.email',
+            '*.botToken',
+            '*.telegramBotToken'
         ],
         censor: '[redacted]'
     },
@@ -132,10 +138,44 @@ if (!rate.status().selling) {
     );
 }
 
+// The operations bot. Hosts and credentials are read PER CALL, so pasting a token into the
+// console turns notifications and backups on without a restart.
+const telegram = createTelegram({
+    settings: () => {
+        const now = settings.current();
+        return {
+            botToken: now.telegramBotToken,
+            chatId: now.telegramChatId,
+            baseUrl: now.telegramBase
+        };
+    }
+});
+const notifier = createSaleNotifier({
+    telegram,
+    appName: () => settings.current().appName,
+    log
+});
+const backup = createBackupJob({
+    store,
+    telegram,
+    appName: () => settings.current().appName,
+    log
+});
+
+// The hourly schedule starts whether or not a token is set: a bot configured at noon should
+// start backing up at one, not at the next restart. An unconfigured run is a cheap no-op.
+const stopBackups = backup.start();
+if (!telegram.configured()) {
+    log.warn('telegram is OFF - no sale notifications and no off-machine database backups');
+}
+
 const app = buildApp({
     store,
     settings,
     rate,
+    telegram,
+    notifier,
+    backup,
     payment: createPayment({
         settings: () => {
             const now = settings.current();
@@ -173,6 +213,7 @@ app.addHook('onRequest', rateLimit(200, 60_000));
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
         stopRate();
+        stopBackups();
         void app.close().then(() => {
             store.close();
             process.exit(0);

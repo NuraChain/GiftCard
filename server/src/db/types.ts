@@ -244,5 +244,14 @@ export interface Store extends SettingsStore {
     /** Paid orders with no code, across the WHOLE table - not just the page being shown. */
     owedCount(): number;
 
+    /**
+     * Writes a CONSISTENT snapshot of the whole database to `file`.
+     *
+     * Through SQLite itself, not a file copy: copying the file while the shop is trading
+     * captures a half-written page and a WAL that does not match it, which restores to
+     * nothing. This is what the hourly Telegram backup sends.
+     */
+    backupTo(file: string): void;
+
     close(): void;
 }

@@ -63,6 +63,11 @@ export const settingsInput = z.object({
     smtpUser: z.string().trim().max(200).optional(),
     smtpPassword: z.string().max(200).optional(),
     smtpFrom: z.string().trim().max(254).optional(),
+
+    /** The operations bot. The token is write-only; a blank one means "keep it". */
+    telegramBotToken: z.string().trim().max(200).optional(),
+    telegramChatId: z.string().trim().max(64).optional(),
+    telegramBase: z.string().trim().max(200).optional(),
     nobitexBase: z.string().trim().max(200).optional(),
     wallexBase: z.string().trim().max(200).optional(),
 
