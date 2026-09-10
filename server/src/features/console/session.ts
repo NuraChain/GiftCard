@@ -8,22 +8,44 @@
 //   - the key never lives here: `matches` is owned by `settings.ts`, which compares against a
 //     scrypt hash in the database and falls back to the environment key until one is rotated,
 //     so a stolen database yields a hash and a rotation needs no restart;
-//   - attempts are locked out per IP, so 80 bits of key are not brute-forced online;
+//   - attempts are locked out per client address, so 80 bits of key are not brute-forced
+//     online;
 //   - the browser holds an opaque session id in an HttpOnly cookie, never the key itself,
 //     so no script on the page can read the credential and no history entry contains it;
 //   - the key never appears in a response body, a URL, or a log line.
-import { clientIp, expireCookie, parseCookies, serializeCookie, TooManyRequestsError, UnauthorizedError } from '@azerothjs/http';
+//
+// NOTHING HTTP IS IMPORTED HERE. This module takes a client address and a session id as
+// plain strings and hands back cookie instructions; the route does the reading and the
+// setting. That is what lets the lockout be tested without a request object, and it is why
+// swapping the HTTP layer under it changed nothing in this file but its edges.
+import { TooManyRequestsError, UnauthorizedError } from '../../platform/http.ts';
 
 /** The published shape: four groups of four, over the no-I/O/0/1 alphabet (~80 bits). */
 export const ADMIN_KEY_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
 
-const COOKIE = 'nura_admin';
+/** The cookie the browser carries. Read by the admin guard, written by the two session routes. */
+export const SESSION_COOKIE = 'guardian_session';
+
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const ATTEMPT_LIMIT = 5;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 /** How often the expiry sweep may actually run. See {@link createAdmin}'s `sweep`. */
 const SWEEP_INTERVAL_MS = 60 * 1000;
+
+/** What the route needs in order to set the cookie. Deliberately not a framework type. */
+export interface CookieInstruction
+{
+    name: string;
+    value: string;
+    options: {
+        httpOnly: boolean;
+        sameSite: 'strict';
+        secure: boolean;
+        path: string;
+        maxAge?: number;
+    };
+}
 
 export interface AdminOptions
 {
@@ -34,36 +56,29 @@ export interface AdminOptions
      */
     matches(candidate: string): boolean;
 
-    /** Adds `Secure` to the session cookie; on in production, off on a local http origin. */
+    /**
+     * Adds `Secure` to the session cookie.
+     *
+     * This is CONFIGURED rather than inferred, because nginx terminates TLS: the request
+     * this process sees is plain http even when the browser is on https, so asking the
+     * request would answer "no" on every production deployment.
+     */
     secureCookie: boolean;
 }
 
 export interface Admin
 {
-    /** Verifies the key and returns a `Set-Cookie` value, or throws (wrong key / locked out). */
-    signIn(request: Request, key: string): string;
+    /** Verifies the key and returns the cookie to set, or throws (wrong key / locked out). */
+    signIn(clientAddress: string, key: string): CookieInstruction;
 
-    /** Invalidates the caller's session and returns the cookie that clears it. */
-    signOut(request: Request): string;
+    /** Invalidates the given session and returns the cookie that clears it. */
+    signOut(sessionId: string | undefined): CookieInstruction;
 
     /** Ends EVERY session. A key rotation that leaves the old holder signed in rotated nothing. */
     signOutAll(): void;
 
-    /** Throws {@link UnauthorizedError} unless the request carries a live session. */
-    require(request: Request): void;
-}
-
-/**
- * @internal The lockout bucket. `clientIp` is read WITHOUT trustProxy: a forwarding header
- * is attacker-controlled, and honouring one here would let a single machine reset its own
- * attempt counter on every request - which is the same as having no lockout at all.
- *
- * Off-socket requests share one bucket. That is deliberate: an unknown origin is throttled
- * together rather than exempted.
- */
-function attemptKey(request: Request): string
-{
-    return clientIp(request) ?? 'unknown';
+    /** Throws {@link UnauthorizedError} unless the id names a live session. */
+    require(sessionId: string | undefined): void;
 }
 
 export function createAdmin(options: AdminOptions): Admin
@@ -80,15 +95,15 @@ export function createAdmin(options: AdminOptions): Admin
      *
      * `attempts` was originally cleared only for a bucket that went on to sign in
      * successfully, so a failed attempt from an address that never came back stayed for the
-     * process lifetime. The key is the client IP, so an attacker rotating source addresses
-     * grew it without bound - a memory leak on the one path whose whole job is to resist an
-     * attacker.
+     * process lifetime. The key is the client address, so an attacker rotating source
+     * addresses grew it without bound - a memory leak on the one path whose whole job is to
+     * resist an attacker.
      *
      * Sweeping on EVERY call fixed that and introduced something worse: the sweep is O(n)
      * over the map, so a large map made every sign-in slower, which is a CPU exhaustion the
      * same attacker controls. Measured at 200,000 distinct addresses it took minutes. The
-     * gate makes it amortised O(1), which is exactly what the framework's own MemoryRateStore
-     * does for the same reason.
+     * gate makes it amortised O(1), which is what the rate store next door does for the
+     * same reason.
      */
     let nextSweep = 0;
     function sweep(now: number): void
@@ -114,11 +129,23 @@ export function createAdmin(options: AdminOptions): Admin
         }
     }
 
+    const clearing = (): CookieInstruction => ({
+        name: SESSION_COOKIE,
+        value: '',
+        options: {
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: options.secureCookie,
+            path: '/',
+            maxAge: 0
+        }
+    });
+
     return {
-        signIn(request, key)
+        signIn(clientAddress, key)
         {
             const now = Date.now();
-            const bucketKey = attemptKey(request);
+            const bucketKey = clientAddress === '' ? 'unknown' : clientAddress;
             const bucket = attempts.get(bucketKey);
             if (bucket !== undefined && bucket.until > now && bucket.count >= ATTEMPT_LIMIT)
             {
@@ -142,23 +169,26 @@ export function createAdmin(options: AdminOptions): Admin
 
             const id = crypto.randomUUID();
             sessions.set(id, now + SESSION_MS);
-            return serializeCookie(COOKIE, id, {
-                httpOnly: true,
-                sameSite: 'strict',
-                secure: options.secureCookie,
-                path: '/',
-                maxAge: Math.floor(SESSION_MS / 1000)
-            });
+            return {
+                name: SESSION_COOKIE,
+                value: id,
+                options: {
+                    httpOnly: true,
+                    sameSite: 'strict',
+                    secure: options.secureCookie,
+                    path: '/',
+                    maxAge: Math.floor(SESSION_MS / 1000)
+                }
+            };
         },
 
-        signOut(request)
+        signOut(sessionId)
         {
-            const id = parseCookies(request)[COOKIE];
-            if (id !== undefined)
+            if (sessionId !== undefined)
             {
-                sessions.delete(id);
+                sessions.delete(sessionId);
             }
-            return expireCookie(COOKIE, { path: '/', secure: options.secureCookie });
+            return clearing();
         },
 
         signOutAll()
@@ -166,12 +196,11 @@ export function createAdmin(options: AdminOptions): Admin
             sessions.clear();
         },
 
-        require(request)
+        require(sessionId)
         {
             const now = Date.now();
             sweep(now);
-            const id = parseCookies(request)[COOKIE];
-            const expiresAt = id === undefined ? undefined : sessions.get(id);
+            const expiresAt = sessionId === undefined ? undefined : sessions.get(sessionId);
             if (expiresAt === undefined || expiresAt <= now)
             {
                 throw new UnauthorizedError('برای این بخش باید وارد شوید');

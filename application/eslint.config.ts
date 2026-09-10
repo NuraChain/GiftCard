@@ -1,26 +1,47 @@
 import js from '@eslint/js';
+import type { ESLint } from 'eslint';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
 import { defineConfig, globalIgnores } from 'eslint/config';
-import azeroth from '@azerothjs/eslint-plugin';
 
-// The AzerothJS house style: allman braces, 4-space indent, single quotes, and the
-// TypeScript discipline the framework itself is written under. `azeroth.configs.recommended`
-// makes .azeroth a first-class lint target (full rule set + the reactivity rules).
+// The house style, unchanged by the move to React: allman braces, 4-space indent, single
+// quotes, and the TypeScript discipline the rest of the repo is written under.
+//
+// What React adds is `react-hooks`, and it is the one set of rules here that catches BUGS
+// rather than inconsistencies: a missing dependency in an effect is a stale render, and a
+// hook behind a condition is a crash on the second pass.
+//
+// Those TWO rules are taken, not the plugin's whole recommended set. v7 bundles the React
+// Compiler's rules with them - `set-state-in-effect`, `immutability`, `refs` and the rest -
+// and those encode a stricter model than this app is written to: fetching a tab's data when
+// the console session opens is a synchronisation with something outside React, which is what
+// an effect is for, and the compiler set calls every such effect a mistake. Adopting it is a
+// decision about how the whole application is written, so it is not made by default here.
+// (`refs` did catch one real defect on its way past - see ui/toast.tsx.)
 const config: ReturnType<typeof defineConfig> = defineConfig([
     globalIgnores([
         '**/dist/**',
-        // The SSR bundle from `vite build --ssr`: generated output, not source.
-        '**/dist-server/**',
         '**/node_modules/**',
-        '**/build/**',
-        // Generated .azeroth type mirror (the Vite plugin's emitDeclarations output).
-        '**/.azeroth/**'
+        '**/build/**'
     ]),
     js.configs.recommended,
     tseslint.configs.recommended,
     {
-        files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
+        files: ['**/*.{ts,tsx}'],
+        // The plugin ships two generations of config under one export and its own type
+        // does not fit ESLint's `Plugin`. The rules are what is wanted here, not the
+        // presets, so the shape is asserted rather than chased across versions.
+        plugins: { 'react-hooks': reactHooks as unknown as ESLint.Plugin },
+        rules:
+        {
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn'
+        }
+    },
+    {
+        files: ['**/*.{js,mjs,cjs,ts,mts,cts,tsx}'],
         languageOptions: { globals: globals.browser },
         rules:
         {
@@ -36,7 +57,7 @@ const config: ReturnType<typeof defineConfig> = defineConfig([
             // autofix mangles them). Indentation stays consistent by convention + the brace
             // and spacing rules below; swap in @stylistic/indent if you want it enforced.
             'semi': ['error', 'always'],
-            'brace-style': ['error', 'allman'],
+            'brace-style': ['error', 'allman', { allowSingleLine: true }],
             'block-spacing': ['error', 'always'],
             'object-curly-spacing': ['error', 'always'],
             'template-curly-spacing': ['error', 'always'],
@@ -76,17 +97,19 @@ const config: ReturnType<typeof defineConfig> = defineConfig([
         }
     },
     {
+        // Fast refresh replaces a module in place, which it can only do when the module's
+        // exports are all components. A page that also exports its context hook is the
+        // normal, deliberate exception.
+        files: ['**/*.tsx'],
+        plugins: { 'react-refresh': reactRefresh },
+        rules: { 'react-refresh/only-export-components': ['warn', { allowConstantExport: true }] }
+    },
+    {
         files: ['**/*.{js,mjs,cjs}'],
         rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
     },
     {
-        files: ['**/*.spec.ts', '**/tests/**/*.ts'],
-        rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
-    },
-    ...azeroth.configs.recommended,
-    {
-        // A .azeroth component's return type is owned by the compiler, not the author.
-        files: ['**/*.azeroth/*.ts'],
+        files: ['**/*.spec.{ts,tsx}', '**/tests/**/*.{ts,tsx}'],
         rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
     }
 ]);

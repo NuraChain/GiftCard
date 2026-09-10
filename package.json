@@ -1,23 +1,20 @@
 {
-    "name": "nura-chain",
+    "name": "guardian-service",
     "private": true,
     "version": "0.0.0",
     "type": "module",
     "engines": {
-        "node": ">=22"
+        "node": ">=24"
     },
     "workspaces": [
         "application",
         "server"
     ],
     "scripts": {
-        "dev": "azeroth dev",
-        "check": "azeroth check",
-        "build": "azeroth build",
+        "dev": "node scripts/dev.mjs",
+        "check": "npm run check --workspaces --if-present",
+        "build": "npm run build --workspace application",
         "test": "npm test --workspaces --if-present",
         "start": "npm start --workspace server"
-    },
-    "devDependencies": {
-        "@azerothjs/cli": "^1.1.0"
     }
 }

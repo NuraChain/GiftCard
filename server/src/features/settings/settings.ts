@@ -60,7 +60,7 @@ export interface RuntimeSettings
  */
 const DEFAULTS =
 {
-    appName: 'نورا چین',
+    appName: 'گاردین سرویس',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
     kavenegarKey: '',

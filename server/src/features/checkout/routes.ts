@@ -1,17 +1,17 @@
 // The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt.
-import { ConflictError, HttpError, NotFoundError, redirect, type App } from '@azerothjs/http';
-import type { Logger } from '@azerothjs/logger';
+import type { FastifyInstance } from 'fastify';
+import type { Logger } from '../../platform/logging.ts';
 
-import type { HandlersWithGuards } from '@azerothjs/http/api';
-
-import type { contract, Receipt } from '../../contract/index.ts';
+import type { Handlers } from '../../platform/api.ts';
+import { ConflictError, HttpError, NotFoundError } from '../../platform/http.ts';
+import { throttle } from '../../platform/throttle.ts';
+import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/index.ts';
 import { mintReceiptToken } from '../../domain/codes.ts';
 import { displayPhone, normalizePhone } from '../../domain/phone.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 import type { Checkout } from './checkout.ts';
 import type { Settings } from '../settings/settings.ts';
-import { throttle } from '../../platform/throttle.ts';
 
 /**
  * How long a code stays reserved for a checkout that has not come back. Long enough for a
@@ -36,38 +36,50 @@ export interface PayOptions
     log?: Logger;
 }
 
+/** Only this feature's routes. app.ts mounts them as the whole `pay` group. */
+type PayHandlers = Handlers<typeof contract>['pay'];
+
 /**
  * The gateway's return. Deliberately NOT a contract route: no client calls it, it answers
  * with a redirect rather than a body, and its query string is written by a third party - so
  * it reads its two parameters by hand and defensively. Throttled because each hit can cost
  * one verify call to the gateway.
+ *
+ * The redirect is RELATIVE, and stays correct now that nginx serves the pages: the browser
+ * resolves it against the public origin it asked on, which is the one place the shop lives.
  */
-export function mountPayCallback(app: App, options: PayOptions): void
+export function mountPayCallback(app: FastifyInstance, options: PayOptions): void
 {
     const { store, checkout, resultPath } = options;
+    const limit = throttle(30, 60_000);
 
-    app.with(throttle(30, 60_000)).get('/api/pay/callback', async (context) =>
+    app.get('/api/pay/callback', {
+        preHandler: async (request, reply) =>
+{
+ await limit({ request, reply });
+}
+    }, async (request, reply) =>
     {
-        const authority = context.url.searchParams.get('Authority') ?? '';
+        const params = request.query as Record<string, string | undefined>;
+        const authority = params.Authority ?? '';
         const order = authority === '' ? undefined : store.orderByAuthority(authority);
         if (order === undefined)
         {
             // A forged callback, or one for an order that no longer exists. The two are
             // indistinguishable from here and neither is told anything specific.
-            return redirect(`${ resultPath }?pay=unknown`);
+            return reply.redirect(`${ resultPath }?pay=unknown`, 303);
         }
 
-        await checkout.settle(order, context.url.searchParams.get('Status') === 'OK');
-        return redirect(`${ resultPath }?receipt=${ order.id }#purchase`);
+        await checkout.settle(order, params.Status === 'OK');
+        return reply.redirect(`${ resultPath }?receipt=${ order.id }#purchase`, 303);
     });
 }
 
 /**
- * Every handler under `pay`. The return type comes from the CONTRACT, which is the
- * framework's documented way to keep handlers in their own files without a cast - drift
- * between a route and its handler is a compile error here rather than a runtime 500.
+ * Every handler under `pay`. The return type comes from the CONTRACT, so drift between a
+ * route and its handler is a compile error here rather than a runtime 500.
  */
-export function payHandlers(options: PayOptions): HandlersWithGuards<typeof contract, Record<never, never>>['pay']
+export function payHandlers(options: PayOptions): PayHandlers
 {
     const { store, settings, payment, callbackUrl, log } = options;
 
@@ -87,14 +99,13 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
                     available: stock.get(tier.amount) ?? 0,
                     title: tier.title,
                     blurb: tier.blurb,
-                    sample: tier.sample,
                     recommended: tier.recommended
                 }))
             };
         },
 
         // POST /api/pay/start
-        start: async ({ input }: { input: { amount: number; phone: string } }) =>
+        start: async ({ input }) =>
         {
             // The schema proved the phone is valid; it does not canonicalise, so this is
             // where the buyer's typing becomes the one stored form.
@@ -148,10 +159,10 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
             if (!tracked)
             {
                 store.abandonOrder(order.id);
-                log?.error('could not open a trackable payment', {
+                log?.error({
                     amount: input.amount,
                     reason: opened.ok ? 'duplicate authority' : opened.reason
-                });
+                }, 'could not open a trackable payment');
                 throw new HttpError(502, 'درگاه پرداخت در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.', { code: 'gateway-unavailable' });
             }
 
@@ -159,14 +170,14 @@ export function payHandlers(options: PayOptions): HandlersWithGuards<typeof cont
         },
 
         // GET /api/pay/receipt
-        receipt: ({ query }: { query: { token: string } }): Receipt =>
+        receipt: ({ query }) =>
         {
             const order = store.orderById(query.token);
             // A pending order is indistinguishable from no order here: until the gateway has
             // answered there is nothing true to report.
             if (order === undefined || order.status === 'pending')
             {
-                throw new NotFoundError('receipt');
+                throw new NotFoundError('نتیجه‌ای برای این پرداخت پیدا نشد');
             }
             return {
                 outcome: order.status,

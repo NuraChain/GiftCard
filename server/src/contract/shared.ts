@@ -1,6 +1,6 @@
 // The two fields both halves of the contract need. Everything else lives with the feature
-// that owns it - see pay.ts and admin.ts.
-import { number } from '@azerothjs/schema';
+// that owns it - see each features/*/contract.ts.
+import { z } from 'zod';
 
 /**
  * A denomination, in dollars. This USED to be `union([literal(5), literal(10), literal(25)])`,
@@ -11,7 +11,7 @@ import { number } from '@azerothjs/schema';
  * the live tier table and refuses anything missing or inactive, before a code is claimed or a
  * gateway is called. Read that handler alongside this line - it is where the union went.
  */
-export const amountField = number({ int: true, min: 1, max: 100_000 });
+export const amountField: z.ZodType<number> = z.number().int().min(1).max(100_000);
 
 /** The same field arriving through a query string, where everything is text. */
-export const amountQueryField = number({ int: true, min: 1, max: 100_000, coerce: true });
+export const amountQueryField: z.ZodType<number> = z.coerce.number().int().min(1).max(100_000);

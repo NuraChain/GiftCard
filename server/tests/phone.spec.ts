@@ -61,11 +61,11 @@ describe('phoneField', () =>
 {
     it('passes every accepted shape and fails the rest, in Persian', () =>
     {
-        expect(phoneField.safeParse('09170459330').ok).toBe(true);
-        expect(phoneField.safeParse('+989170459330').ok).toBe(true);
+        expect(phoneField.safeParse('09170459330').success).toBe(true);
+        expect(phoneField.safeParse('+989170459330').success).toBe(true);
 
         const bad = phoneField.safeParse('12345');
-        expect(bad.ok).toBe(false);
+        expect(bad.success).toBe(false);
         // The message is what the buyer reads, so it is written for a buyer.
         expect(JSON.stringify(bad)).toContain('شماره موبایل معتبر نیست');
     });

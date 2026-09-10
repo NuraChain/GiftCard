@@ -3,8 +3,7 @@
 // Codes are BEARER VALUES - whoever reads one can redeem it - so the search view returns
 // them only to a signed-in console, and the buyer's phone is shown in its display form
 // rather than the stored canonical one.
-import type { HandlersWithGuards } from '@azerothjs/http/api';
-
+import type { Handlers } from '../../platform/api.ts';
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
 import { displayPhone } from '../../domain/phone.ts';
@@ -19,7 +18,7 @@ export interface InventoryOptions
 
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type InventoryHandlers = Pick<
-    HandlersWithGuards<typeof contract, Record<never, never>>['admin'],
+    Handlers<typeof contract>['admin'],
     'addCodes' | 'codes'
 >;
 
@@ -29,10 +28,10 @@ export function inventoryHandlers(options: InventoryOptions): InventoryHandlers
 
     return {
         // POST /api/admin/codes
-        addCodes: ({ input }: { input: { amount: number; codes: string[] } }) => store.addCodes(input.amount, input.codes),
+        addCodes: ({ input }) => store.addCodes(input.amount, input.codes),
 
         // GET /api/admin/codes
-        codes: ({ query }: { query: { search?: string; state?: 'free' | 'held' | 'sold'; amount?: number; page?: number } }) =>
+        codes: ({ query }) =>
         {
             const page = Math.max(1, query.page ?? 1);
             const found = store.searchCodes({

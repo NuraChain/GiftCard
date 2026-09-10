@@ -4,9 +4,9 @@
 // and this file is never read again - which is why editing it does not change a running
 // shop, and why it is a seed rather than configuration.
 //
-// The copy lives here rather than in the application because the shop now renders its cards
-// from the database. A tier added next month needs its own words, and words that only exist
-// in a bundled TypeScript file cannot be written by an operator.
+// The copy lives here rather than in the application because the shop renders its cards from
+// the database. A tier added next month needs its own words, and words that only exist in a
+// bundled TypeScript file cannot be written by an operator.
 import type { TierInput } from '../db/index.ts';
 
 /**
@@ -25,7 +25,6 @@ export function seedTiers(): TierInput[]
             toman: 350_000,
             title: 'کارت پنج دلاری',
             blurb: 'برای امتحان کردن سرویس یا هدیه‌ای کوچک. همان کد و همان تحویل آنی کارت‌های بزرگ‌تر.',
-            sample: '3f9a41c8-....-....-............',
             recommended: false,
             active: true,
             sort: 10
@@ -35,7 +34,6 @@ export function seedTiers(): TierInput[]
             toman: 700_000,
             title: 'کارت ده دلاری',
             blurb: 'رایج‌ترین انتخاب: اندازه‌ای که برای بیشتر خریدها کافی است و ته‌مانده‌ای باقی نمی‌گذارد.',
-            sample: '8c2b07d5-....-....-............',
             recommended: true,
             active: true,
             sort: 20
@@ -45,7 +43,6 @@ export function seedTiers(): TierInput[]
             toman: 1_750_000,
             title: 'کارت بیست و پنج دلاری',
             blurb: 'برای استفاده طولانی‌تر یا هدیه دادن. یک کد، بدون تاریخ انقضا.',
-            sample: 'b14e6a90-....-....-............',
             recommended: false,
             active: true,
             sort: 30

@@ -1,15 +1,15 @@
 // THE shared API contract - one declaration, both sides of the wire.
 //
 // The server mounts it (app.ts: mountApi) and the application imports it for the fully
-// inferred client (application/src/api.ts). Read THIS file to see the whole API surface;
-// read pay.ts or admin.ts for one feature's shapes, beside the routes/ file of the same
-// name that implements them.
+// inferred client (application/src/lib/api.ts). Read THIS file to see the whole API surface;
+// read a features/*/contract.ts for one feature's shapes, beside the routes.ts that
+// implements them.
 //
-// CLIENT-SAFE BY CONSTRUCTION, and that is a property of EVERY file in this folder, not
-// just this one. A module here may import `@azerothjs/http/api/client`, `@azerothjs/schema`
-// and `domain/phone.ts` - nothing else. Reaching for the store, a service or a gateway from
-// here would drag the whole server into the browser bundle.
-import { defineContract } from '@azerothjs/http/api/client';
+// CLIENT-SAFE BY CONSTRUCTION, and that is a property of EVERY file reachable from here, not
+// just this one. A module in this chain may import `platform/contract.ts`, `zod` and
+// `domain/` - nothing else. Reaching for the store, a service or a gateway from here would
+// drag the whole server into the browser bundle.
+import { defineContract } from '../platform/contract.ts';
 
 import { catalogueRoutes } from '../features/catalogue/contract.ts';
 import { inventoryRoutes } from '../features/inventory/contract.ts';
@@ -25,7 +25,7 @@ export * from '../features/catalogue/contract.ts';
 export * from '../features/inventory/contract.ts';
 export * from '../features/settings/contract.ts';
 
-/** The whole API, in one screen. Each group's routes live in the file of that name. */
+/** The whole API, in one screen. Each group's routes live with the feature of that name. */
 export const contract = defineContract({
     pay: checkoutRoutes,
     admin: { ...consoleRoutes, ...catalogueRoutes, ...inventoryRoutes, ...settingsRoutes }

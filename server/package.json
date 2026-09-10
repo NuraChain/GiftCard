@@ -1,26 +1,25 @@
 {
-    "name": "nura-chain-server",
+    "name": "guardian-service-server",
     "private": true,
     "version": "0.0.0",
     "type": "module",
     "engines": {
-        "node": ">=22"
+        "node": ">=24"
     },
     "scripts": {
-        "check": "azeroth check",
+        "check": "tsc --noEmit && eslint .",
         "test": "vitest run",
         "start": "node src/main.ts",
         "admin-key": "node scripts/admin-key.mjs"
     },
     "dependencies": {
-        "@azerothjs/http": "^1.1.0",
-        "@azerothjs/kit": "^1.1.0",
-        "@azerothjs/logger": "^1.1.0",
-        "@azerothjs/schema": "^1.1.0"
+        "@fastify/cookie": "^11.1.2",
+        "fastify": "^5.12.3",
+        "pino": "^10.3.1",
+        "pino-roll": "^4.0.0",
+        "zod": "^4.6.1"
     },
     "devDependencies": {
-        "@azerothjs/cli": "^1.1.0",
-        "@azerothjs/eslint-plugin": "^1.1.0",
         "@eslint/js": "^10.0.1",
         "@types/node": "^24.0.0",
         "eslint": "^10.7.0",

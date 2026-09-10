@@ -1,9 +1,0 @@
-// The client entry: one call. A page that arrived WITH markup (the prerendered shop) is
-// ADOPTED in place - hydration - with the server's loader handoff read back so nothing
-// refetches; an empty shell (the dev server, or `/admin`, which is `render: 'client'`)
-// renders normally.
-import { bootClient } from '@azerothjs/kit/client';
-
-import App from './App.azeroth';
-
-bootClient(App);

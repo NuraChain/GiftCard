@@ -2,17 +2,14 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
-import azeroth from '@azerothjs/eslint-plugin';
 
-// The AzerothJS house style: allman braces, 4-space indent, single quotes, and the
-// TypeScript discipline the framework itself is written under. The azeroth reactivity
-// rules apply to the server's .ts too - every @azerothjs/http request is a reactive root.
+// The house style, unchanged by the move off the framework: allman braces, 4-space indent,
+// single quotes, and the TypeScript discipline the rest of the repo is written under.
 const config: ReturnType<typeof defineConfig> = defineConfig([
     globalIgnores([
         '**/dist/**',
         '**/node_modules/**',
-        '**/build/**',
-        '**/.azeroth/**'
+        '**/build/**'
     ]),
     js.configs.recommended,
     tseslint.configs.recommended,
@@ -78,12 +75,6 @@ const config: ReturnType<typeof defineConfig> = defineConfig([
     },
     {
         files: ['**/*.spec.ts', '**/tests/**/*.ts'],
-        rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
-    },
-    ...azeroth.configs.recommended,
-    {
-        // A .azeroth component's return type is owned by the compiler, not the author.
-        files: ['**/*.azeroth/*.ts'],
         rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
     }
 ]);

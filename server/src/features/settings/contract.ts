@@ -6,76 +6,77 @@
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
 //
 // CLIENT-SAFE. Like every features/*/contract.ts, this may import only
-// `@azerothjs/http/api/client`, `@azerothjs/schema` and `domain/`.
-import { get, post } from '@azerothjs/http/api/client';
-import { array, boolean, object, string, type Infer } from '@azerothjs/schema';
+// `platform/contract.ts`, `zod` and `domain/`.
+import { z } from 'zod';
 
+import { get, post } from '../../platform/contract.ts';
 import { phoneField } from '../../domain/phone.ts';
 
-export const settingsView = object({
-    appName: string(),
+export const settingsView = z.object({
+    appName: z.string(),
 
     /** The gateway host in use, and whether it is the sandbox one. */
-    zarinpalBase: string(),
-    sandbox: boolean(),
+    zarinpalBase: z.string(),
+    sandbox: z.boolean(),
 
     /** `••••5555`, or an empty string when nothing is configured. */
-    merchantIdMasked: string(),
-    merchantIdSet: boolean(),
+    merchantIdMasked: z.string(),
+    merchantIdSet: z.boolean(),
 
-    kavenegarKeyMasked: string(),
-    kavenegarKeySet: boolean(),
-    kavenegarTemplate: string(),
-    kavenegarBase: string(),
+    kavenegarKeyMasked: z.string(),
+    kavenegarKeySet: z.boolean(),
+    kavenegarTemplate: z.string(),
+    kavenegarBase: z.string(),
 
     /** Delivery only runs when both the key and the template are present. */
-    smsReady: boolean(),
+    smsReady: z.boolean(),
 
     /** Read-only, from the environment: where the gateway returns the buyer. */
-    callbackUrl: string(),
+    callbackUrl: z.string(),
 
     /** True once the admin key has been rotated into the database. */
-    keyRotated: boolean()
+    keyRotated: z.boolean()
 });
 
 /**
  * Every field is optional: the console sends only what changed, so leaving a secret blank
  * means "keep it" rather than "erase it". Erasing is an explicit empty-string write.
  */
-export const settingsInput = object({
-    appName: string({ trim: true, max: 60 }).optional(),
-    zarinpalBase: string({ trim: true, max: 200 }).optional(),
-    merchantId: string({ trim: true, max: 100 }).optional(),
-    kavenegarKey: string({ trim: true, max: 200 }).optional(),
-    kavenegarTemplate: string({ trim: true, max: 100 }).optional(),
-    kavenegarBase: string({ trim: true, max: 200 }).optional()
+export const settingsInput = z.object({
+    appName: z.string().trim().max(60).optional(),
+    zarinpalBase: z.string().trim().max(200).optional(),
+    merchantId: z.string().trim().max(100).optional(),
+    kavenegarKey: z.string().trim().max(200).optional(),
+    kavenegarTemplate: z.string().trim().max(100).optional(),
+    kavenegarBase: z.string().trim().max(200).optional()
 });
 
 /** One recorded change. Values are masked here too - the log is not a way around write-only. */
-export const settingsLogRow = object({
-    key: string(),
-    before: string(),
-    after: string(),
-    changedAt: string()
+export const settingsLogRow = z.object({
+    key: z.string(),
+    before: z.string(),
+    after: z.string(),
+    changedAt: z.string()
 });
 
-export const settingsLog = object({ entries: array(settingsLogRow) });
+export const settingsLog = z.object({ entries: z.array(settingsLogRow) });
 
 /**
  * Rotating demands the CURRENT key even though a session is already open. A session proves
  * someone was the admin at sign-in; replacing the credential should prove they still are.
  */
-export const rotateKeyInput = object({
-    currentKey: string({ trim: true, max: 32 }),
-    newKey: string({ trim: true, max: 32 })
+export const rotateKeyInput = z.object({
+    currentKey: z.string().trim().max(32),
+    newKey: z.string().trim().max(32)
 });
 
 /** Proving a Kavenegar template is approved without selling something first. */
-export const testSmsInput = object({ phone: phoneField });
-export const testSmsResult = object({ ok: boolean(), reason: string() });
+export const testSmsInput = z.object({ phone: phoneField });
+export const testSmsResult = z.object({ ok: z.boolean(), reason: z.string() });
 
-export type SettingsView = Infer<typeof settingsView>;
-export type SettingsLogRow = Infer<typeof settingsLogRow>;
+export type SettingsView = z.infer<typeof settingsView>;
+export type SettingsInput = z.infer<typeof settingsInput>;
+export type SettingsLogRow = z.infer<typeof settingsLogRow>;
 
 /** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
 export const settingsRoutes = {

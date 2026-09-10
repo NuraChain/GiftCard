@@ -1,9 +1,9 @@
 // The page copy that is NOT the catalogue.
 //
-// The cards used to live here. They live in the database now, because the operator can add
-// and reprice denominations from the console, and words that only exist in a bundled
-// TypeScript file cannot be written by an operator. `server/src/seed.ts` holds what a first
-// boot starts from; after that the console owns them.
+// The cards live in the database, because the operator can add and reprice denominations
+// from the console, and words that only exist in a bundled TypeScript file cannot be written
+// by an operator. `server/src/domain/seed.ts` holds what a first boot starts from; after that
+// the console owns them.
 //
 // What stays here is copy that describes the SERVICE rather than the products: the steps, the
 // promises, the questions, and the contact details.
@@ -15,13 +15,11 @@
 // are not. Nothing here claims a review count, a rating, a testimonial, a certification, a
 // badge, or a customer total - a gift-card site that manufactures its own trust signals is
 // doing exactly what a scam site does.
-
-import type { IconNode } from 'lucide';
-import { Infinity as InfinityIcon, Lock, RefreshCw, Zap, CreditCard, ShieldCheck, MessageSquareText } from 'lucide';
+import { Infinity as InfinityIcon, Lock, RefreshCw, Zap, CreditCard, ShieldCheck, MessageSquareText, type LucideIcon } from 'lucide-react';
 
 export interface Step
 {
-    glyph: IconNode;
+    glyph: LucideIcon;
     title: string;
     body: string;
 }
@@ -32,7 +30,7 @@ export const STEPS: Step[] =
     {
         glyph: CreditCard,
         title: 'کارت را انتخاب کنید',
-        body: 'مبلغ را انتخاب می‌کنید و شماره موبایلتان را وارد می‌کنید. حسابی نمی‌سازید و رمزی تعیین نمی‌کنید.'
+        body: 'مبلغ را انتخاب می‌کنید و شماره موبایلتان را روی همان کارت وارد می‌کنید. حسابی نمی‌سازید و رمزی تعیین نمی‌کنید.'
     },
     {
         glyph: ShieldCheck,
@@ -48,7 +46,7 @@ export const STEPS: Step[] =
 
 export interface Assurance
 {
-    glyph: IconNode;
+    glyph: LucideIcon;
 
     /** Two or three words - long enough to mean something, short enough not to wrap. */
     label: string;
@@ -124,9 +122,9 @@ export const FAQS: Faq[] =
 /** Support and identity. MOCK VALUES - see the README's "Replace before launch". */
 export const CONTACT =
 {
-    email: 'support@nurachain.ir',
-    telegram: '@nurachain_support',
+    email: 'support@guardian-service.ir',
+    telegram: '@guardian_service_support',
     phone: '+98 21 9100 4477',
     hours: 'هر روز، ۹ صبح تا ۹ شب به وقت تهران',
-    operator: 'شرکت داده‌پردازی نورا زنجیره'
+    operator: 'شرکت داده‌پردازی گاردین سرویس'
 };

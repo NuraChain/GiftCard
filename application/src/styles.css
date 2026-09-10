@@ -1,11 +1,10 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/vazirmatn';
 
-/* Nura Chain design tokens.
-   Palette grounded in Persian pigment rather than generic SaaS blue: lajevard is the
-   lapis that gave English the word azure, firouze is Isfahan tilework turquoise, and
-   nura ("light") is a warm gold spent ONLY on a verified/delivered state - never as
-   decoration, so its appearance always means something. */
+/* Guardian Service design tokens.
+   Palette grounded in Persian pigment rather than generic SaaS blue: firouze is Isfahan
+   tilework turquoise, and gold is a warm accent spent ONLY on a verified/delivered or
+   needs-attention state - never as decoration, so its appearance always means something. */
 :root
 {
     color-scheme: light dark;
@@ -15,7 +14,7 @@
     --ink: light-dark(#10203a, #e7eef6);
     --muted: light-dark(#5a6b82, #93a4bd);
     --firouze: light-dark(#12796f, #3fc9b6);
-    --nura: light-dark(#8a5e0a, #e8b14c);
+    --gold: light-dark(#8a5e0a, #e8b14c);
     --line: light-dark(#d4e0de, #26315a);
     --danger: light-dark(#a32820, #f39189);
 
@@ -50,7 +49,7 @@
     --color-ink: var(--ink);
     --color-muted: var(--muted);
     --color-firouze: var(--firouze);
-    --color-nura: var(--nura);
+    --color-gold: var(--gold);
     --color-line: var(--line);
     --color-danger: var(--danger);
 

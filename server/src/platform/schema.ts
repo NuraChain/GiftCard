@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS tiers (
     toman       INTEGER NOT NULL,
     title       TEXT    NOT NULL,
     blurb       TEXT    NOT NULL,
-    sample      TEXT    NOT NULL,
     recommended INTEGER NOT NULL DEFAULT 0,
     active      INTEGER NOT NULL DEFAULT 1,
     sort        INTEGER NOT NULL DEFAULT 0

@@ -1,22 +1,20 @@
-import { azeroth } from '@azerothjs/compiler';
+import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-    plugins: [azeroth(), tailwindcss()],
-    // The SSR bundle (src/entry.server.ts) inlines its dependencies, so dist-server
-    // is ONE self-contained file - production imports it with no client node_modules.
-    ssr:
-    {
-        noExternal: true
-    },
+    plugins: [react(), tailwindcss()],
     server:
     {
         proxy:
         {
-            // The server half of this app. `azeroth dev` runs both halves; this line is
-            // the whole DEV wiring. In production the server serves the built client
-            // itself (one origin) - see server/src/app.ts.
+            // The server half of this app, in DEV only. `npm run dev` from the repo root
+            // runs both halves; this line is the whole dev wiring.
+            //
+            // In production nothing here applies: nginx serves the files this build
+            // produces and proxies /api to the server itself. See deploy/nginx.conf - the
+            // two are the same arrangement, and keeping the prefix identical is what lets
+            // `lib/api.ts` name one base URL for both.
             '/api': 'http://localhost:3000'
         }
     },

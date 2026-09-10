@@ -15,7 +15,6 @@ interface TierRow
     toman: number;
     title: string;
     blurb: string;
-    sample: string;
     recommended: number;
     active: number;
     sort: number;
@@ -28,7 +27,6 @@ function toTier(row: TierRow): Tier
         toman: row.toman,
         title: row.title,
         blurb: row.blurb,
-        sample: row.sample,
         recommended: row.recommended === 1,
         active: row.active === 1,
         sort: row.sort
@@ -49,12 +47,12 @@ export function createTierQueries(db: DatabaseSync): TierQueries
     const selectTiers = db.prepare('SELECT * FROM tiers ORDER BY sort, amount');
     const selectSellable = db.prepare('SELECT * FROM tiers WHERE amount = ? AND active = 1');
     const upsertTier = db.prepare(`
-        INSERT INTO tiers (amount, toman, title, blurb, sample, recommended, active, sort)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tiers (amount, toman, title, blurb, recommended, active, sort)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(amount) DO UPDATE SET
             toman = excluded.toman, title = excluded.title, blurb = excluded.blurb,
-            sample = excluded.sample, recommended = excluded.recommended,
-            active = excluded.active, sort = excluded.sort`);
+            recommended = excluded.recommended, active = excluded.active,
+            sort = excluded.sort`);
     // At most one recommended card: the treatment means "most people pick this", and two of
     // them means nothing. Clearing the others is cheaper than validating the whole table.
     const clearRecommended = db.prepare('UPDATE tiers SET recommended = 0 WHERE amount <> ?');
@@ -83,7 +81,7 @@ export function createTierQueries(db: DatabaseSync): TierQueries
         try
         {
             upsertTier.run(
-                tier.amount, tier.toman, tier.title, tier.blurb, tier.sample,
+                tier.amount, tier.toman, tier.title, tier.blurb,
                 tier.recommended ? 1 : 0, tier.active ? 1 : 0, tier.sort
             );
             if (tier.recommended)

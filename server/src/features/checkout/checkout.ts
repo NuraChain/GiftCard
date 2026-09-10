@@ -19,7 +19,7 @@
 //      buyer went on to complete.
 //   4. An SMS failure is a NOTICE, never a failed purchase. The code is already minted,
 //      stored, and on the buyer's screen.
-import type { Logger } from '@azerothjs/logger';
+import type { Logger } from '../../platform/logging.ts';
 
 import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
@@ -62,7 +62,7 @@ export function createCheckout(options: CheckoutOptions): Checkout
         if (!verified.ok)
         {
             store.settleUnpaid(order.id, gatewaySaidOk ? 'failed' : 'cancelled');
-            log?.warn('payment not verified', { amount: order.amount, said: gatewaySaidOk, reason: verified.reason });
+            log?.warn({ amount: order.amount, said: gatewaySaidOk, reason: verified.reason }, 'payment not verified');
             return;
         }
 
@@ -72,7 +72,7 @@ export function createCheckout(options: CheckoutOptions): Checkout
             // Money verified with no code left to give. It is recorded as PAID because it
             // was paid; calling it a failure would be a lie about money that has moved.
             // The buyer sees an apology with their reference, the console pins the row.
-            log?.error('paid order has no code available', { refId: verified.refId, amount: order.amount });
+            log?.error({ refId: verified.refId, amount: order.amount }, 'paid order has no code available');
             return;
         }
 
@@ -80,7 +80,7 @@ export function createCheckout(options: CheckoutOptions): Checkout
         store.markSmsDelivered(order.id, sent.ok);
         if (!sent.ok)
         {
-            log?.error('gift code SMS not delivered', { refId: verified.refId, reason: sent.reason });
+            log?.error({ refId: verified.refId, reason: sent.reason }, 'gift code SMS not delivered');
         }
     }
 

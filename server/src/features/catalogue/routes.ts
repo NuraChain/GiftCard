@@ -1,9 +1,9 @@
 // The catalogue's handlers. Every route declared in ./contract.ts is implemented here, and
 // the rule that a removal may only DEACTIVATE lives one file over in ./queries.ts - a route
 // must not be able to drop a row that history depends on.
-import type { HandlersWithGuards } from '@azerothjs/http/api';
-import type { Logger } from '@azerothjs/logger';
+import type { Logger } from '../../platform/logging.ts';
 
+import type { Handlers } from '../../platform/api.ts';
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
 
@@ -15,7 +15,7 @@ export interface CatalogueOptions
 
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type CatalogueHandlers = Pick<
-    HandlersWithGuards<typeof contract, Record<never, never>>['admin'],
+    Handlers<typeof contract>['admin'],
     'tiers' | 'saveTier' | 'removeTier'
 >;
 
@@ -28,18 +28,18 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers
         tiers: () => ({ tiers: store.tiers() }),
 
         // POST /api/admin/tiers
-        saveTier: ({ input }: { input: Parameters<Store['saveTier']>[0] }) =>
+        saveTier: ({ input }) =>
         {
             store.saveTier(input);
-            log?.info('tier saved', { amount: input.amount, toman: input.toman, active: input.active });
+            log?.info({ amount: input.amount, toman: input.toman, active: input.active }, 'tier saved');
             return { tiers: store.tiers() };
         },
 
         // DELETE /api/admin/tiers
-        removeTier: ({ query }: { query: { amount: number } }) =>
+        removeTier: ({ query }) =>
         {
             const outcome = store.removeTier(query.amount);
-            log?.info('tier removed', { amount: query.amount, outcome });
+            log?.info({ amount: query.amount, outcome }, 'tier removed');
             return { outcome };
         }
     };

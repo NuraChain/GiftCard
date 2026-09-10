@@ -1,6 +1,5 @@
-// Bootstrap: config, logging, the database, the outside world, the edge pipeline, serve,
-// graceful shutdown. No build step - Node >= 24 runs this file directly; `azeroth dev`
-// (from the project root) watches it alongside the vite app.
+// Bootstrap: config, logging, the database, the outside world, serve, graceful shutdown.
+// No build step - Node >= 24 runs this file directly.
 //
 // This is the ONLY file that reads the environment or constructs a real gateway, SMS client
 // or database. `buildApp` takes them as arguments, which is what lets the tests drive the
@@ -8,24 +7,21 @@
 //
 // The environment is the SEED. Once the console has written a value it wins, so most of what
 // happens here is deciding what a FIRST boot starts from.
+//
+// WHAT THIS PROCESS NO LONGER DOES: serve pages. nginx serves the built client and terminates
+// TLS, so the HSTS header and the page-branding wrapper that used to live here are gone -
+// both were about HTML this process does not emit any more. What stayed is everything that
+// decides whether money moved.
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
-import
-{
-    pipeline, requestId, securityHeaders, rateLimit, logRequests
-} from '@azerothjs/http';
-import { serve, handleShutdownSignals } from '@azerothjs/http/node';
-import type { PageRenderer, PageRoute } from '@azerothjs/kit';
-import { createLogger } from '@azerothjs/logger';
-import { fileStream } from '@azerothjs/logger/node';
+import { pino } from 'pino';
 
 import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
-import { brandPages } from './platform/branding.ts';
-import { config, isProduction } from './config.ts';
+import { config } from './config.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
+import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings } from './features/settings/settings.ts';
 import { createSms } from './features/checkout/sms.ts';
@@ -34,10 +30,19 @@ import { createStore } from './db/index.ts';
 // Redaction happens in the logger rather than at each call site, so no formatter and no
 // future log line can leak a credential. `code` is here too: a gift code is bearer value,
 // and a log file is not where it should be readable.
-const log = createLogger({
-    stream: fileStream('logs/'),
-    fields: { service: 'nura-chain-server' },
-    redact: ['merchantId', 'apiKey', 'adminKey', 'key', 'currentKey', 'newKey', 'authority', 'code', 'phone']
+const log = pino({
+    base: { service: 'guardian-service-server' },
+    redact: {
+        paths: [
+            'merchantId', 'apiKey', 'adminKey', 'key', 'currentKey', 'newKey', 'authority', 'code', 'phone',
+            '*.merchantId', '*.apiKey', '*.adminKey', '*.key', '*.currentKey', '*.newKey', '*.authority', '*.code', '*.phone'
+        ],
+        censor: '[redacted]'
+    },
+    transport: {
+        target: 'pino-roll',
+        options: { file: 'logs/app.ndjson', frequency: 'daily', extension: '.ndjson', mkdir: true, dateFormat: 'yyyy-MM-dd' }
+    }
 });
 
 mkdirSync(dirname(config.databaseFile), { recursive: true });
@@ -52,7 +57,7 @@ if (store.isCatalogueEmpty())
     {
         store.saveTier(tier);
     }
-    log.info('catalogue seeded', { tiers: 3 });
+    log.info({ tiers: 3 }, 'catalogue seeded');
 }
 
 const settings = createSettings({ store, adminKey: config.adminKey });
@@ -83,17 +88,7 @@ if (live.merchantId === '')
     log.warn('no Zarinpal merchant id - checkout will refuse to start until one is set in the console');
 }
 
-// In dev, vite serves the client and proxies /api here. In production this server
-// serves the whole app itself - one origin, no CORS between halves: the SSR bundle
-// (ONE self-contained file from `vite build --ssr`) provides the route table and
-// the page renderer the kit mounts.
-const ssr = isProduction
-    ? await import(pathToFileURL(config.ssrEntry).href) as { routes: PageRoute[]; renderPage: PageRenderer }
-    : undefined;
-
 const app = buildApp({
-    dev: !isProduction,
-    observe: logRequests(log),
     store,
     settings,
     payment: createPayment({
@@ -110,25 +105,33 @@ const app = buildApp({
             return { apiKey: now.kavenegarKey, template: now.kavenegarTemplate, baseUrl: now.kavenegarBase };
         }
     }),
-    admin: createAdmin({ matches: (candidate) => settings.matchesAdminKey(candidate), secureCookie: isProduction }),
+    admin: createAdmin({
+        matches: (candidate) => settings.matchesAdminKey(candidate),
+        secureCookie: config.cookieSecure
+    }),
     callbackUrl: `${ config.publicBaseUrl }/api/pay/callback`,
-    log,
-    pages: ssr === undefined
-        ? undefined
-        : { routes: ssr.routes, clientDir: config.clientDir, renderer: ssr.renderPage }
+    trustProxyHops: config.trustProxyHops,
+    log
 });
 
-const handler = pipeline(
-    app,
-    brandPages(settings),
-    requestId(),
-    // HSTS is on in production only: sending it from a local http origin would pin a browser
-    // to https for a host that does not serve it, and that is a self-inflicted outage.
-    securityHeaders({ hsts: isProduction ? { maxAgeSeconds: 31_536_000, includeSubDomains: true } : false }),
-    rateLimit({ limit: 200, windowMs: 60_000 })
-);
+// The edge limiter is generous because most traffic is ordinary reads; the routes that cost
+// money carry their own tighter ones (see app.ts).
+app.addHook('onRequest', rateLimit(200, 60_000));
 
-const served = await serve(handler, { port: config.port });
 // The database closes AFTER in-flight requests drain: a settle mid-flight is money.
-handleShutdownSignals(served, { beforeExit: () => store.close() });
-log.info('listening', { port: served.port, env: config.env });
+for (const signal of ['SIGINT', 'SIGTERM'] as const)
+{
+    process.once(signal, () =>
+    {
+        void app.close().then(() =>
+        {
+            store.close();
+            process.exit(0);
+        });
+    });
+}
+
+// Bound to every interface: inside a container the only way in is nginx, and binding to
+// localhost there would make the service unreachable from the proxy container.
+await app.listen({ port: config.port, host: '0.0.0.0' });
+log.info({ port: config.port, env: config.env }, 'listening');

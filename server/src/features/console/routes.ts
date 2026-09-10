@@ -2,12 +2,12 @@
 //
 // Signing in is the ONE route in the admin group that is not behind the admin guard - it is
 // how you get past it. Everything else here is, so these handlers never re-check the session.
-import type { HandlersWithGuards } from '@azerothjs/http/api';
+import type { Handlers } from '../../platform/api.ts';
 
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
 import { displayPhone } from '../../domain/phone.ts';
-import type { Admin } from './session.ts';
+import { SESSION_COOKIE, type Admin } from './session.ts';
 
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
 const PAGE_SIZE = 25;
@@ -20,7 +20,7 @@ export interface ConsoleOptions
 
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type ConsoleHandlers = Pick<
-    HandlersWithGuards<typeof contract, Record<never, never>>['admin'],
+    Handlers<typeof contract>['admin'],
     'signIn' | 'signOut' | 'overview' | 'orders'
 >;
 
@@ -30,22 +30,27 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers
 
     return {
         // POST /api/admin/session
-        signIn: (context: { request: Request; input: { key: string } }) => new Response(null, {
-            status: 204,
-            headers: { 'set-cookie': admin.signIn(context.request, context.input.key) }
-        }),
+        signIn: ({ input, request, reply }) =>
+        {
+            // `request.ip` is the buyer's address rather than nginx's because `trustProxyHops`
+            // is set - see platform/throttle.ts for why that had to change and what closes
+            // the hole it would otherwise open.
+            const cookie = admin.signIn(request.ip, input.key);
+            reply.setCookie(cookie.name, cookie.value, cookie.options);
+        },
 
         // DELETE /api/admin/session
-        signOut: (context: { request: Request }) => new Response(null, {
-            status: 204,
-            headers: { 'set-cookie': admin.signOut(context.request) }
-        }),
+        signOut: ({ request, reply }) =>
+        {
+            const cookie = admin.signOut(request.cookies[SESSION_COOKIE]);
+            reply.setCookie(cookie.name, cookie.value, cookie.options);
+        },
 
         // GET /api/admin/overview
         overview: () => ({ stock: store.stock(), owed: store.owedCount() }),
 
         // GET /api/admin/orders
-        orders: ({ query }: { query: { search?: string; page?: number } }) =>
+        orders: ({ query }) =>
         {
             const page = Math.max(1, query.page ?? 1);
             const found = store.searchOrders({

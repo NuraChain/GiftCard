@@ -13,8 +13,7 @@
 // Persian and Arabic-Indic digits are converted BEFORE validation. A Persian keyboard
 // produces "۰۹۱۷..."; rejecting that would be a bug wearing validation's clothes.
 
-import type { Schema } from '@azerothjs/schema';
-import { string } from '@azerothjs/schema';
+import { z } from 'zod';
 
 /** Persian (۰-۹) and Arabic-Indic (٠-٩) digits, in ASCII order. */
 const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
@@ -89,14 +88,15 @@ export function displayPhone(canonical: string): string
 }
 
 /**
- * The shared field. It VALIDATES only - the schema layer has `refine` (a validator) but no
- * transform, so the value arrives at a handler in whatever shape the buyer typed. Every
- * handler therefore runs `normalizePhone` before storing or sending; nothing downstream may
- * assume a canonical value just because validation passed.
+ * The shared field. It VALIDATES only - it trims, and it does not canonicalise, so the value
+ * arrives at a handler in whatever shape the buyer typed. Every handler therefore runs
+ * `normalizePhone` before storing or sending; nothing downstream may assume a canonical
+ * value just because validation passed.
  *
  * The Persian message is what the form displays, so it is written for a buyer, not a
  * developer.
  */
-export const phoneField: Schema<string> = string({ trim: true, max: 20 })
-    .refine((value) => normalizePhone(value) === null ? 'شماره موبایل معتبر نیست' : null,
-        { code: 'phone', message: 'شماره موبایل معتبر نیست' });
+export const phoneField: z.ZodType<string> = z.string()
+    .trim()
+    .max(20, { message: 'شماره موبایل معتبر نیست' })
+    .refine((value) => normalizePhone(value) !== null, { message: 'شماره موبایل معتبر نیست' });

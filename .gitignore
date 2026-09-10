@@ -1,10 +1,16 @@
 node_modules/
 dist/
-.azeroth-types/
 .env
 *.local
 .idea
 
 # The gift-code inventory and the order ledger. Unsold codes in it are money.
 server/data/
+
+# Runtime logs, wherever the process happens to be started from.
+logs/
 server/logs/
+
+# Certificates and the ACME challenge root, mounted by docker-compose.
+deploy/letsencrypt/
+deploy/certbot/

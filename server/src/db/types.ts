@@ -28,9 +28,6 @@ export interface Tier
     title: string;
     blurb: string;
 
-    /** The masked sample shown on the card - never a redeemable code. */
-    sample: string;
-
     /** At most one card carries the recommended treatment; the store enforces that. */
     recommended: boolean;
 

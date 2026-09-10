@@ -1,0 +1,54 @@
+// The codes tab: paste a batch in, then check it landed.
+//
+// Two components because they are two jobs, but ONE page because they are one workflow -
+// the table below is the receipt for the form above it.
+//
+// This file owns exactly what the two share: the catalogue (both need the denominations)
+// and a `revision` counter the form bumps after a paste so the table refetches. Neither
+// child knows the other exists.
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+
+import { client } from '../../../lib/api.ts';
+import type { TierRow } from '../../../../../server/src/contract/index.ts';
+import AdminShell from '../shell.tsx';
+import { useAdminSession } from '../session.tsx';
+import PasteForm from './paste-form.tsx';
+import InventoryTable from './inventory-table.tsx';
+
+export default function Codes(): ReactNode
+{
+    const session = useAdminSession();
+
+    const [tiers, setTiers] = useState<TierRow[]>([]);
+    const [revision, setRevision] = useState(0);
+
+    const loadTiers = useCallback(async (): Promise<void> =>
+    {
+        try
+        {
+            setTiers((await client.admin.tiers()).tiers);
+        }
+        catch
+        {
+            // The paste form needs a denomination to be useful; the table below does not.
+            // A tier failure is reported by the table's own error state on retry.
+        }
+    }, []);
+
+    // Keyed on the session, not on mount - see the note in overview.tsx.
+    useEffect(() =>
+    {
+        if (session.unlocked)
+        {
+            void loadTiers();
+            setRevision((current) => current + 1);
+        }
+    }, [session.revision, session.unlocked, loadTiers]);
+
+    return (
+        <AdminShell>
+            <PasteForm tiers={ tiers } onAdded={ () => setRevision((current) => current + 1) }/>
+            <InventoryTable tiers={ tiers } revision={ revision }/>
+        </AdminShell>
+    );
+}

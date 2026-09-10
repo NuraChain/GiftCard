@@ -3,8 +3,8 @@
     <head>
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        <title>نورا چین - خرید گیفت کارت</title>
-        <meta name="description" content="خرید گیفت کارت نورا چین با تحویل آنی کد. پرداخت امن، پشتیبانی فارسی، و بازگشت وجه اگر کد کار نکند."/>
+        <title>گاردین سرویس - خرید گیفت کارت</title>
+        <meta name="description" content="خرید گیفت کارت با تحویل آنی کد. پرداخت امن، پشتیبانی فارسی، و بازگشت وجه اگر کد کار نکند."/>
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eff4f3"/>
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1633"/>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
@@ -18,7 +18,7 @@
             // privacy modes, and a themed page is not worth a blank one.
             try
             {
-                var stored = localStorage.getItem('nura-theme');
+                var stored = localStorage.getItem('guardian-theme');
                 if (stored === 'light' || stored === 'dark')
                 {
                     document.documentElement.setAttribute('data-theme', stored);
@@ -32,6 +32,6 @@
     </head>
     <body>
         <div id="root"></div>
-        <script type="module" src="/src/main.azeroth" defer></script>
+        <script type="module" src="/src/main.tsx" defer></script>
     </body>
 </html>

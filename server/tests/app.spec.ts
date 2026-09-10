@@ -1,5 +1,5 @@
-// The framework's whole integration-testing story in one line:
-// `app.handle(new Request(...))` - no sockets, no test server, no inject shim.
+// The whole integration-testing story in one line: `app.inject(...)` - Fastify's own
+// in-process dispatch, so there is no socket, no port, and no test server.
 //
 // The gateway and the SMS provider are INJECTED fakes; the database is a real SQLite
 // running in memory. So every claim about money below is tested against the engine that
@@ -8,7 +8,7 @@
 // WHAT THESE TESTS DO NOT PROVE: that Zarinpal and Kavenegar behave as documented. Their
 // wire shapes here are transcribed from their published docs, not observed from a live
 // call. The first real payment is still the first real payment.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 
 import { createAdmin } from '../src/features/console/session.ts';
 import { buildApp } from '../src/app.ts';
@@ -106,7 +106,6 @@ beforeEach(() =>
     }
     settings = createSettings({ store, adminKey: ADMIN_KEY });
     app = buildApp({
-        dev: false,
         store,
         settings,
         payment: fake.payment,
@@ -116,18 +115,67 @@ beforeEach(() =>
     });
 });
 
-function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response>
+/**
+ * What a call gives back. `inject` answers with Fastify's own response object; this is the
+ * small surface the assertions below actually use, kept in the shape they were written
+ * against so the suite reads the same after the move off the old framework.
+ */
+interface Answer
 {
-    return app.handle(new Request(`http://local${ path }`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...headers },
-        body: JSON.stringify(body)
-    }));
+    status: number;
+    headers: { get(name: string): string | null };
+    json<T = unknown>(): T;
+    text(): string;
 }
 
-function get(path: string, headers: Record<string, string> = {}): Promise<Response>
+async function send(
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {}
+): Promise<Answer>
 {
-    return app.handle(new Request(`http://local${ path }`, { headers }));
+    const response = await app.inject({
+        method,
+        url: path,
+        headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers },
+        payload: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    return {
+        status: response.statusCode,
+        headers: {
+            get: (name) =>
+            {
+                const value = response.headers[name.toLowerCase()];
+                if (value === undefined)
+                {
+                    return null;
+                }
+                return Array.isArray(value) ? String(value[0]) : String(value);
+            }
+        },
+        json: <T = unknown>() => response.json() as T,
+        text: () => response.body
+    };
+}
+
+// One Fastify instance and one connection per test, both handed back afterwards. A suite
+// that leaks either runs fine and then hangs the runner on the way out.
+afterEach(async () =>
+{
+    await app.close();
+    store.close();
+});
+
+function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Answer>
+{
+    return send('POST', path, body, headers);
+}
+
+function get(path: string, headers: Record<string, string> = {}): Promise<Answer>
+{
+    return send('GET', path, undefined, headers);
 }
 
 /**
@@ -636,7 +684,7 @@ describe('the console', () =>
         const cookie = await signIn();
         expect((await get('/api/admin/overview', { cookie })).status).toBe(200);
 
-        const out = await app.handle(new Request('http://local/api/admin/session', { method: 'DELETE', headers: { cookie } }));
+        const out = await send('DELETE', '/api/admin/session', undefined, { cookie });
         expect(out.status).toBe(204);
         // The same cookie value must not work again - the session is gone server-side,
         // not merely cleared in the browser.
@@ -657,7 +705,7 @@ describe('the catalogue', () =>
         const cookie = await signedIn();
         const created = await post('/api/admin/tiers', {
             amount: 50, toman: 3_500_000, title: 'کارت پنجاه دلاری', blurb: 'برای خرید بزرگ.',
-            sample: 'aaaaaaaa-....-....-............', recommended: false, active: true, sort: 40
+            recommended: false, active: true, sort: 40
         }, { cookie });
 
         expect(created.status).toBe(200);
@@ -671,7 +719,7 @@ describe('the catalogue', () =>
         const cookie = await signedIn();
         const body = await (await post('/api/admin/tiers', {
             amount: 5, toman: PRICES[5], title: 'کارت پنج دلاری', blurb: 'x',
-            sample: 'y', recommended: true, active: true, sort: 10
+            recommended: true, active: true, sort: 10
         }, { cookie })).json() as { tiers: Array<{ amount: number; recommended: boolean }> };
 
         // The treatment means "most people pick this". Two of them means nothing.
@@ -689,10 +737,7 @@ describe('the catalogue', () =>
 
         // The amount rides in the query string, not a DELETE body: a body on DELETE has no
         // defined semantics and intermediaries may drop it.
-        const removed = await app.handle(new Request('http://local/api/admin/tiers?amount=10', {
-            method: 'DELETE',
-            headers: { cookie }
-        }));
+        const removed = await send('DELETE', '/api/admin/tiers?amount=10', undefined, { cookie });
 
         // Dropping the row would orphan the history that explains what someone paid.
         expect(await removed.json()).toEqual({ outcome: 'deactivated' });
@@ -703,10 +748,7 @@ describe('the catalogue', () =>
     it('deletes a tier nobody ever used', async () =>
     {
         const cookie = await signedIn();
-        const removed = await app.handle(new Request('http://local/api/admin/tiers?amount=25', {
-            method: 'DELETE',
-            headers: { cookie }
-        }));
+        const removed = await send('DELETE', '/api/admin/tiers?amount=25', undefined, { cookie });
         expect(await removed.json()).toEqual({ outcome: 'deleted' });
         expect(store.tiers().map((tier) => tier.amount)).toEqual([5, 10]);
     });
