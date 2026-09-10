@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS settings_log (
     changed_at TEXT NOT NULL
 );
 
+-- THE toman COLUMN IS DEAD. Card prices come from the live tether rate times a shop-wide margin
+-- (domain/pricing.ts), so nothing reads this column and every insert writes a zero. It
+-- survives because this runner cannot drop a column from an existing database and the rows
+-- already out there hold real numbers. It goes with the first numbered migration.
 CREATE TABLE IF NOT EXISTS tiers (
     amount      INTEGER PRIMARY KEY,
     toman       INTEGER NOT NULL,

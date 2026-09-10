@@ -32,6 +32,8 @@ import type { PaymentGateway } from './features/checkout/zarinpal.ts';
 import { consoleHandlers } from './features/console/routes.ts';
 import { SESSION_COOKIE, type Admin } from './features/console/session.ts';
 import { inventoryHandlers } from './features/inventory/routes.ts';
+import type { TetherRate } from './features/rate/rate.ts';
+import { rateHandlers } from './features/rate/routes.ts';
 import { settingsHandlers } from './features/settings/routes.ts';
 import type { Settings } from './features/settings/settings.ts';
 import { throttle } from './platform/throttle.ts';
@@ -44,6 +46,13 @@ export interface AppOptions {
 
     /** Runtime configuration: credentials and hosts the console can change without a deploy. */
     settings: Settings;
+
+    /**
+     * The live tether rate, cross-checked between two exchanges. Every price the shop shows
+     * and every sum it charges comes from this; when it has nothing to give, the cards go
+     * unbuyable rather than falling back to a stored number.
+     */
+    rate: TetherRate;
 
     /** The absolute URL the gateway returns the buyer to. */
     callbackUrl: string;
@@ -61,7 +70,7 @@ export interface AppOptions {
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
-    const { store, payment, sms, admin, settings, callbackUrl, log } = options;
+    const { store, payment, sms, admin, settings, rate, callbackUrl, log } = options;
     const resultPath = options.resultPath ?? '/';
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
@@ -129,7 +138,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
     // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
     // itself rather than through the contract.
     const checkout = createCheckout({ store, payment, sms, log });
-    const pay = { store, settings, payment, checkout, callbackUrl, resultPath, log };
+    const pay = { store, settings, rate, payment, checkout, callbackUrl, resultPath, log };
     mountPayCallback(app, pay);
 
     const requireAdmin = guard(({ request }) => admin.require(request.cookies[SESSION_COOKIE]));
@@ -154,6 +163,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
             'admin.settings': [requireAdmin],
             'admin.saveSettings': [requireAdmin],
             'admin.settingsLog': [requireAdmin],
+            'admin.rate': [requireAdmin],
 
             // Rotation takes the CURRENT key, so it is one more place a credential can be
             // guessed against - guarded and throttled.
@@ -167,9 +177,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
             pay: payHandlers(pay),
             admin: {
                 ...consoleHandlers({ store, admin }),
-                ...catalogueHandlers({ store, log }),
+                ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
-                ...settingsHandlers({ settings, admin, sms, callbackUrl, log })
+                ...settingsHandlers({ settings, admin, sms, callbackUrl, log }),
+                ...rateHandlers({ rate, settings })
             }
         }
     });

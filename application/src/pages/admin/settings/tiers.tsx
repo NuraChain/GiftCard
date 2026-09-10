@@ -1,4 +1,11 @@
-// The catalogue editor: what the shop sells and at what price.
+// The catalogue editor: what the shop sells. NOT at what price.
+//
+// THERE IS NO PRICE FIELD HERE ANY MORE. A card costs its dollar figure times the live tether
+// rate times one shop-wide margin, so the only two things an operator sets are the
+// denomination (below) and the margin (the pricing panel underneath this one). The Toman
+// figure beside each card is a PREVIEW of that arithmetic, computed by the server on the way
+// out - it is read-only because typing over it would be inventing a second price that the
+// next rate refresh would silently contradict.
 //
 // A removal is not necessarily a delete. A tier with codes or orders behind it is
 // DEACTIVATED so the history that explains what someone paid survives - the server decides
@@ -7,7 +14,7 @@ import { Plus, Save, Settings2, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 import { client, failureText } from '../../../lib/api.ts';
-import type { TierRow } from '../../../../../server/src/contract/index.ts';
+import type { TierInput, TierRow } from '../../../../../server/src/contract/index.ts';
 import { toman } from '../../../lib/format.ts';
 import { useToasts } from '../../../ui/toast.tsx';
 import Async from '../../../ui/async.tsx';
@@ -17,8 +24,23 @@ import TextInput from '../../../ui/text-input.tsx';
 import { useAdminSession } from '../session.tsx';
 
 /** A blank card, ready to be filled in. */
-function emptyTier(sort: number): TierRow {
-    return { amount: 0, toman: 0, title: '', blurb: '', recommended: false, active: true, sort };
+function emptyTier(sort: number): TierInput {
+    return { amount: 0, title: '', blurb: '', recommended: false, active: true, sort };
+}
+
+/**
+ * A saved card, as the editor holds it. The computed `toman` is dropped on the way in: it is
+ * the server's answer, and sending it back would be the console claiming to set a price.
+ */
+function toDraft(tier: TierRow): TierInput {
+    return {
+        amount: tier.amount,
+        title: tier.title,
+        blurb: tier.blurb,
+        recommended: tier.recommended,
+        active: tier.active,
+        sort: tier.sort
+    };
 }
 
 export default function TierSettings(): ReactNode {
@@ -26,7 +48,7 @@ export default function TierSettings(): ReactNode {
     const session = useAdminSession();
 
     const [tiers, setTiers] = useState<TierRow[]>([]);
-    const [draft, setDraft] = useState<TierRow | null>(null);
+    const [draft, setDraft] = useState<TierInput | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -104,8 +126,8 @@ export default function TierSettings(): ReactNode {
                 </Button>
             </div>
             <p className="mt-2 text-small text-muted">
-                مبلغ دلاری نام کارت است و قیمت تومانی چیزی که خریدار می‌پردازد. کارتی که غیرفعال شود
-                از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
+                مبلغ دلاری نام کارت است؛ قیمت تومانی از نرخ لحظه‌ای تتر حساب می‌شود و اینجا فقط نمایش
+                داده می‌شود. کارتی که غیرفعال شود از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
             </p>
 
             <div className="mt-4">
@@ -139,7 +161,9 @@ export default function TierSettings(): ReactNode {
                                     </span>
                                     <span className="text-small">{tier.title}</span>
                                     <span className="text-small text-muted">
-                                        {toman(tier.toman)} تومان
+                                        {tier.toman === null
+                                            ? 'قیمت در دسترس نیست'
+                                            : `${toman(tier.toman)} تومان`}
                                     </span>
                                     {tier.recommended && (
                                         <span className="rounded-full bg-firouze/15 px-2.5 py-0.5 text-caption font-bold text-firouze">
@@ -154,7 +178,7 @@ export default function TierSettings(): ReactNode {
                                 </div>
 
                                 <div className="mt-3 flex gap-2 sm:mt-0 sm:ms-auto">
-                                    <Button size="sm" grow onClick={() => setDraft({ ...tier })}>
+                                    <Button size="sm" grow onClick={() => setDraft(toDraft(tier))}>
                                         ویرایش
                                     </Button>
                                     <Button
@@ -192,26 +216,20 @@ export default function TierSettings(): ReactNode {
                         )}
                     </h3>
 
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <Field label="مبلغ دلاری" htmlFor="tier-amount">
-                            <TextInput
-                                id="tier-amount"
-                                type="number"
-                                latin
-                                value={String(draft.amount)}
-                                onChange={(next) => setDraft({ ...draft, amount: Number(next) })}
-                            />
-                        </Field>
-                        <Field label="قیمت به تومان" htmlFor="tier-toman">
-                            <TextInput
-                                id="tier-toman"
-                                type="number"
-                                latin
-                                value={String(draft.toman)}
-                                onChange={(next) => setDraft({ ...draft, toman: Number(next) })}
-                            />
-                        </Field>
-                    </div>
+                    <Field
+                        label="مبلغ دلاری"
+                        htmlFor="tier-amount"
+                        className="mt-4"
+                        hint="قیمت تومانی از این عدد و نرخ لحظه‌ای تتر حساب می‌شود."
+                    >
+                        <TextInput
+                            id="tier-amount"
+                            type="number"
+                            latin
+                            value={String(draft.amount)}
+                            onChange={(next) => setDraft({ ...draft, amount: Number(next) })}
+                        />
+                    </Field>
 
                     <Field label="عنوان" htmlFor="tier-title" className="mt-4">
                         <TextInput
@@ -262,7 +280,7 @@ export default function TierSettings(): ReactNode {
                             glyph={Save}
                             busy={saving}
                             busyText="در حال ذخیره..."
-                            disabled={draft.amount < 1 || draft.toman < 1 || draft.title === ''}
+                            disabled={draft.amount < 1 || draft.title === ''}
                         >
                             ذخیره
                         </Button>

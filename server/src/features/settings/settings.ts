@@ -28,6 +28,9 @@ export const SETTING_KEYS = [
     'kavenegarKey',
     'kavenegarTemplate',
     'kavenegarBase',
+    'nobitexBase',
+    'wallexBase',
+    'marginPercent',
     'adminKeyHash'
 ] as const;
 
@@ -46,7 +49,21 @@ export interface RuntimeSettings {
     kavenegarKey: string;
     kavenegarTemplate: string;
     kavenegarBase: string;
+
+    /** The two exchanges the tether rate is cross-checked between. See features/rate/. */
+    nobitexBase: string;
+    wallexBase: string;
+
+    /**
+     * The shop's markup over the tether rate, in percent. THE ONLY PROFIT DIAL: every card's
+     * price is its dollar figure times the rate times this, so a typo here is a typo on every
+     * card at once. That is why it is clamped on the way in and again on the way out.
+     */
+    marginPercent: number;
 }
+
+/** A margin beyond this is a fat finger, not a business decision. */
+export const MAX_MARGIN_PERCENT = 100;
 
 /**
  * What a value falls back to when the database has never held one.
@@ -62,7 +79,10 @@ const DEFAULTS = {
     merchantId: '',
     kavenegarKey: '',
     kavenegarTemplate: '',
-    kavenegarBase: 'https://api.kavenegar.com'
+    kavenegarBase: 'https://api.kavenegar.com',
+    nobitexBase: 'https://api.nobitex.ir',
+    wallexBase: 'https://api.wallex.ir',
+    marginPercent: 6
 } as const satisfies RuntimeSettings;
 
 export interface SettingsOptions {
@@ -116,6 +136,9 @@ export interface SettingsView {
     kavenegarKeySet: boolean;
     kavenegarTemplate: string;
     kavenegarBase: string;
+    nobitexBase: string;
+    wallexBase: string;
+    marginPercent: number;
     smsReady: boolean;
     callbackUrl: string;
     keyRotated: boolean;
@@ -144,6 +167,22 @@ function mintAdminKey(): string {
 function hashKey(key: string): string {
     const salt = randomBytes(16);
     return `scrypt$${salt.toString('base64')}$${scryptSync(key, salt, 32).toString('base64')}`;
+}
+
+/**
+ * @internal A margin that cannot poison a price.
+ *
+ * The stored value is text an operator typed, so it can be empty, `'abc'`, negative, or 900.
+ * None of those may reach `tomanPrice` - a NaN margin makes a NaN price and a 900% margin
+ * makes a card nobody buys - so anything unreadable falls back to the shipped default rather
+ * than propagating.
+ */
+function marginFrom(raw: string): number {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_MARGIN_PERCENT) {
+        return DEFAULTS.marginPercent;
+    }
+    return parsed;
 }
 
 /** @internal Constant-time comparison against a stored `scrypt$salt$hash`. */
@@ -193,7 +232,10 @@ export function createSettings(options: SettingsOptions): Settings {
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
                 kavenegarKey: pick('kavenegarKey', DEFAULTS.kavenegarKey),
                 kavenegarTemplate: pick('kavenegarTemplate', DEFAULTS.kavenegarTemplate),
-                kavenegarBase: pick('kavenegarBase', DEFAULTS.kavenegarBase)
+                kavenegarBase: pick('kavenegarBase', DEFAULTS.kavenegarBase),
+                nobitexBase: pick('nobitexBase', DEFAULTS.nobitexBase),
+                wallexBase: pick('wallexBase', DEFAULTS.wallexBase),
+                marginPercent: marginFrom(pick('marginPercent', String(DEFAULTS.marginPercent)))
             };
         }
         return cache;
@@ -214,6 +256,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 kavenegarKeySet: live.kavenegarKey !== '',
                 kavenegarTemplate: live.kavenegarTemplate,
                 kavenegarBase: live.kavenegarBase,
+                nobitexBase: live.nobitexBase,
+                wallexBase: live.wallexBase,
+                marginPercent: live.marginPercent,
                 smsReady: live.kavenegarKey !== '' && live.kavenegarTemplate !== '',
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
@@ -223,7 +268,9 @@ export function createSettings(options: SettingsOptions): Settings {
         save(changes) {
             for (const [name, value] of Object.entries(changes)) {
                 if (value !== undefined) {
-                    write(name as SettingKey, value);
+                    // The margin is a number and everything else is a string; the settings
+                    // table holds text either way, and `current()` converts back.
+                    write(name as SettingKey, String(value));
                 }
             }
         },

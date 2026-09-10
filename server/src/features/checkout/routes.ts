@@ -9,6 +9,8 @@ import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/index.ts';
 import { mintReceiptToken } from '../../domain/codes.ts';
 import { displayPhone, normalizePhone } from '../../domain/phone.ts';
+import { tomanPrice } from '../../domain/pricing.ts';
+import type { TetherRate } from '../rate/rate.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 import type { Checkout } from './checkout.ts';
 import type { Settings } from '../settings/settings.ts';
@@ -23,6 +25,14 @@ const HOLD_MS = 30 * 60 * 1000;
 export interface PayOptions {
     store: Store;
     settings: Settings;
+
+    /**
+     * The live tether rate. Every price in this file comes from it, and a null from
+     * `current()` closes the shop - see features/rate/rate.ts for why that is the right
+     * outcome rather than a fallback number.
+     */
+    rate: TetherRate;
+
     payment: PaymentGateway;
     checkout: Checkout;
 
@@ -79,7 +89,7 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
  * route and its handler is a compile error here rather than a runtime 500.
  */
 export function payHandlers(options: PayOptions): PayHandlers {
-    const { store, settings, payment, callbackUrl, log } = options;
+    const { store, settings, rate, payment, callbackUrl, log } = options;
 
     return {
         // GET /api/pay/catalog
@@ -88,14 +98,21 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // it never leaves the server, so nothing on the client can reveal an amount the
             // operator has withdrawn from sale.
             const stock = new Map(store.stock().map((line) => [line.amount, line.available]));
+
+            // ONE rate for the whole response. Reading it per tier would let a refresh land
+            // mid-map and price three cards off two different rates.
+            const live = rate.current();
+            const margin = settings.current().marginPercent;
+
             return {
                 appName: settings.current().appName,
+                rate: live,
                 tiers: store
                     .tiers()
                     .filter((tier) => tier.active)
                     .map((tier) => ({
                         amount: tier.amount,
-                        toman: tier.toman,
+                        toman: live === null ? null : tomanPrice(tier.amount, live.toman, margin),
                         available: stock.get(tier.amount) ?? 0,
                         title: tier.title,
                         blurb: tier.blurb,
@@ -123,12 +140,35 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 throw new ConflictError('این کارت برای فروش نیست');
             }
 
+            // No agreed rate, no price, no sale. There is deliberately no fallback: the
+            // alternative to refusing here is charging a number nobody can justify.
+            const live = rate.current();
+            if (live === null) {
+                throw new HttpError(
+                    503,
+                    'قیمت لحظه‌ای تتر در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.',
+                    { code: 'rate-unavailable', retryAfter: 60 }
+                );
+            }
+
+            // RULE 2, AND THE REASON `quotedToman` EXISTS. The price is computed here, from
+            // our rate and our margin - the request's number is never the amount. It is only
+            // compared against, so that a buyer who was shown one figure can never be charged
+            // another: if the tether moved while they were typing, this refuses and the card
+            // re-quotes rather than quietly taking the difference.
+            const price = tomanPrice(tier.amount, live.toman, settings.current().marginPercent);
+            if (input.quotedToman !== price) {
+                throw new HttpError(409, 'قیمت این کارت به‌روز شد. مبلغ تازه را ببینید.', {
+                    code: 'price-changed'
+                });
+            }
+
             const order = {
                 id: mintReceiptToken(),
                 amount: tier.amount,
-                // The price comes from the TIER, never from the request - the same rule the
-                // verify step keeps.
-                toman: tier.toman,
+                // The price comes from OUR arithmetic, never from the request - the same rule
+                // the verify step keeps, and the reason a moved rate cannot become a discount.
+                toman: price,
                 phone,
                 createdAt: new Date().toISOString()
             };

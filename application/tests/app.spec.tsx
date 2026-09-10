@@ -4,25 +4,50 @@
 // The catalogue is fetched, so `fetch` is stubbed here rather than left to hit a server that
 // is not running. What each test asserts is what the page does with an answer - or, in the
 // first one, what it does while there is not one yet.
+//
+// PRICES COME DOWN WITH THE RATE THEY WERE COMPUTED FROM, so the fixture carries both. The
+// tests that matter most here are the ones where it carries NEITHER: a shop that cannot price
+// has to say so and refuse to be bought, and that is a state no amount of retrying reaches on
+// a live server.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 import App from '../src/App.tsx';
 import { FAQS, ASSURANCES } from '../src/lib/content.ts';
 
-const CATALOG = {
-    appName: 'گاردین سرویس',
-    tiers: [
-        {
-            amount: 10,
-            toman: 700_000,
-            available: 4,
-            title: 'کارت ده دلاری',
-            blurb: 'رایج‌ترین انتخاب.',
-            recommended: true
-        }
-    ]
-};
+const RATE = { toman: 100_000, at: new Date().toISOString(), stale: false };
+
+/** 10 x 100,000 + 6% = 1,060,000 - the same sum the server does, written out for the reader. */
+const TEN_DOLLAR_TOMAN = 1_060_000;
+
+function catalogBody(
+    overrides: { rate?: unknown; toman?: number | null } = {}
+): Record<string, unknown> {
+    return {
+        appName: 'گاردین سرویس',
+        rate: 'rate' in overrides ? overrides.rate : RATE,
+        tiers: [
+            {
+                amount: 10,
+                toman: 'toman' in overrides ? overrides.toman : TEN_DOLLAR_TOMAN,
+                available: 4,
+                title: 'کارت ده دلاری',
+                blurb: 'رایج‌ترین انتخاب.',
+                recommended: true
+            }
+        ]
+    };
+}
+
+const CATALOG = catalogBody();
+
+/** JSON in the shape the client's error envelope parser expects. */
+function json(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' }
+    });
+}
 
 beforeEach(() => {
     // One answer for the catalogue, a refusal for anything else - the console's routes are
@@ -31,16 +56,9 @@ beforeEach(() => {
         'fetch',
         vi.fn((input: string) => {
             if (String(input).includes('/api/pay/catalog')) {
-                return Promise.resolve(
-                    new Response(JSON.stringify(CATALOG), {
-                        status: 200,
-                        headers: { 'content-type': 'application/json' }
-                    })
-                );
+                return Promise.resolve(json(CATALOG));
             }
-            return Promise.resolve(
-                new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } })
-            );
+            return Promise.resolve(json({}, 401));
         })
     );
 });
@@ -192,5 +210,103 @@ describe('buying from a card', () => {
         // back on the card before the gateway is opened.
         expect(screen.getByText('ویرایش شماره')).not.toBeNull();
         expect(document.body.textContent).toContain('09170459330');
+    });
+
+    it('sends the price it displayed, so the server can refuse a stale one', async () => {
+        const calls: Array<Record<string, unknown>> = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string, init?: RequestInit) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(CATALOG));
+                }
+                if (String(input).includes('/api/pay/start')) {
+                    calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+                    return Promise.resolve(json({ payUrl: 'https://gateway.test/pay/x' }));
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/" />);
+        const input = await screen.findByLabelText('شماره موبایل');
+        fireEvent.change(input, { target: { value: '09170459330' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+        // Anchored, and scoped to a BUTTON: the confirm step also carries
+        // «مبلغ قابل پرداخت» and a line about the gateway, so a loose text match finds three.
+        fireEvent.click(await screen.findByRole('button', { name: /^پرداخت/ }));
+
+        await vi.waitFor(() => expect(calls).toHaveLength(1));
+        // The figure on the card travels WITH the purchase. It is not the amount - the server
+        // charges its own - it is the assertion the server checks it against.
+        expect(calls[0].quotedToman).toBe(TEN_DOLLAR_TOMAN);
+        expect(calls[0].amount).toBe(10);
+    });
+
+    it('re-quotes rather than erroring when the rate moved under the buyer', async () => {
+        const moved = catalogBody({ toman: 1_272_000 });
+        let started = 0;
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    // The second read - the one the card triggers after being refused -
+                    // carries the new price.
+                    return Promise.resolve(json(started === 0 ? CATALOG : moved));
+                }
+                if (String(input).includes('/api/pay/start')) {
+                    started += 1;
+                    return Promise.resolve(
+                        json({ error: { code: 'price-changed', message: 'قیمت تغییر کرد' } }, 409)
+                    );
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/" />);
+        const input = await screen.findByLabelText('شماره موبایل');
+        fireEvent.change(input, { target: { value: '09170459330' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+        // Anchored, and scoped to a BUTTON: the confirm step also carries
+        // «مبلغ قابل پرداخت» and a line about the gateway, so a loose text match finds three.
+        fireEvent.click(await screen.findByRole('button', { name: /^پرداخت/ }));
+
+        // A moved price is not a failure and must not be dressed as one: the buyer is told
+        // the amount changed, told no money moved, and asked again with the new figure.
+        await screen.findByText(/نرخ تتر تغییر کرد/);
+        expect(document.body.textContent).toContain('پولی از حساب شما کم نشده');
+        expect(document.body.textContent).not.toContain('شروع پرداخت ممکن نشد');
+    });
+});
+
+describe('the tether ticker', () => {
+    it('shows the live rate the prices were computed from', async () => {
+        render(<App url="/" />);
+
+        // The rate is the working behind every price on the page, so it is on the page.
+        await screen.findByText(/قیمت لحظه‌ای تتر/);
+        expect(document.body.textContent).toContain('۱۰۰٬۰۰۰');
+    });
+
+    it('says the price is unavailable rather than showing a stale one', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(catalogBody({ rate: null, toman: null })));
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/" />);
+
+        // No last-known number, no zero, no blank: the shop says it cannot price anything,
+        // and the card refuses to be bought instead of offering a figure nobody stands behind.
+        await screen.findByText(/قیمت لحظه‌ای تتر در دسترس نیست/);
+        const button = await screen.findByText('قیمت در دسترس نیست');
+        expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
+        expect(document.body.textContent).not.toContain('۱٬۰۶۰٬۰۰۰');
     });
 });

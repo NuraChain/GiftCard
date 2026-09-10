@@ -1,17 +1,23 @@
-// The catalogue: what the shop sells, and at what price.
+// The catalogue: what the shop sells. NOT at what price - see domain/pricing.ts for that.
 //
 // The rule that lives here rather than in a route: a tier with codes or orders behind it is
 // DEACTIVATED rather than deleted, because dropping the row would orphan the history that
 // explains what someone paid.
+//
+// THE `toman` COLUMN IS DEAD and this file is where it is buried. Prices are derived from the
+// live tether rate now, so no per-card Toman figure is read from or written to this table -
+// every insert parks a zero in the column. It is still in the schema because
+// `CREATE TABLE IF NOT EXISTS` cannot drop a column from a database that already exists, and
+// the shops already trading have real numbers in it. It goes when schema.ts grows a
+// migration runner; until then, nothing reads it and nothing may start.
 import type { DatabaseSync } from 'node:sqlite';
 
 import { shaped } from '../../platform/db.ts';
 import type { Amount, Tier, TierInput, TierRemoval } from '../../db/types.ts';
 
-/** The row shape SQLite returns; booleans are integers. */
+/** The row shape SQLite returns; booleans are integers. `toman` is the dead column - unread. */
 interface TierRow {
     amount: number;
-    toman: number;
     title: string;
     blurb: string;
     recommended: number;
@@ -22,7 +28,6 @@ interface TierRow {
 function toTier(row: TierRow): Tier {
     return {
         amount: row.amount,
-        toman: row.toman,
         title: row.title,
         blurb: row.blurb,
         recommended: row.recommended === 1,
@@ -46,7 +51,7 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
         INSERT INTO tiers (amount, toman, title, blurb, recommended, active, sort)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(amount) DO UPDATE SET
-            toman = excluded.toman, title = excluded.title, blurb = excluded.blurb,
+            title = excluded.title, blurb = excluded.blurb,
             recommended = excluded.recommended, active = excluded.active,
             sort = excluded.sort`);
     // At most one recommended card: the treatment means "most people pick this", and two of
@@ -74,7 +79,8 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
             try {
                 upsertTier.run(
                     tier.amount,
-                    tier.toman,
+                    // The dead column, fed the only value that cannot be mistaken for a price.
+                    0,
                     tier.title,
                     tier.blurb,
                     tier.recommended ? 1 : 0,

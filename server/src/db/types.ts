@@ -21,9 +21,6 @@ export interface Tier {
     /** The dollar figure, and the row's identity. */
     amount: Amount;
 
-    /** What the buyer actually pays. */
-    toman: number;
-
     title: string;
     blurb: string;
 

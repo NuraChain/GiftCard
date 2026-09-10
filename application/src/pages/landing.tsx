@@ -11,10 +11,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { useCatalog } from '../lib/catalog.tsx';
-import { STEPS, FAQS, ASSURANCES, CONTACT } from '../lib/content.ts';
+import { STEPS, FAQS, ASSURANCES } from '../lib/content.ts';
 import Async from '../ui/async.tsx';
 import CodeCapsule from '../components/code-capsule.tsx';
 import GiftCard from '../components/gift-card.tsx';
+import RateTicker from '../components/rate-ticker.tsx';
 import FaqItem from '../components/faq-item.tsx';
 import PurchaseResult from '../components/purchase-result.tsx';
 
@@ -40,6 +41,11 @@ export default function Landing(): ReactNode {
 
     return (
         <div>
+            {/* Above everything, full-bleed, attached to the header: the rate is the input to
+                every price below it, so it reads as a property of the shop rather than as a
+                widget parked in one section. */}
+            <RateTicker />
+
             <PurchaseResult />
 
             <section className="mx-auto grid max-w-6xl items-center gap-stack px-4 pt-section pb-stack sm:px-5 lg:grid-cols-[1.05fr_1fr]">
@@ -161,13 +167,6 @@ export default function Landing(): ReactNode {
 
             <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-section sm:px-5">
                 <h2 className="font-bold">سوال‌های پرتکرار</h2>
-                <p className="mt-3 text-muted">
-                    اگر پاسخ سوالتان اینجا نبود، به{' '}
-                    <span dir="ltr" className="latin">
-                        {CONTACT.email}
-                    </span>{' '}
-                    بنویسید.
-                </p>
 
                 <div className="mt-6 rounded-2xl border border-line bg-surface px-5">
                     {FAQS.map((faq) => (

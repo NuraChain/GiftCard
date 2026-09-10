@@ -12,16 +12,15 @@ import type { TierInput } from '../db/index.ts';
 /**
  * The three denominations the shop opens with, in display order.
  *
- * The prices live HERE rather than in the environment because they are part of the same
- * one-time seed as the words beside them - splitting them meant an operator had to look in
- * two places to answer "what does a fresh install sell?", and one of those places kept
- * three variables that were read exactly once and then never again.
+ * NO PRICES. There is nothing to seed: a card costs its dollar figure times the live tether
+ * rate times the shop's margin, so the only price-shaped decision on a fresh install is that
+ * margin, and it has its own default in the settings module. What is seeded here is the part
+ * a rate cannot supply - which denominations exist and what each one says about itself.
  */
 export function seedTiers(): TierInput[] {
     return [
         {
             amount: 5,
-            toman: 350_000,
             title: 'کارت پنج دلاری',
             blurb: 'برای امتحان کردن سرویس یا هدیه‌ای کوچک. همان کد و همان تحویل آنی کارت‌های بزرگ‌تر.',
             recommended: false,
@@ -30,7 +29,6 @@ export function seedTiers(): TierInput[] {
         },
         {
             amount: 10,
-            toman: 700_000,
             title: 'کارت ده دلاری',
             blurb: 'رایج‌ترین انتخاب: اندازه‌ای که برای بیشتر خریدها کافی است و ته‌مانده‌ای باقی نمی‌گذارد.',
             recommended: true,
@@ -39,7 +37,6 @@ export function seedTiers(): TierInput[] {
         },
         {
             amount: 25,
-            toman: 1_750_000,
             title: 'کارت بیست و پنج دلاری',
             blurb: 'برای استفاده طولانی‌تر یا هدیه دادن. یک کد، بدون تاریخ انقضا.',
             recommended: false,

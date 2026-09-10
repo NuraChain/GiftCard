@@ -28,6 +28,13 @@ export const settingsView = z.object({
     kavenegarTemplate: z.string(),
     kavenegarBase: z.string(),
 
+    /** The two exchanges the tether rate is cross-checked between. */
+    nobitexBase: z.string(),
+    wallexBase: z.string(),
+
+    /** The markup over the tether rate, in percent. Every card's price rides on it. */
+    marginPercent: z.number(),
+
     /** Delivery only runs when both the key and the template are present. */
     smsReady: z.boolean(),
 
@@ -48,7 +55,16 @@ export const settingsInput = z.object({
     merchantId: z.string().trim().max(100).optional(),
     kavenegarKey: z.string().trim().max(200).optional(),
     kavenegarTemplate: z.string().trim().max(100).optional(),
-    kavenegarBase: z.string().trim().max(200).optional()
+    kavenegarBase: z.string().trim().max(200).optional(),
+    nobitexBase: z.string().trim().max(200).optional(),
+    wallexBase: z.string().trim().max(200).optional(),
+
+    /**
+     * The one number here that is money. Bounded at the boundary rather than trusted: the
+     * console is behind a session, but a session is not a reason to accept a 5,000% margin
+     * or a NaN, and `tomanPrice` refuses both far too late to be useful.
+     */
+    marginPercent: z.number().min(0).max(100).optional()
 });
 
 /** One recorded change. Values are masked here too - the log is not a way around write-only. */

@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { get, post } from '../../platform/contract.ts';
 import { phoneField } from '../../domain/phone.ts';
 import { amountField } from '../../contract/shared.ts';
+import { tetherRate } from '../rate/contract.ts';
 
 /**
  * What starts a purchase. The SAME schema validates three times from this one declaration:
@@ -19,7 +20,22 @@ import { amountField } from '../../contract/shared.ts';
  */
 export const payStartInput = z.object({
     amount: amountField,
-    phone: phoneField
+    phone: phoneField,
+
+    /**
+     * THE PRICE THE CARD WAS SHOWING when the buyer pressed pay.
+     *
+     * It is not what they are charged - the server works that out from its own rate and its
+     * own margin, the same way it always took the amount from its own tier row. This is an
+     * ASSERTION to check that number against: if the tether moved between the page loading
+     * and the button being pressed, the two disagree and the purchase is refused rather than
+     * silently taking a different sum from the one on screen.
+     *
+     * So it is a promise the client makes about what it displayed, and the server's only use
+     * for it is to call the client wrong. Treating it as the amount would be the oldest
+     * mistake in online payments.
+     */
+    quotedToman: z.number().int().min(1)
 });
 
 /**
@@ -46,10 +62,27 @@ export const catalog = z.object({
     /** What the shop calls itself. Public: it is the page title and the brand on every page. */
     appName: z.string(),
 
+    /**
+     * The live tether rate every price below was computed from, or NULL when no two exchanges
+     * agree and the shop cannot price anything.
+     *
+     * It ships WITH the prices rather than on its own route so the page can never show a rate
+     * from one moment beside a price from another - the reader can do that multiplication in
+     * their head, and being caught out by it is not a good look for a shop.
+     */
+    rate: tetherRate.nullable(),
+
     tiers: z.array(
         z.object({
             amount: amountField,
-            toman: z.number().int(),
+
+            /**
+             * What this card costs right now. NULL travels with a null `rate` above: there is
+             * no last-known price to fall back on, because a price nobody can justify is
+             * worse than a card that says it cannot be sold this minute.
+             */
+            toman: z.number().int().nullable(),
+
             available: z.number().int(),
 
             // The card's own words. They live in the database because the catalogue is editable,

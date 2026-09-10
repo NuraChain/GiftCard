@@ -18,12 +18,67 @@ import type {
     VerifyResult
 } from '../src/features/checkout/zarinpal.ts';
 import { seedTiers } from '../src/domain/seed.ts';
+import { tomanPrice } from '../src/domain/pricing.ts';
+import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
 import { createSettings, type Settings } from '../src/features/settings/settings.ts';
 import type { SmsResult, SmsSender } from '../src/features/checkout/sms.ts';
 import { createStore, type Store } from '../src/db/index.ts';
 
 const ADMIN_KEY = 'ABCD-EFGH-JKLM-NPQR';
-const PRICES = { 5: 350_000, 10: 700_000, 25: 1_750_000 } as const;
+
+/** The tether rate every price in this suite derives from. Round, so the sums stay readable. */
+const RATE_TOMAN = 100_000;
+
+/** The shipped default margin. If settings.ts changes it, these prices SHOULD fail. */
+const MARGIN_PERCENT = 6;
+
+/**
+ * What each card costs at that rate and that margin - computed, not written down.
+ *
+ * Deliberately not three literals: hardcoding 530_000 here would let a bug in `tomanPrice`
+ * and a matching typo in this file agree with each other. Deriving them means these tests
+ * check the WIRING, and the arithmetic itself is checked on its own in `the price formula`.
+ */
+const PRICES = {
+    5: tomanPrice(5, RATE_TOMAN, MARGIN_PERCENT),
+    10: tomanPrice(10, RATE_TOMAN, MARGIN_PERCENT),
+    25: tomanPrice(25, RATE_TOMAN, MARGIN_PERCENT)
+} as const;
+
+/**
+ * A tether rate under the test's control.
+ *
+ * The real one cross-checks two exchanges on a timer; this answers whatever was last set,
+ * including NOTHING - which is how the shop-closed paths are reached without waiting out a
+ * fifteen-minute grace window.
+ */
+interface FakeRate extends TetherRate {
+    set(snapshot: RateSnapshot | null): void;
+}
+
+function fakeRate(): FakeRate {
+    let snapshot: RateSnapshot | null = {
+        toman: RATE_TOMAN,
+        at: new Date().toISOString(),
+        stale: false
+    };
+    return {
+        set(next) {
+            snapshot = next;
+        },
+        current: () => snapshot,
+        status: () => ({
+            rate: snapshot,
+            selling: snapshot !== null,
+            reason: snapshot === null ? 'no rate' : '',
+            ageSeconds: snapshot === null ? null : 0,
+            readings: [],
+            spreadPercent: null
+        }),
+        refresh: () => Promise.resolve(),
+        start: () => (): void => {}
+    };
+}
 
 /** A code inventory that looks like the real thing: canonical UUIDs. */
 function uuids(length: number): string[] {
@@ -92,12 +147,14 @@ function fakes(): Fakes {
 
 let store: Store;
 let fake: Fakes;
+let rate: FakeRate;
 let settings: Settings;
 let app: ReturnType<typeof buildApp>;
 
 beforeEach(() => {
     store = createStore(':memory:');
     fake = fakes();
+    rate = fakeRate();
     // The catalogue is data now, so every test starts from the same seeded shop the first
     // boot would produce.
     for (const tier of seedTiers()) {
@@ -107,6 +164,7 @@ beforeEach(() => {
     app = buildApp({
         store,
         settings,
+        rate,
         payment: fake.payment,
         sms: fake.sms,
         admin: createAdmin({
@@ -181,8 +239,17 @@ function get(path: string, headers: Record<string, string> = {}): Promise<Answer
  * and buys it. Whether an amount is sellable is a lookup against the live tier table now -
  * see the note on `amountField` in the contract.
  */
-async function buy(amount = 10, phone = '09170459330'): Promise<number> {
-    return (await post('/api/pay/start', { amount, phone })).status;
+async function buy(amount = 10, phone = '09170459330', quotedToman?: number): Promise<number> {
+    // Every purchase asserts the price it was shown. Defaulting it to the correct one keeps
+    // the existing tests about stock and settlement free of pricing noise; the tests that
+    // care about a MOVED price pass their own.
+    return (
+        await post('/api/pay/start', {
+            amount,
+            phone,
+            quotedToman: quotedToman ?? tomanPrice(amount, RATE_TOMAN, MARGIN_PERCENT)
+        })
+    ).status;
 }
 
 /** The authority and receipt token of the most recent order. */
@@ -201,7 +268,7 @@ describe('the shop', () => {
         const body = (await (await get('/api/pay/catalog')).json()) as {
             tiers: Array<{
                 amount: number;
-                toman: number;
+                toman: number | null;
                 available: number;
                 title: string;
                 recommended: boolean;
@@ -210,7 +277,7 @@ describe('the shop', () => {
         expect(body.tiers).toHaveLength(3);
 
         const ten = body.tiers.find((tier) => tier.amount === 10);
-        expect(ten?.toman).toBe(700_000);
+        expect(ten?.toman).toBe(PRICES[10]);
         expect(ten?.available).toBe(3);
         // The card's words come from the catalogue too, so a tier added at runtime is not a
         // blank card on the shop.
@@ -235,9 +302,10 @@ describe('the shop', () => {
         // a thing we sell is now a lookup against the live tier table, and it happens before
         // a code is claimed or a gateway is called.
         store.addCodes(10, uuids(1));
-        expect((await post('/api/pay/start', { amount: 7, phone: '09170459330' })).status).toBe(
-            409
-        );
+        expect(
+            (await post('/api/pay/start', { amount: 7, phone: '09170459330', quotedToman: 1 }))
+                .status
+        ).toBe(409);
         expect(fake.opened).toBe(0);
         expect(store.availableFor(10)).toBe(1);
     });
@@ -254,20 +322,82 @@ describe('the shop', () => {
         expect(store.availableFor(5)).toBe(1);
     });
 
-    it('charges the tier price, not one from the request', async () => {
+    it('charges the price it computed, never one from the request', async () => {
         store.addCodes(10, uuids(1));
-        const ten = seedTiers()[1];
-        store.saveTier({ ...ten, toman: 999_000 });
 
-        await buy(10);
-        const order = store.recentOrders(1)[0];
-        // Repricing takes effect on the next checkout with no restart, and the stored order
-        // carries the price it was actually sold at.
-        expect(order.toman).toBe(999_000);
+        // The client asserts the correct price, so the sale goes through - and the stored
+        // order carries the figure THIS SERVER worked out, which is what the verify step is
+        // later held to.
+        expect(await buy(10)).toBe(200);
+        expect(store.recentOrders(1)[0].toman).toBe(PRICES[10]);
+    });
+
+    it('refuses a purchase quoted at a price that has moved', async () => {
+        store.addCodes(10, uuids(1));
+
+        // The oldest trick there is: send back a price of your own choosing. It is not
+        // treated as the amount - it is compared against ours, and disagreeing refuses the
+        // sale outright rather than charging either number.
+        expect(await buy(10, '09170459330', 1_000)).toBe(409);
+
+        // Nothing was opened and no code was taken: the refusal lands before either.
+        expect(fake.opened).toBe(0);
+        expect(store.availableFor(10)).toBe(1);
+    });
+
+    it('names a moved price so the card can re-quote instead of showing an error', async () => {
+        store.addCodes(10, uuids(1));
+        const response = await post('/api/pay/start', {
+            amount: 10,
+            phone: '09170459330',
+            quotedToman: PRICES[10] - 1_000
+        });
+        const body = (await response.json()) as { error: { code: string } };
+        // The client keys off this code to refresh the catalogue and ask again. A generic
+        // 'conflict' would be indistinguishable from being sold out.
+        expect(body.error.code).toBe('price-changed');
+    });
+
+    it('reprices every card the moment the rate moves', async () => {
+        store.addCodes(10, uuids(1));
+        rate.set({ toman: 200_000, at: new Date().toISOString(), stale: false });
+
+        const body = (await (await get('/api/pay/catalog')).json()) as {
+            tiers: Array<{ amount: number; toman: number | null }>;
+        };
+        expect(body.tiers.find((tier) => tier.amount === 10)?.toman).toBe(
+            tomanPrice(10, 200_000, MARGIN_PERCENT)
+        );
+
+        // And the old price stops being accepted, with no restart in between.
+        expect(await buy(10, '09170459330', PRICES[10])).toBe(409);
+    });
+
+    it('closes the shop rather than pricing without an agreed rate', async () => {
+        store.addCodes(10, uuids(1));
+        rate.set(null);
+
+        const body = (await (await get('/api/pay/catalog')).json()) as {
+            rate: unknown;
+            tiers: Array<{ amount: number; toman: number | null }>;
+        };
+        // No last-known price, no fallback, no zero: a null, which the cards render as
+        // unbuyable. A price nobody can justify is worse than no price at all.
+        expect(body.rate).toBeNull();
+        expect(body.tiers.every((tier) => tier.toman === null)).toBe(true);
+
+        // And the purchase route refuses too - a page left open must not be able to buy.
+        expect(await buy(10)).toBe(503);
+        expect(fake.opened).toBe(0);
+        expect(store.availableFor(10)).toBe(1);
     });
 
     it('rejects a malformed phone with a field map the form can display', async () => {
-        const response = await post('/api/pay/start', { amount: 5, phone: '12345' });
+        const response = await post('/api/pay/start', {
+            amount: 5,
+            phone: '12345',
+            quotedToman: PRICES[5]
+        });
         expect(response.status).toBe(422);
         const body = (await response.json()) as {
             error: { details?: { fields?: Record<string, string> } };
@@ -319,7 +449,11 @@ describe('the shop', () => {
         // Eight get through the window; the ninth is refused with the header that tells a
         // well-behaved client when to come back.
         expect(statuses.filter((status) => status === 200)).toHaveLength(8);
-        const refused = await post('/api/pay/start', { amount: 10, phone: '09170459330' });
+        const refused = await post('/api/pay/start', {
+            amount: 10,
+            phone: '09170459330',
+            quotedToman: PRICES[10]
+        });
         expect(refused.status).toBe(429);
         expect(refused.headers.get('retry-after')).not.toBeNull();
         // A refused request must not have taken stock with it.
@@ -736,7 +870,6 @@ describe('the catalogue', () => {
             '/api/admin/tiers',
             {
                 amount: 50,
-                toman: 3_500_000,
                 title: 'کارت پنجاه دلاری',
                 blurb: 'برای خرید بزرگ.',
                 recommended: false,
@@ -759,7 +892,6 @@ describe('the catalogue', () => {
                 '/api/admin/tiers',
                 {
                     amount: 5,
-                    toman: PRICES[5],
                     title: 'کارت پنج دلاری',
                     blurb: 'x',
                     recommended: true,

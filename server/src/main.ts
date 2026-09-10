@@ -21,6 +21,8 @@ import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
 import { config } from './config.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
+import { createTetherRate } from './features/rate/rate.ts';
+import { nobitexSource, wallexSource } from './features/rate/sources.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings } from './features/settings/settings.ts';
@@ -107,9 +109,31 @@ if (live.merchantId === '') {
     );
 }
 
+// The tether rate: two exchanges, cross-checked, refreshed on a timer. The hosts are read
+// PER CALL from settings so repointing one in the console takes effect without a restart.
+const rate = createTetherRate({
+    sources: [
+        nobitexSource({ baseUrl: () => settings.current().nobitexBase }),
+        wallexSource({ baseUrl: () => settings.current().wallexBase })
+    ],
+    log
+});
+
+// One reading BEFORE the port opens. Without it the first buyers of every deploy meet a shop
+// that cannot price anything for the first minute, which looks exactly like a broken site.
+await rate.refresh();
+const stopRate = rate.start();
+if (!rate.status().selling) {
+    log.error(
+        { reason: rate.status().reason },
+        'no agreed tether rate - the shop will not sell until two exchanges agree'
+    );
+}
+
 const app = buildApp({
     store,
     settings,
+    rate,
     payment: createPayment({
         settings: () => {
             const now = settings.current();
@@ -142,6 +166,7 @@ app.addHook('onRequest', rateLimit(200, 60_000));
 // The database closes AFTER in-flight requests drain: a settle mid-flight is money.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
+        stopRate();
         void app.close().then(() => {
             store.close();
             process.exit(0);

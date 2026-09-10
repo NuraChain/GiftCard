@@ -16,6 +16,7 @@ import { inventoryRoutes } from '../features/inventory/contract.ts';
 import { settingsRoutes } from '../features/settings/contract.ts';
 import { consoleRoutes } from '../features/console/contract.ts';
 import { checkoutRoutes } from '../features/checkout/contract.ts';
+import { rateRoutes } from '../features/rate/contract.ts';
 
 // Both halves' schemas and their inferred types, re-exported so an importer needs one path.
 export * from './shared.ts';
@@ -24,9 +25,16 @@ export * from '../features/console/contract.ts';
 export * from '../features/catalogue/contract.ts';
 export * from '../features/inventory/contract.ts';
 export * from '../features/settings/contract.ts';
+export * from '../features/rate/contract.ts';
 
 /** The whole API, in one screen. Each group's routes live with the feature of that name. */
 export const contract = defineContract({
     pay: checkoutRoutes,
-    admin: { ...consoleRoutes, ...catalogueRoutes, ...inventoryRoutes, ...settingsRoutes }
+    admin: {
+        ...consoleRoutes,
+        ...catalogueRoutes,
+        ...inventoryRoutes,
+        ...settingsRoutes,
+        ...rateRoutes
+    }
 });
