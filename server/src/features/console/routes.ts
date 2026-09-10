@@ -12,8 +12,7 @@ import { SESSION_COOKIE, type Admin } from './session.ts';
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
 const PAGE_SIZE = 25;
 
-export interface ConsoleOptions
-{
+export interface ConsoleOptions {
     store: Store;
     admin: Admin;
 }
@@ -24,14 +23,12 @@ type ConsoleHandlers = Pick<
     'signIn' | 'signOut' | 'overview' | 'orders'
 >;
 
-export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers
-{
+export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
     const { store, admin } = options;
 
     return {
         // POST /api/admin/session
-        signIn: ({ input, request, reply }) =>
-        {
+        signIn: ({ input, request, reply }) => {
             // `request.ip` is the buyer's address rather than nginx's because `trustProxyHops`
             // is set - see platform/throttle.ts for why that had to change and what closes
             // the hole it would otherwise open.
@@ -40,8 +37,7 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers
         },
 
         // DELETE /api/admin/session
-        signOut: ({ request, reply }) =>
-        {
+        signOut: ({ request, reply }) => {
             const cookie = admin.signOut(request.cookies[SESSION_COOKIE]);
             reply.setCookie(cookie.name, cookie.value, cookie.options);
         },
@@ -50,8 +46,7 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers
         overview: () => ({ stock: store.stock(), owed: store.owedCount() }),
 
         // GET /api/admin/orders
-        orders: ({ query }) =>
-        {
+        orders: ({ query }) => {
             const page = Math.max(1, query.page ?? 1);
             const found = store.searchOrders({
                 search: query.search ?? '',

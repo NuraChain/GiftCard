@@ -4,10 +4,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
     plugins: [react(), tailwindcss()],
-    server:
-    {
-        proxy:
-        {
+    server: {
+        proxy: {
             // The server half of this app, in DEV only. `npm run dev:api` and
             // `npm run dev:web` from the repo root run the two halves in separate
             // terminals; this line is the whole dev wiring between them.
@@ -19,8 +17,7 @@ export default defineConfig({
             '/api': 'http://localhost:3000'
         }
     },
-    test:
-    {
+    test: {
         environment: 'happy-dom'
     }
 });

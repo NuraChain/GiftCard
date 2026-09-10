@@ -21,8 +21,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { SettingsStore } from '../../db/index.ts';
 
 /** Every key this module owns. Anything not listed is not settable from the browser. */
-export const SETTING_KEYS =
-[
+export const SETTING_KEYS = [
     'appName',
     'zarinpalBase',
     'merchantId',
@@ -38,8 +37,7 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 const SECRETS = new Set<SettingKey>(['merchantId', 'kavenegarKey', 'adminKeyHash']);
 
 /** What the shop and the gateway client read on every call. */
-export interface RuntimeSettings
-{
+export interface RuntimeSettings {
     /** What the shop calls itself: the page title, the brand, the payment description. */
     appName: string;
 
@@ -58,8 +56,7 @@ export interface RuntimeSettings
  * console says the gateway is not configured, and checkout refuses to start a payment until
  * somebody sets one. Booting is not the same as being open for business.
  */
-const DEFAULTS =
-{
+const DEFAULTS = {
     appName: 'گاردین سرویس',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
@@ -68,8 +65,7 @@ const DEFAULTS =
     kavenegarBase: 'https://api.kavenegar.com'
 } as const satisfies RuntimeSettings;
 
-export interface SettingsOptions
-{
+export interface SettingsOptions {
     store: SettingsStore;
 
     /**
@@ -78,11 +74,9 @@ export interface SettingsOptions
      * key that opens the console. Once a key is rotated in, this is the break-glass path.
      */
     adminKey: string;
-
 }
 
-export interface Settings
-{
+export interface Settings {
     /** The live values, read through a cache that the writer invalidates. */
     current(): RuntimeSettings;
 
@@ -112,8 +106,7 @@ export interface Settings
 }
 
 /** The masked shape the console receives. Mirrors `settingsView` in the contract. */
-export interface SettingsView
-{
+export interface SettingsView {
     appName: string;
     zarinpalBase: string;
     sandbox: boolean;
@@ -129,21 +122,18 @@ export interface SettingsView
 }
 
 /** @internal `••••5555`: enough to tell two credentials apart, not enough to use one. */
-function mask(value: string): string
-{
-    if (value === '')
-    {
+function mask(value: string): string {
+    if (value === '') {
         return '';
     }
-    return value.length <= 4 ? '••••' : `••••${ value.slice(-4) }`;
+    return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
 }
 
 /** The published shape: four groups of four over the no-I/O/0/1 alphabet (~80 bits). */
 const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** @internal A console credential from the platform CSPRNG, in the published shape. */
-function mintAdminKey(): string
-{
+function mintAdminKey(): string {
     return [...randomBytes(16)]
         .map((byte) => KEY_ALPHABET[byte % KEY_ALPHABET.length])
         .join('')
@@ -151,18 +141,15 @@ function mintAdminKey(): string
 }
 
 /** @internal `scrypt$<salt>$<hash>`. A slow KDF costs nothing here and covers a weak key. */
-function hashKey(key: string): string
-{
+function hashKey(key: string): string {
     const salt = randomBytes(16);
-    return `scrypt$${ salt.toString('base64') }$${ scryptSync(key, salt, 32).toString('base64') }`;
+    return `scrypt$${salt.toString('base64')}$${scryptSync(key, salt, 32).toString('base64')}`;
 }
 
 /** @internal Constant-time comparison against a stored `scrypt$salt$hash`. */
-function keyMatchesHash(candidate: string, stored: string): boolean
-{
+function keyMatchesHash(candidate: string, stored: string): boolean {
     const [scheme, salt, digest] = stored.split('$');
-    if (scheme !== 'scrypt' || salt === undefined || digest === undefined)
-    {
+    if (scheme !== 'scrypt' || salt === undefined || digest === undefined) {
         return false;
     }
     const expected = Buffer.from(digest, 'base64');
@@ -170,17 +157,14 @@ function keyMatchesHash(candidate: string, stored: string): boolean
     return timingSafeEqual(expected, actual);
 }
 
-export function createSettings(options: SettingsOptions): Settings
-{
+export function createSettings(options: SettingsOptions): Settings {
     let cache: RuntimeSettings | null = null;
 
     const read = (name: SettingKey): string => options.store.getSetting(name) ?? '';
 
-    const write = (name: SettingKey, value: string): void =>
-    {
+    const write = (name: SettingKey, value: string): void => {
         const before = read(name);
-        if (before === value)
-        {
+        if (before === value) {
             return;
         }
         options.store.putSetting(name, value);
@@ -195,10 +179,8 @@ export function createSettings(options: SettingsOptions): Settings
         cache = null;
     };
 
-    const current = (): RuntimeSettings =>
-    {
-        if (cache === null)
-        {
+    const current = (): RuntimeSettings => {
+        if (cache === null) {
             // A stored empty string means "explicitly cleared" and must not fall back to the
             // default, which is why `??` on the RAW row is wrong here: only an ABSENT row
             // takes the fallback.
@@ -220,8 +202,7 @@ export function createSettings(options: SettingsOptions): Settings
     return {
         current,
 
-        view(callbackUrl)
-        {
+        view(callbackUrl) {
             const live = current();
             return {
                 appName: live.appName,
@@ -239,22 +220,17 @@ export function createSettings(options: SettingsOptions): Settings
             };
         },
 
-        save(changes)
-        {
-            for (const [name, value] of Object.entries(changes))
-            {
-                if (value !== undefined)
-                {
+        save(changes) {
+            for (const [name, value] of Object.entries(changes)) {
+                if (value !== undefined) {
                     write(name as SettingKey, value);
                 }
             }
         },
 
-        matchesAdminKey(candidate)
-        {
+        matchesAdminKey(candidate) {
             const stored = read('adminKeyHash');
-            if (stored === '')
-            {
+            if (stored === '') {
                 // Nothing rotated yet: the environment key IS the credential. It stays the
                 // break-glass path afterwards only if the stored hash is removed by hand.
                 const expected = Buffer.from(options.adminKey);
@@ -264,15 +240,12 @@ export function createSettings(options: SettingsOptions): Settings
             return keyMatchesHash(candidate, stored);
         },
 
-        rotateAdminKey(next)
-        {
+        rotateAdminKey(next) {
             write('adminKeyHash', hashKey(next));
         },
 
-        ensureAdminKey()
-        {
-            if (options.store.getSetting('adminKeyHash') !== undefined || options.adminKey !== '')
-            {
+        ensureAdminKey() {
+            if (options.store.getSetting('adminKeyHash') !== undefined || options.adminKey !== '') {
                 return null;
             }
             // A fresh install with nothing configured. The alternative - shipping a default
@@ -284,13 +257,11 @@ export function createSettings(options: SettingsOptions): Settings
             return key;
         },
 
-        adminKeyRotated()
-        {
+        adminKeyRotated() {
             return options.store.getSetting('adminKeyHash') !== undefined;
         },
 
-        log(limit)
-        {
+        log(limit) {
             return options.store.settingsLog(limit);
         }
     };

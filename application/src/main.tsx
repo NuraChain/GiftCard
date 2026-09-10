@@ -9,13 +9,12 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 
 const root = document.getElementById('root');
-if (root === null)
-{
+if (root === null) {
     throw new Error('index.html is missing its #root element');
 }
 
 createRoot(root).render(
     <StrictMode>
-        <App/>
+        <App />
     </StrictMode>
 );

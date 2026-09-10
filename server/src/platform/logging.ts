@@ -8,8 +8,7 @@
 // `main.ts` builds a real pino instance and it satisfies this structurally; a test passes
 // nothing at all, which is why every call site writes `log?.`.
 
-export interface Logger
-{
+export interface Logger {
     info(details: object, message?: string): void;
     info(message: string): void;
 

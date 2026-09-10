@@ -13,8 +13,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
  * It is separate from Zarinpal's `authority` on purpose: the result page can be reloaded and
  * shared without exposing the value the gateway keys payments on.
  */
-export function mintReceiptToken(): string
-{
+export function mintReceiptToken(): string {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     return [...bytes].map((byte) => ALPHABET[byte % ALPHABET.length]).join('');
 }

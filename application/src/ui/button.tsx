@@ -12,8 +12,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 /** What the button MEANS, not what it looks like - the look is this table's business. */
-const VARIANTS =
-{
+const VARIANTS = {
     /** The one action the screen is for. At most one per view. */
     primary: 'bg-firouze text-paper hover:opacity-90',
     /** Everything else that acts. */
@@ -26,14 +25,12 @@ const VARIANTS =
     ghost: 'text-muted hover:text-ink'
 };
 
-const SIZES =
-{
+const SIZES = {
     md: 'px-5 text-small',
     sm: 'px-4 text-caption'
 };
 
-export interface ButtonProps
-{
+export interface ButtonProps {
     children: ReactNode;
     variant?: keyof typeof VARIANTS;
     size?: keyof typeof SIZES;
@@ -64,8 +61,7 @@ export interface ButtonProps
     className?: string;
 }
 
-export default function Button(props: ButtonProps): ReactNode
-{
+export default function Button(props: ButtonProps): ReactNode {
     const { glyph: Glyph, trailing: Trailing } = props;
 
     const shape = [
@@ -76,23 +72,31 @@ export default function Button(props: ButtonProps): ReactNode
         props.grow === true ? 'flex-1 justify-center sm:flex-none' : '',
         props.compact === true ? 'action-compact' : '',
         props.className ?? ''
-    ].filter((part) => part !== '').join(' ');
+    ]
+        .filter((part) => part !== '')
+        .join(' ');
 
     const busy = props.busy === true && props.busyText !== undefined;
 
     return (
         <button
-            type={ props.type ?? 'button' }
-            className={ shape }
-            disabled={ props.disabled === true || props.busy === true }
-            onClick={ props.onClick }
+            type={props.type ?? 'button'}
+            className={shape}
+            disabled={props.disabled === true || props.busy === true}
+            onClick={props.onClick}
         >
-            { Glyph !== undefined && <Glyph className="size-4 shrink-0" aria-hidden="true"/> }
-            { busy
-                ? <span>{ props.busyText }</span>
-                : <span className={ props.compact === true ? 'max-sm:sr-only' : '' }>{ props.children }</span> }
+            {Glyph !== undefined && <Glyph className="size-4 shrink-0" aria-hidden="true" />}
+            {busy ? (
+                <span>{props.busyText}</span>
+            ) : (
+                <span className={props.compact === true ? 'max-sm:sr-only' : ''}>
+                    {props.children}
+                </span>
+            )}
             {/* `rotate-180` because the page is RTL: forward points the other way. */}
-            { Trailing !== undefined && <Trailing className="size-4 shrink-0 rotate-180" aria-hidden="true"/> }
+            {Trailing !== undefined && (
+                <Trailing className="size-4 shrink-0 rotate-180" aria-hidden="true" />
+            )}
         </button>
     );
 }

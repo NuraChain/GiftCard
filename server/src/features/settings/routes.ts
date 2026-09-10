@@ -12,8 +12,7 @@ import type { SmsSender } from '../checkout/sms.ts';
 import { ADMIN_KEY_PATTERN, SESSION_COOKIE, type Admin } from '../console/session.ts';
 import type { Settings } from './settings.ts';
 
-export interface SettingsOptions
-{
+export interface SettingsOptions {
     settings: Settings;
     admin: Admin;
     sms: SmsSender;
@@ -27,8 +26,7 @@ type SettingsHandlers = Pick<
     'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testSms'
 >;
 
-export function settingsHandlers(options: SettingsOptions): SettingsHandlers
-{
+export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
     const { settings, admin, sms, callbackUrl, log } = options;
 
     return {
@@ -36,8 +34,7 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers
         settings: () => settings.view(callbackUrl),
 
         // POST /api/admin/settings
-        saveSettings: ({ input }) =>
-        {
+        saveSettings: ({ input }) => {
             // An ABSENT field keeps its value; an empty string is an explicit clear. That
             // distinction is what lets the console send only what changed without a blank
             // secret input wiping a working credential.
@@ -50,17 +47,14 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers
         settingsLog: () => ({ entries: settings.log(50) }),
 
         // POST /api/admin/key
-        rotateKey: ({ input, request, reply }) =>
-        {
+        rotateKey: ({ input, request, reply }) => {
             // A session proves someone was the admin at sign-in. Replacing the credential
             // should prove they still are, so the current key is required even though this
             // route already sits behind the guard.
-            if (!settings.matchesAdminKey(input.currentKey))
-            {
+            if (!settings.matchesAdminKey(input.currentKey)) {
                 throw new UnauthorizedError('کلید فعلی نادرست است');
             }
-            if (!ADMIN_KEY_PATTERN.test(input.newKey))
-            {
+            if (!ADMIN_KEY_PATTERN.test(input.newKey)) {
                 throw new ConflictError('کلید تازه باید به شکل XXXX-XXXX-XXXX-XXXX باشد');
             }
             settings.rotateAdminKey(input.newKey);
@@ -74,11 +68,9 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers
         },
 
         // POST /api/admin/test-sms
-        testSms: async ({ input }) =>
-        {
+        testSms: async ({ input }) => {
             const phone = normalizePhone(input.phone);
-            if (phone === null)
-            {
+            if (phone === null) {
                 throw new ConflictError('شماره موبایل معتبر نیست');
             }
             // A sample that looks like a code but is obviously not one: proving the template

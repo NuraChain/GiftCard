@@ -16,16 +16,14 @@ import AdminShell from './shell.tsx';
 import { useAdminSession } from './session.tsx';
 
 /** Persian for each state, plus the token colour that carries its weight. */
-const STATUS_TEXT: Record<string, { label: string; tone: string }> =
-{
+const STATUS_TEXT: Record<string, { label: string; tone: string }> = {
     pending: { label: 'در انتظار پرداخت', tone: 'text-muted' },
     paid: { label: 'پرداخت شده', tone: 'text-firouze' },
     cancelled: { label: 'لغو شده', tone: 'text-muted' },
     failed: { label: 'ناموفق', tone: 'text-danger' }
 };
 
-export default function Orders(): ReactNode
-{
+export default function Orders(): ReactNode {
     const notify = useToasts();
     const session = useAdminSession();
 
@@ -44,38 +42,29 @@ export default function Orders(): ReactNode
     // handler reads the value that handler just set, rather than the render's stale copy.
     const query = useRef({ search: '', page: 1 });
 
-    const load = useCallback(async (): Promise<void> =>
-    {
+    const load = useCallback(async (): Promise<void> => {
         setLoading(true);
         setError('');
-        try
-        {
+        try {
             const found = await client.admin.orders({ query: { ...query.current } });
             setRows(found.rows);
             setTotal(found.total);
             setPageSize(found.pageSize);
-        }
-        catch (failure)
-        {
+        } catch (failure) {
             setError(failureText(failure, 'سفارش‌ها خوانده نشدند'));
-        }
-        finally
-        {
+        } finally {
             setLoading(false);
         }
     }, []);
 
     // Keyed on the session, not on mount - see the note in overview.tsx.
-    useEffect(() =>
-    {
-        if (session.unlocked)
-        {
+    useEffect(() => {
+        if (session.unlocked) {
             void load();
         }
     }, [session.revision, session.unlocked, load]);
 
-    const runSearch = (event: FormEvent): void =>
-    {
+    const runSearch = (event: FormEvent): void => {
         event.preventDefault();
         // A new search always starts at the beginning; staying on page 4 of the previous
         // result set is how an operator concludes there are no matches when there are.
@@ -84,31 +73,25 @@ export default function Orders(): ReactNode
         void load();
     };
 
-    const goToPage = (next: number): void =>
-    {
+    const goToPage = (next: number): void => {
         const target = Math.min(Math.max(1, next), lastPage);
         setPage(target);
         query.current = { search: query.current.search, page: target };
         void load();
     };
 
-    const clearSearch = (): void =>
-    {
+    const clearSearch = (): void => {
         setSearch('');
         setPage(1);
         query.current = { search: '', page: 1 };
         void load();
     };
 
-    const copyCode = async (code: string): Promise<void> =>
-    {
-        try
-        {
+    const copyCode = async (code: string): Promise<void> => {
+        try {
             await navigator.clipboard.writeText(code);
             notify.success('کد کپی شد');
-        }
-        catch
-        {
+        } catch {
             notify.error('کپی نشد. کد را دستی انتخاب کنید.');
         }
     };
@@ -124,33 +107,47 @@ export default function Orders(): ReactNode
                 code, or a reference - and should not have to know which field the system
                 files it under. A partial number works: 0917، ۰۹۱۷ و 917 هر سه همان شماره را
                 پیدا می‌کنند. */}
-            <form className="mt-4 flex flex-wrap gap-2" noValidate onSubmit={ runSearch }>
-                <label className="sr-only" htmlFor="ledger-search">جستجو در سفارش‌ها</label>
+            <form className="mt-4 flex flex-wrap gap-2" noValidate onSubmit={runSearch}>
+                <label className="sr-only" htmlFor="ledger-search">
+                    جستجو در سفارش‌ها
+                </label>
                 <div className="relative min-w-0 flex-1">
                     <TextInput
                         id="ledger-search"
                         tone="surface"
                         className="ps-11 pe-4 text-small"
                         placeholder="شماره موبایل، کد، یا شمارهٔ پیگیری"
-                        value={ search }
-                        onChange={ setSearch }
+                        value={search}
+                        onChange={setSearch}
                     />
                     <span className="pointer-events-none absolute inset-y-0 start-4 flex items-center text-muted">
-                        <Search className="size-4" aria-hidden="true"/>
+                        <Search className="size-4" aria-hidden="true" />
                     </span>
                 </div>
-                <Button type="submit" disabled={ loading }>جستجو</Button>
-                { search !== '' && <Button variant="ghost" onClick={ clearSearch }>پاک کردن</Button> }
+                <Button type="submit" disabled={loading}>
+                    جستجو
+                </Button>
+                {search !== '' && (
+                    <Button variant="ghost" onClick={clearSearch}>
+                        پاک کردن
+                    </Button>
+                )}
             </form>
 
             <div className="mt-4">
                 <Async
-                    loading={ loading }
-                    error={ error }
-                    empty={ rows.length === 0 }
-                    emptyText={ search === '' ? 'هنوز سفارشی ثبت نشده است.' : 'سفارشی با این مشخصات پیدا نشد.' }
-                    onRetry={ () => void load() }
-                    skeleton={ <div className="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div> }
+                    loading={loading}
+                    error={error}
+                    empty={rows.length === 0}
+                    emptyText={
+                        search === ''
+                            ? 'هنوز سفارشی ثبت نشده است.'
+                            : 'سفارشی با این مشخصات پیدا نشد.'
+                    }
+                    onRetry={() => void load()}
+                    skeleton={
+                        <div className="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div>
+                    }
                 >
                     {/* `table-cards` redraws these rows as stacked cards below `md`. On a phone
                         the table was 566px wide in a 311px window: status, amount, reference
@@ -169,33 +166,70 @@ export default function Orders(): ReactNode
                                 </tr>
                             </thead>
                             <tbody>
-                                { rows.map((order) => (
+                                {rows.map((order) => (
                                     <tr
-                                        key={ order.id }
-                                        className={ `border-b border-line/60 ${ order.status === 'paid' && order.code === null ? 'bg-danger/5' : '' }` }
+                                        key={order.id}
+                                        className={`border-b border-line/60 ${order.status === 'paid' && order.code === null ? 'bg-danger/5' : ''}`}
                                     >
-                                        <td data-label="زمان" className="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-6">{ moment(order.createdAt) }</td>
-                                        <td data-label="موبایل" className="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold">
-                                            <span dir="ltr" className="latin">{ order.phone }</span>
+                                        <td
+                                            data-label="زمان"
+                                            className="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-6"
+                                        >
+                                            {moment(order.createdAt)}
                                         </td>
-                                        <td data-label="کارت" className="cell-inline p-3 whitespace-nowrap max-md:order-3">
-                                            <span dir="ltr" className="latin">${ order.amount }</span>
+                                        <td
+                                            data-label="موبایل"
+                                            className="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold"
+                                        >
+                                            <span dir="ltr" className="latin">
+                                                {order.phone}
+                                            </span>
                                         </td>
-                                        <td data-label="مبلغ" className="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4">{ toman(order.toman) }</td>
-                                        <td data-label="وضعیت" className={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-2 ${ STATUS_TEXT[order.status]?.tone ?? '' }` }>
-                                            { STATUS_TEXT[order.status]?.label ?? order.status }
-                                            { order.status === 'paid' && !order.smsDelivered && order.code !== null && (
-                                                <span className="block text-caption font-normal text-muted">پیامک نرفت</span>
-                                            ) }
+                                        <td
+                                            data-label="کارت"
+                                            className="cell-inline p-3 whitespace-nowrap max-md:order-3"
+                                        >
+                                            <span dir="ltr" className="latin">
+                                                ${order.amount}
+                                            </span>
                                         </td>
-                                        <td data-label="پیگیری" className="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5">
-                                            <span dir="ltr" className="latin">{ order.refId === null ? '-' : String(order.refId) }</span>
+                                        <td
+                                            data-label="مبلغ"
+                                            className="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4"
+                                        >
+                                            {toman(order.toman)}
+                                        </td>
+                                        <td
+                                            data-label="وضعیت"
+                                            className={`cell-inline p-3 whitespace-nowrap font-bold max-md:order-2 ${STATUS_TEXT[order.status]?.tone ?? ''}`}
+                                        >
+                                            {STATUS_TEXT[order.status]?.label ?? order.status}
+                                            {order.status === 'paid' &&
+                                                !order.smsDelivered &&
+                                                order.code !== null && (
+                                                    <span className="block text-caption font-normal text-muted">
+                                                        پیامک نرفت
+                                                    </span>
+                                                )}
+                                        </td>
+                                        <td
+                                            data-label="پیگیری"
+                                            className="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-5"
+                                        >
+                                            <span dir="ltr" className="latin">
+                                                {order.refId === null ? '-' : String(order.refId)}
+                                            </span>
                                         </td>
                                         {/* `cell-action` only when there IS a code: the other two
                                             branches are values, and a value wants its label. */}
-                                        <td data-label="کد" className={ `p-3 whitespace-nowrap max-md:order-7 ${ order.code === null ? '' : 'cell-action' }` }>
-                                            { order.status === 'paid' && order.code === null ? (
-                                                <span className="font-bold text-danger">کد داده نشده</span>
+                                        <td
+                                            data-label="کد"
+                                            className={`p-3 whitespace-nowrap max-md:order-7 ${order.code === null ? '' : 'cell-action'}`}
+                                        >
+                                            {order.status === 'paid' && order.code === null ? (
+                                                <span className="font-bold text-danger">
+                                                    کد داده نشده
+                                                </span>
                                             ) : order.code === null ? (
                                                 <span className="text-muted">-</span>
                                             ) : revealed === order.id ? (
@@ -203,22 +237,24 @@ export default function Orders(): ReactNode
                                                     type="button"
                                                     className="py-1 text-caption break-all hover:text-firouze max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
                                                     title="کپی کردن کد"
-                                                    onClick={ () => void copyCode(order.code ?? '') }
+                                                    onClick={() => void copyCode(order.code ?? '')}
                                                 >
-                                                    <span dir="ltr" className="latin">{ order.code }</span>
+                                                    <span dir="ltr" className="latin">
+                                                        {order.code}
+                                                    </span>
                                                 </button>
                                             ) : (
                                                 <button
                                                     type="button"
                                                     className="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
-                                                    onClick={ () => setRevealed(order.id) }
+                                                    onClick={() => setRevealed(order.id)}
                                                 >
                                                     نمایش کد
                                                 </button>
-                                            ) }
+                                            )}
                                         </td>
                                     </tr>
-                                )) }
+                                ))}
                             </tbody>
                         </table>
                     </div>
@@ -227,11 +263,21 @@ export default function Orders(): ReactNode
                         {/* Word, comma, word - never digit-separator-digit. Persian numerals
                             beside a middot or a bare space read as one longer number. */}
                         <p className="text-caption text-muted">
-                            { count(total) } سفارش، صفحهٔ { count(page) } از { count(lastPage) }
+                            {count(total)} سفارش، صفحهٔ {count(page)} از {count(lastPage)}
                         </p>
                         <div className="ms-auto flex gap-2">
-                            <Button disabled={ page <= 1 || loading } onClick={ () => goToPage(page - 1) }>تازه‌تر</Button>
-                            <Button disabled={ page >= lastPage || loading } onClick={ () => goToPage(page + 1) }>قدیمی‌تر</Button>
+                            <Button
+                                disabled={page <= 1 || loading}
+                                onClick={() => goToPage(page - 1)}
+                            >
+                                تازه‌تر
+                            </Button>
+                            <Button
+                                disabled={page >= lastPage || loading}
+                                onClick={() => goToPage(page + 1)}
+                            >
+                                قدیمی‌تر
+                            </Button>
                         </div>
                     </div>
                 </Async>

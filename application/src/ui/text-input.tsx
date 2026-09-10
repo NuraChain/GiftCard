@@ -7,8 +7,7 @@
 // was three attributes and a class at every call site, which is three chances to forget one.
 import type { ReactNode } from 'react';
 
-export interface TextInputProps
-{
+export interface TextInputProps {
     id: string;
     value: string;
 
@@ -37,30 +36,31 @@ export interface TextInputProps
     className?: string;
 }
 
-export default function TextInput(props: TextInputProps): ReactNode
-{
+export default function TextInput(props: TextInputProps): ReactNode {
     const shape = [
         'min-h-tap w-full rounded-xl border px-4 outline-none focus:border-firouze',
         props.invalid === true ? 'border-danger' : 'border-line',
         props.tone === 'surface' ? 'bg-surface' : 'bg-paper',
         props.latin === true ? 'latin text-start text-small' : '',
         props.className ?? ''
-    ].filter((part) => part !== '').join(' ');
+    ]
+        .filter((part) => part !== '')
+        .join(' ');
 
     return (
         <input
-            id={ props.id }
-            type={ props.type ?? 'text' }
-            dir={ props.latin === true ? 'ltr' : undefined }
-            inputMode={ props.inputMode }
-            autoComplete={ props.autoComplete }
-            spellCheck={ props.latin === true ? false : undefined }
-            aria-invalid={ props.invalid === true ? 'true' : undefined }
-            className={ shape }
-            placeholder={ props.placeholder }
-            disabled={ props.disabled === true }
-            value={ props.value }
-            onChange={ (event) => props.onChange?.(event.target.value) }
+            id={props.id}
+            type={props.type ?? 'text'}
+            dir={props.latin === true ? 'ltr' : undefined}
+            inputMode={props.inputMode}
+            autoComplete={props.autoComplete}
+            spellCheck={props.latin === true ? false : undefined}
+            aria-invalid={props.invalid === true ? 'true' : undefined}
+            className={shape}
+            placeholder={props.placeholder}
+            disabled={props.disabled === true}
+            value={props.value}
+            onChange={(event) => props.onChange?.(event.target.value)}
         />
     );
 }

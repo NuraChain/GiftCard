@@ -12,8 +12,7 @@
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
-export interface SelectOption
-{
+export interface SelectOption {
     value: string;
     label: string;
 
@@ -21,8 +20,7 @@ export interface SelectOption
     latin?: boolean;
 }
 
-export interface SelectProps
-{
+export interface SelectProps {
     id: string;
     value: string;
     options: SelectOption[];
@@ -34,8 +32,7 @@ export interface SelectProps
     className?: string;
 }
 
-export default function Select(props: SelectProps): ReactNode
-{
+export default function Select(props: SelectProps): ReactNode {
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(0);
 
@@ -43,22 +40,18 @@ export default function Select(props: SelectProps): ReactNode
     const trigger = useRef<HTMLButtonElement | null>(null);
 
     const chosen = props.options.find((option) => option.value === props.value);
-    const listId = `${ props.id }-listbox`;
+    const listId = `${props.id}-listbox`;
 
     /**
      * Closes on any press outside. Registered only WHILE OPEN - a document listener that
      * outlives its menu is how a page ends up with forty of them after forty renders.
      */
-    useEffect(() =>
-    {
-        if (!open)
-        {
+    useEffect(() => {
+        if (!open) {
             return;
         }
-        const onPointer = (event: Event): void =>
-        {
-            if (root.current !== null && !root.current.contains(event.target as Node))
-            {
+        const onPointer = (event: Event): void => {
+            if (root.current !== null && !root.current.contains(event.target as Node)) {
                 setOpen(false);
             }
         };
@@ -66,41 +59,39 @@ export default function Select(props: SelectProps): ReactNode
         return () => document.removeEventListener('pointerdown', onPointer);
     }, [open]);
 
-    const show = (): void =>
-    {
+    const show = (): void => {
         // Opening onto the current choice, not onto the top: the list should start where the
         // operator left it, so one arrow press moves to the neighbouring option.
-        setActive(Math.max(0, props.options.findIndex((option) => option.value === props.value)));
+        setActive(
+            Math.max(
+                0,
+                props.options.findIndex((option) => option.value === props.value)
+            )
+        );
         setOpen(true);
     };
 
-    const choose = (index: number): void =>
-    {
+    const choose = (index: number): void => {
         const option = props.options[index];
-        if (option !== undefined)
-        {
+        if (option !== undefined) {
             props.onChange(option.value);
         }
         setOpen(false);
         trigger.current?.focus();
     };
 
-    const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void =>
-    {
+    const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
         const last = props.options.length - 1;
 
-        if (!open)
-        {
-            if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key))
-            {
+        if (!open) {
+            if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
                 event.preventDefault();
                 show();
             }
             return;
         }
 
-        switch (event.key)
-        {
+        switch (event.key) {
             case 'ArrowDown':
                 event.preventDefault();
                 setActive((current) => Math.min(current + 1, last));
@@ -133,58 +124,66 @@ export default function Select(props: SelectProps): ReactNode
     };
 
     return (
-        <div className={ `relative ${ props.className ?? '' }` } ref={ root }>
+        <div className={`relative ${props.className ?? ''}`} ref={root}>
             <button
-                id={ props.id }
+                id={props.id}
                 type="button"
                 role="combobox"
                 className="flex min-h-tap w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-caption font-bold outline-none focus:border-firouze sm:px-4"
-                aria-label={ props.label }
+                aria-label={props.label}
                 aria-haspopup="listbox"
-                aria-expanded={ open ? 'true' : 'false' }
-                aria-controls={ listId }
-                aria-activedescendant={ open ? `${ props.id }-option-${ active }` : undefined }
-                ref={ trigger }
-                onClick={ () => (open ? setOpen(false) : show()) }
-                onKeyDown={ onKeyDown }
+                aria-expanded={open ? 'true' : 'false'}
+                aria-controls={listId}
+                aria-activedescendant={open ? `${props.id}-option-${active}` : undefined}
+                ref={trigger}
+                onClick={() => (open ? setOpen(false) : show())}
+                onKeyDown={onKeyDown}
             >
                 <span className="min-w-0 truncate">
-                    { chosen?.latin === true
-                        ? <span dir="ltr" className="latin inline-block">{ chosen.label }</span>
-                        : <span>{ chosen?.label ?? '' }</span> }
+                    {chosen?.latin === true ? (
+                        <span dir="ltr" className="latin inline-block">
+                            {chosen.label}
+                        </span>
+                    ) : (
+                        <span>{chosen?.label ?? ''}</span>
+                    )}
                 </span>
                 <ChevronDown
-                    className={ `size-4 shrink-0 text-muted transition-transform ${ open ? 'rotate-180' : '' }` }
+                    className={`size-4 shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`}
                     aria-hidden="true"
                 />
             </button>
 
-            { open && (
+            {open && (
                 <ul
-                    id={ listId }
+                    id={listId}
                     role="listbox"
                     className="anim-settle absolute start-0 top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-lg"
-                    aria-label={ props.label }
+                    aria-label={props.label}
                 >
-                    { props.options.map((option, index) => (
+                    {props.options.map((option, index) => (
                         <li
-                            key={ option.value }
-                            id={ `${ props.id }-option-${ index }` }
+                            key={option.value}
+                            id={`${props.id}-option-${index}`}
                             role="option"
-                            className={ `flex min-h-tap cursor-pointer items-center px-3 text-caption font-bold sm:px-4 ${
+                            className={`flex min-h-tap cursor-pointer items-center px-3 text-caption font-bold sm:px-4 ${
                                 option.value === props.value ? 'text-firouze' : ''
-                            } ${ index === active ? 'bg-firouze/10' : '' }` }
-                            aria-selected={ option.value === props.value ? 'true' : 'false' }
-                            onPointerEnter={ () => setActive(index) }
-                            onClick={ () => choose(index) }
+                            } ${index === active ? 'bg-firouze/10' : ''}`}
+                            aria-selected={option.value === props.value ? 'true' : 'false'}
+                            onPointerEnter={() => setActive(index)}
+                            onClick={() => choose(index)}
                         >
-                            { option.latin === true
-                                ? <span dir="ltr" className="latin inline-block">{ option.label }</span>
-                                : <span>{ option.label }</span> }
+                            {option.latin === true ? (
+                                <span dir="ltr" className="latin inline-block">
+                                    {option.label}
+                                </span>
+                            ) : (
+                                <span>{option.label}</span>
+                            )}
                         </li>
-                    )) }
+                    ))}
                 </ul>
-            ) }
+            )}
         </div>
     );
 }

@@ -16,12 +16,9 @@
 // `TRUST_PROXY_HOPS` and `COOKIE_SECURE` - and both are explained where they are declared.
 import { bool, loadConfig, num, oneOf, str } from './platform/env.ts';
 
-try
-{
+try {
     process.loadEnvFile();
-}
-catch
-{
+} catch {
     // No .env file - the ambient environment is the configuration.
 }
 

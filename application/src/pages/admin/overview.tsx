@@ -14,8 +14,7 @@ import Button from '../../ui/button.tsx';
 import AdminShell from './shell.tsx';
 import { useAdminSession } from './session.tsx';
 
-export default function Overview(): ReactNode
-{
+export default function Overview(): ReactNode {
     const notify = useToasts();
     const session = useAdminSession();
 
@@ -23,26 +22,19 @@ export default function Overview(): ReactNode
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const load = useCallback(async (announce = false): Promise<void> =>
-    {
+    const load = useCallback(async (announce = false): Promise<void> => {
         setLoading(true);
         setError('');
-        try
-        {
+        try {
             setData(await client.admin.overview());
-            if (announce)
-            {
+            if (announce) {
                 // Refreshing usually changes nothing on screen, so without a notice the
                 // click looks like it did nothing at all.
                 notify.success('اطلاعات به‌روز شد');
             }
-        }
-        catch (failure)
-        {
+        } catch (failure) {
             setError(failureText(failure, 'اطلاعات خوانده نشد'));
-        }
-        finally
-        {
+        } finally {
             setLoading(false);
         }
         // `notify` is rebuilt whenever a toast appears; depending on it would re-create
@@ -54,10 +46,8 @@ export default function Overview(): ReactNode
     // which happens before anyone has signed in, so a mount-time fetch 401s against the lock
     // screen and never retries. Watching the session means the tab fills itself the moment
     // sign-in succeeds - and again after a re-authentication.
-    useEffect(() =>
-    {
-        if (session.unlocked)
-        {
+    useEffect(() => {
+        if (session.unlocked) {
             void load();
         }
     }, [session.revision, session.unlocked, load]);
@@ -66,25 +56,32 @@ export default function Overview(): ReactNode
         <AdminShell>
             <div className="flex items-center gap-3">
                 <h2 className="text-h3 font-bold">موجودی کدها</h2>
-                <Button glyph={ RefreshCw } compact className="ms-auto" disabled={ loading } onClick={ () => void load(true) }>
+                <Button
+                    glyph={RefreshCw}
+                    compact
+                    className="ms-auto"
+                    disabled={loading}
+                    onClick={() => void load(true)}
+                >
                     تازه‌سازی
                 </Button>
             </div>
 
-            { (data?.owed ?? 0) > 0 && (
+            {(data?.owed ?? 0) > 0 && (
                 <p className="mt-5 flex items-center gap-2 rounded-xl border border-danger/40 bg-danger/10 p-4 text-small font-bold text-danger">
-                    <TriangleAlert className="size-5 shrink-0" aria-hidden="true"/>
-                    { count(data?.owed ?? 0) } سفارش پرداخت‌شده بدون کد مانده است. در تب سفارش‌ها بالای جدول آمده‌اند.
+                    <TriangleAlert className="size-5 shrink-0" aria-hidden="true" />
+                    {count(data?.owed ?? 0)} سفارش پرداخت‌شده بدون کد مانده است. در تب سفارش‌ها بالای
+                    جدول آمده‌اند.
                 </p>
-            ) }
+            )}
 
             <div className="mt-5">
                 <Async
-                    loading={ loading && data === null }
-                    error={ error }
-                    empty={ data !== null && data.stock.length === 0 }
+                    loading={loading && data === null}
+                    error={error}
+                    empty={data !== null && data.stock.length === 0}
                     emptyText="هنوز کارتی تعریف نشده است. از تب تنظیمات یکی بسازید."
-                    onRetry={ () => void load() }
+                    onRetry={() => void load()}
                     skeleton={
                         <div className="grid grid-cols-3 gap-2 sm:gap-4">
                             <div className="anim-pulse h-24 rounded-2xl border border-line bg-surface sm:h-40"></div>
@@ -98,40 +95,53 @@ export default function Overview(): ReactNode
                         glance. The supporting lines go `sr-only` rather than `hidden` below
                         `sm`: they are still read out, they just stop taking space. */}
                     <ul className="stagger grid grid-cols-3 gap-2 sm:gap-4">
-                        { (data?.stock ?? []).map((line) => (
-                            <li key={ line.amount } className="rounded-2xl border border-line bg-surface p-3 text-center sm:p-5 sm:text-start">
+                        {(data?.stock ?? []).map((line) => (
+                            <li
+                                key={line.amount}
+                                className="rounded-2xl border border-line bg-surface p-3 text-center sm:p-5 sm:text-start"
+                            >
                                 <p className="text-caption text-muted sm:text-small">
                                     <span className="max-sm:sr-only">کارت </span>
-                                    <span dir="ltr" className="latin inline-block">${ line.amount }</span>
+                                    <span dir="ltr" className="latin inline-block">
+                                        ${line.amount}
+                                    </span>
                                 </p>
                                 {/* Zero is a state, not a quantity - and the Persian zero is a
                                     single dot, which at any size reads as a speck rather than
                                     as "you cannot sell this today". So it is a word. */}
-                                { line.available > 0 ? (
+                                {line.available > 0 ? (
                                     <>
-                                        <p className="mt-1 text-2xl font-bold text-firouze sm:mt-2 sm:text-4xl">{ count(line.available) }</p>
-                                        <p className="mt-1 text-caption text-muted max-sm:sr-only">کد آماده فروش</p>
+                                        <p className="mt-1 text-2xl font-bold text-firouze sm:mt-2 sm:text-4xl">
+                                            {count(line.available)}
+                                        </p>
+                                        <p className="mt-1 text-caption text-muted max-sm:sr-only">
+                                            کد آماده فروش
+                                        </p>
                                     </>
                                 ) : (
                                     <>
-                                        <p className="mt-1 text-base font-bold text-danger sm:mt-2 sm:text-2xl">ناموجود</p>
-                                        <p className="mt-1 text-caption text-danger max-sm:sr-only">کدی برای فروش نمانده است</p>
+                                        <p className="mt-1 text-base font-bold text-danger sm:mt-2 sm:text-2xl">
+                                            ناموجود
+                                        </p>
+                                        <p className="mt-1 text-caption text-danger max-sm:sr-only">
+                                            کدی برای فروش نمانده است
+                                        </p>
                                     </>
-                                ) }
+                                )}
                                 {/* Two counts on two lines. Persian digits beside a middot read
                                     as one number: "۱ · ۱" is indistinguishable from "۱۰۱". */}
                                 <dl className="mt-4 grid gap-1 text-caption text-muted max-sm:sr-only">
                                     <div className="flex justify-between gap-2">
                                         <dt>رزرو شده</dt>
-                                        <dd>{ count(line.held) }</dd>
+                                        <dd>{count(line.held)}</dd>
                                     </div>
                                     <div className="flex justify-between gap-2">
                                         <dt>فروخته شده</dt>
-                                        <dd>{ count(line.sold) }</dd>
+                                        <dd>{count(line.sold)}</dd>
                                     </div>
                                 </dl>
                             </li>
-                        )) }
+                        ))}
                     </ul>
                 </Async>
             </div>

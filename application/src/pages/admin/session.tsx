@@ -9,8 +9,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 
 import { client } from '../../lib/api.ts';
 
-export interface AdminSession
-{
+export interface AdminSession {
     unlocked: boolean;
 
     /** False until the first answer is in. What keeps the lock screen from flashing. */
@@ -35,8 +34,7 @@ export interface AdminSession
 
 const SessionContext = createContext<AdminSession | null>(null);
 
-export function AdminSessionProvider({ children }: { children: ReactNode }): ReactNode
-{
+export function AdminSessionProvider({ children }: { children: ReactNode }): ReactNode {
     const [unlocked, setUnlocked] = useState(false);
     const [checked, setChecked] = useState(false);
     const [revision, setRevision] = useState(0);
@@ -45,43 +43,34 @@ export function AdminSessionProvider({ children }: { children: ReactNode }): Rea
      * Confirms the session against the cheapest guarded route there is. The shell calls this
      * on mount; `checked` is what keeps the lock screen from appearing before the answer.
      */
-    const verify = useCallback(async (): Promise<boolean> =>
-    {
-        try
-        {
+    const verify = useCallback(async (): Promise<boolean> => {
+        try {
             await client.admin.overview();
             setUnlocked(true);
             setRevision((current) => current + 1);
             return true;
-        }
-        catch
-        {
+        } catch {
             setUnlocked(false);
             return false;
-        }
-        finally
-        {
+        } finally {
             setChecked(true);
         }
     }, []);
 
-    const signIn = useCallback(async (key: string): Promise<void> =>
-    {
+    const signIn = useCallback(async (key: string): Promise<void> => {
         await client.admin.signIn({ input: { key } });
         setUnlocked(true);
         setChecked(true);
         setRevision((current) => current + 1);
     }, []);
 
-    const signOut = useCallback(async (): Promise<void> =>
-    {
+    const signOut = useCallback(async (): Promise<void> => {
         await client.admin.signOut().catch(() => undefined);
         setUnlocked(false);
         setChecked(true);
     }, []);
 
-    const expire = useCallback((): void =>
-    {
+    const expire = useCallback((): void => {
         setUnlocked(false);
         setChecked(true);
     }, []);
@@ -91,21 +80,20 @@ export function AdminSessionProvider({ children }: { children: ReactNode }): Rea
         [unlocked, checked, revision, verify, signIn, signOut, expire]
     );
 
-    return <SessionContext value={ session }>{ children }</SessionContext>;
+    return <SessionContext value={session}>{children}</SessionContext>;
 }
 
-export function useAdminSession(): AdminSession
-{
+export function useAdminSession(): AdminSession {
     const session = useContext(SessionContext);
-    if (session === null)
-    {
+    if (session === null) {
         throw new Error('useAdminSession was called outside <AdminSessionProvider>');
     }
     return session;
 }
 
 /** True when a failed request means "your session ended" rather than "something broke". */
-export function isUnauthorized(error: unknown): boolean
-{
-    return typeof error === 'object' && error !== null && (error as { status?: number }).status === 401;
+export function isUnauthorized(error: unknown): boolean {
+    return (
+        typeof error === 'object' && error !== null && (error as { status?: number }).status === 401
+    );
 }

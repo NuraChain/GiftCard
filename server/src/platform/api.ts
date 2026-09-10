@@ -19,8 +19,7 @@ import type { ContractShape, InputOf, OutputOf, QueryOf, Route, RouteKey } from 
 import { ValidationError } from './http.ts';
 
 /** What a handler is given. `reply` is here for the few routes that set a cookie or a status. */
-export interface HandlerContext<Input, Query>
-{
+export interface HandlerContext<Input, Query> {
     input: Input;
     query: Query;
     request: FastifyRequest;
@@ -35,8 +34,9 @@ export interface HandlerContext<Input, Query>
 type HandlerResult<O> = [O] extends [undefined] ? void | Promise<void> : O | Promise<O>;
 
 /** One handler, typed from the route it implements. */
-export type Handler<R> = (context: HandlerContext<InputOf<R>, QueryOf<R>>) =>
-    HandlerResult<OutputOf<R>>;
+export type Handler<R> = (
+    context: HandlerContext<InputOf<R>, QueryOf<R>>
+) => HandlerResult<OutputOf<R>>;
 
 /**
  * Every handler in the contract. A feature exports a `Pick<>` of one group's keys, so its
@@ -44,20 +44,21 @@ export type Handler<R> = (context: HandlerContext<InputOf<R>, QueryOf<R>>) =>
  * covers every route.
  */
 export type Handlers<C> = {
-    [G in keyof C]: { [K in keyof C[G]]: Handler<C[G][K]> }
+    [G in keyof C]: { [K in keyof C[G]]: Handler<C[G][K]> };
 };
 
 /** A check that runs before the handler and throws to refuse. */
-export type Guard = (context: { request: FastifyRequest; reply: FastifyReply }) => void | Promise<void>;
+export type Guard = (context: {
+    request: FastifyRequest;
+    reply: FastifyReply;
+}) => void | Promise<void>;
 
 /** Identity, for readability at the call site: `guards: { 'pay.start': [guard(throttle(8, 60_000))] }`. */
-export function guard(check: Guard): Guard
-{
+export function guard(check: Guard): Guard {
     return check;
 }
 
-export interface MountOptions<C>
-{
+export interface MountOptions<C> {
     /** Prefixed to every route's path. `/api` in this app. */
     prefix?: string;
 
@@ -68,16 +69,13 @@ export interface MountOptions<C>
 }
 
 /** @internal The boundary check. A failure becomes the 422 the form can display. */
-function parse<T>(schema: ZodType<T>, value: unknown): T
-{
+function parse<T>(schema: ZodType<T>, value: unknown): T {
     const result = schema.safeParse(value);
-    if (result.success)
-    {
+    if (result.success) {
         return result.data;
     }
     const fields: Record<string, string> = {};
-    for (const issue of result.error.issues)
-    {
+    for (const issue of result.error.issues) {
         const key = issue.path.map(String).join('.');
         fields[key === '' ? '_' : key] = issue.message;
     }
@@ -90,46 +88,41 @@ export function mountApi<C extends ContractShape>(
     app: FastifyInstance,
     contract: C,
     options: MountOptions<C>
-): void
-{
+): void {
     const prefix = options.prefix ?? '';
     const guards = (options.guards ?? {}) as Record<string, Guard[] | undefined>;
     const handlers = options.handlers as unknown as Record<string, Record<string, LooseHandler>>;
 
-    for (const [group, routes] of Object.entries(contract))
-    {
-        for (const [name, route] of Object.entries(routes))
-        {
+    for (const [group, routes] of Object.entries(contract)) {
+        for (const [name, route] of Object.entries(routes)) {
             const declared = route as Route<unknown, unknown, unknown>;
             const handler = handlers[group][name];
-            const checks = guards[`${ group }.${ name }`] ?? [];
+            const checks = guards[`${group}.${name}`] ?? [];
 
             app.route({
                 method: declared.method,
-                url: `${ prefix }${ declared.path }`,
-                handler: async (request, reply) =>
-                {
-                    for (const check of checks)
-                    {
+                url: `${prefix}${declared.path}`,
+                handler: async (request, reply) => {
+                    for (const check of checks) {
                         await check({ request, reply });
                     }
 
-                    const input = declared.input === undefined
-                        ? undefined
-                        : parse(declared.input, request.body);
-                    const query = declared.query === undefined
-                        ? undefined
-                        : parse(declared.query, request.query);
+                    const input =
+                        declared.input === undefined
+                            ? undefined
+                            : parse(declared.input, request.body);
+                    const query =
+                        declared.query === undefined
+                            ? undefined
+                            : parse(declared.query, request.query);
 
                     const result = await handler({ input, query, request, reply });
 
                     // A route with nothing to say answers 204 rather than `null`. The
                     // handler may already have chosen a status (or set a cookie); this only
                     // fills in the default.
-                    if (declared.output === undefined)
-                    {
-                        if (reply.statusCode === 200)
-                        {
+                    if (declared.output === undefined) {
+                        if (reply.statusCode === 200) {
                             reply.code(204);
                         }
                         return reply.send();

@@ -46,17 +46,19 @@ export const catalog = z.object({
     /** What the shop calls itself. Public: it is the page title and the brand on every page. */
     appName: z.string(),
 
-    tiers: z.array(z.object({
-        amount: amountField,
-        toman: z.number().int(),
-        available: z.number().int(),
+    tiers: z.array(
+        z.object({
+            amount: amountField,
+            toman: z.number().int(),
+            available: z.number().int(),
 
-        // The card's own words. They live in the database because the catalogue is editable,
-        // so a tier added this afternoon arrives with its copy rather than as a blank card.
-        title: z.string(),
-        blurb: z.string(),
-        recommended: z.boolean()
-    }))
+            // The card's own words. They live in the database because the catalogue is editable,
+            // so a tier added this afternoon arrives with its copy rather than as a blank card.
+            title: z.string(),
+            blurb: z.string(),
+            recommended: z.boolean()
+        })
+    )
 });
 
 /**

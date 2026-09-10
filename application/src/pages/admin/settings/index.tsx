@@ -14,13 +14,12 @@ import TierSettings from './tiers.tsx';
 import GatewaySettings from './gateway.tsx';
 import AdminKeySettings from './admin-key.tsx';
 
-export default function AdminSettings(): ReactNode
-{
+export default function AdminSettings(): ReactNode {
     return (
         <AdminShell>
-            <TierSettings/>
-            <GatewaySettings/>
-            <AdminKeySettings/>
+            <TierSettings />
+            <GatewaySettings />
+            <AdminKeySettings />
         </AdminShell>
     );
 }

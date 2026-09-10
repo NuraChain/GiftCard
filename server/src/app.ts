@@ -36,8 +36,7 @@ import { settingsHandlers } from './features/settings/routes.ts';
 import type { Settings } from './features/settings/settings.ts';
 import { throttle } from './platform/throttle.ts';
 
-export interface AppOptions
-{
+export interface AppOptions {
     store: Store;
     payment: PaymentGateway;
     sms: SmsSender;
@@ -61,8 +60,7 @@ export interface AppOptions
     log?: FastifyBaseLogger;
 }
 
-export function buildApp(options: AppOptions): FastifyInstance
-{
+export function buildApp(options: AppOptions): FastifyInstance {
     const { store, payment, sms, admin, settings, callbackUrl, log } = options;
     const resultPath = options.resultPath ?? '/';
 
@@ -91,12 +89,9 @@ export function buildApp(options: AppOptions): FastifyInstance
      * Anything else is a bug: it is logged in full and answered with a bare 500, because the
      * inside of a stack trace is not the buyer's business.
      */
-    app.setErrorHandler((error: FastifyError, request, reply) =>
-    {
-        if (error instanceof HttpError)
-        {
-            if (error.retryAfter !== undefined)
-            {
+    app.setErrorHandler((error: FastifyError, request, reply) => {
+        if (error instanceof HttpError) {
+            if (error.retryAfter !== undefined) {
                 reply.header('retry-after', String(error.retryAfter));
             }
             return reply.code(error.status).send({
@@ -106,11 +101,13 @@ export function buildApp(options: AppOptions): FastifyInstance
 
         // Fastify's own refusals - a malformed JSON body, an unsupported media type - already
         // carry a sensible 4xx. They are passed through rather than dressed as a crash.
-        const status = typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
-            ? error.statusCode
-            : 500;
-        if (status === 500)
-        {
+        const status =
+            typeof error.statusCode === 'number' &&
+            error.statusCode >= 400 &&
+            error.statusCode < 500
+                ? error.statusCode
+                : 500;
+        if (status === 500) {
             log?.error({ err: error, url: request.url }, 'unhandled failure');
         }
         return reply.code(status).send({
@@ -122,7 +119,8 @@ export function buildApp(options: AppOptions): FastifyInstance
     });
 
     app.setNotFoundHandler((request, reply) =>
-        reply.code(404).send({ error: { code: 'not-found', message: 'این آدرس وجود ندارد' } }));
+        reply.code(404).send({ error: { code: 'not-found', message: 'این آدرس وجود ندارد' } })
+    );
 
     // The orchestrator probe: cheap, dependency-free, always 200 when the process lives. It
     // stays imperative because nothing calls it with types - see features/ for the rest.

@@ -15,18 +15,25 @@
 // are not. Nothing here claims a review count, a rating, a testimonial, a certification, a
 // badge, or a customer total - a gift-card site that manufactures its own trust signals is
 // doing exactly what a scam site does.
-import { Infinity as InfinityIcon, Lock, RefreshCw, Zap, CreditCard, ShieldCheck, MessageSquareText, type LucideIcon } from 'lucide-react';
+import {
+    Infinity as InfinityIcon,
+    Lock,
+    RefreshCw,
+    Zap,
+    CreditCard,
+    ShieldCheck,
+    MessageSquareText,
+    type LucideIcon
+} from 'lucide-react';
 
-export interface Step
-{
+export interface Step {
     glyph: LucideIcon;
     title: string;
     body: string;
 }
 
 /** Purchase to working code. These are ordered - the numbering carries real meaning. */
-export const STEPS: Step[] =
-[
+export const STEPS: Step[] = [
     {
         glyph: CreditCard,
         title: 'کارت را انتخاب کنید',
@@ -44,8 +51,7 @@ export const STEPS: Step[] =
     }
 ];
 
-export interface Assurance
-{
+export interface Assurance {
     glyph: LucideIcon;
 
     /** Two or three words - long enough to mean something, short enough not to wrap. */
@@ -59,24 +65,21 @@ export interface Assurance
  * The hero's four promises. These are the page's primary trust signal, so each one is
  * a commitment the operator has to keep - not a decorative feature bullet.
  */
-export const ASSURANCES: Assurance[] =
-[
+export const ASSURANCES: Assurance[] = [
     { glyph: Zap, label: 'تحویل آنی', detail: 'روی صفحه و با پیامک' },
     { glyph: RefreshCw, label: 'ضمانت بازگشت وجه', detail: 'اگر کد فعال نشود' },
     { glyph: Lock, label: 'بدون ذخیره کارت', detail: 'پرداخت فقط روی درگاه' },
     { glyph: InfinityIcon, label: 'بدون تاریخ انقضا', detail: 'هر وقت خواستید فعال کنید' }
 ];
 
-export interface Faq
-{
+export interface Faq {
     id: string;
     question: string;
     answer: string;
 }
 
 /** The questions a cautious buyer actually asks before paying. */
-export const FAQS: Faq[] =
-[
+export const FAQS: Faq[] = [
     {
         id: 'delivery',
         question: 'کد چه زمانی به دستم می‌رسد؟',
@@ -120,8 +123,7 @@ export const FAQS: Faq[] =
 ];
 
 /** Support and identity. MOCK VALUES - see the README's "Replace before launch". */
-export const CONTACT =
-{
+export const CONTACT = {
     email: 'dev.khazaee@gmail.com',
     telegram: 'https://t.me/awesomext',
     phone: '+98 912 2636 180',

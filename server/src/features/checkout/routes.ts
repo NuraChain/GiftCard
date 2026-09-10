@@ -20,8 +20,7 @@ import type { Settings } from '../settings/settings.ts';
  */
 const HOLD_MS = 30 * 60 * 1000;
 
-export interface PayOptions
-{
+export interface PayOptions {
     store: Store;
     settings: Settings;
     payment: PaymentGateway;
@@ -48,70 +47,69 @@ type PayHandlers = Handlers<typeof contract>['pay'];
  * The redirect is RELATIVE, and stays correct now that nginx serves the pages: the browser
  * resolves it against the public origin it asked on, which is the one place the shop lives.
  */
-export function mountPayCallback(app: FastifyInstance, options: PayOptions): void
-{
+export function mountPayCallback(app: FastifyInstance, options: PayOptions): void {
     const { store, checkout, resultPath } = options;
     const limit = throttle(30, 60_000);
 
-    app.get('/api/pay/callback', {
-        preHandler: async (request, reply) =>
-{
- await limit({ request, reply });
-}
-    }, async (request, reply) =>
-    {
-        const params = request.query as Record<string, string | undefined>;
-        const authority = params.Authority ?? '';
-        const order = authority === '' ? undefined : store.orderByAuthority(authority);
-        if (order === undefined)
+    app.get(
+        '/api/pay/callback',
         {
-            // A forged callback, or one for an order that no longer exists. The two are
-            // indistinguishable from here and neither is told anything specific.
-            return reply.redirect(`${ resultPath }?pay=unknown`, 303);
-        }
+            preHandler: async (request, reply) => {
+                await limit({ request, reply });
+            }
+        },
+        async (request, reply) => {
+            const params = request.query as Record<string, string | undefined>;
+            const authority = params.Authority ?? '';
+            const order = authority === '' ? undefined : store.orderByAuthority(authority);
+            if (order === undefined) {
+                // A forged callback, or one for an order that no longer exists. The two are
+                // indistinguishable from here and neither is told anything specific.
+                return reply.redirect(`${resultPath}?pay=unknown`, 303);
+            }
 
-        await checkout.settle(order, params.Status === 'OK');
-        return reply.redirect(`${ resultPath }?receipt=${ order.id }#purchase`, 303);
-    });
+            await checkout.settle(order, params.Status === 'OK');
+            return reply.redirect(`${resultPath}?receipt=${order.id}#purchase`, 303);
+        }
+    );
 }
 
 /**
  * Every handler under `pay`. The return type comes from the CONTRACT, so drift between a
  * route and its handler is a compile error here rather than a runtime 500.
  */
-export function payHandlers(options: PayOptions): PayHandlers
-{
+export function payHandlers(options: PayOptions): PayHandlers {
     const { store, settings, payment, callbackUrl, log } = options;
 
     return {
         // GET /api/pay/catalog
-        catalog: () =>
-        {
+        catalog: () => {
             // Only ACTIVE tiers reach the shop. A disabled card is not "hidden by the page" -
             // it never leaves the server, so nothing on the client can reveal an amount the
             // operator has withdrawn from sale.
             const stock = new Map(store.stock().map((line) => [line.amount, line.available]));
             return {
                 appName: settings.current().appName,
-                tiers: store.tiers().filter((tier) => tier.active).map((tier) => ({
-                    amount: tier.amount,
-                    toman: tier.toman,
-                    available: stock.get(tier.amount) ?? 0,
-                    title: tier.title,
-                    blurb: tier.blurb,
-                    recommended: tier.recommended
-                }))
+                tiers: store
+                    .tiers()
+                    .filter((tier) => tier.active)
+                    .map((tier) => ({
+                        amount: tier.amount,
+                        toman: tier.toman,
+                        available: stock.get(tier.amount) ?? 0,
+                        title: tier.title,
+                        blurb: tier.blurb,
+                        recommended: tier.recommended
+                    }))
             };
         },
 
         // POST /api/pay/start
-        start: async ({ input }) =>
-        {
+        start: async ({ input }) => {
             // The schema proved the phone is valid; it does not canonicalise, so this is
             // where the buyer's typing becomes the one stored form.
             const phone = normalizePhone(input.phone);
-            if (phone === null)
-            {
+            if (phone === null) {
                 throw new ConflictError('شماره موبایل معتبر نیست');
             }
 
@@ -121,8 +119,7 @@ export function payHandlers(options: PayOptions): PayHandlers
             // gateway is called. An unknown or withdrawn denomination is refused exactly as a
             // forged one used to be.
             const tier = store.sellableTier(input.amount);
-            if (tier === undefined)
-            {
+            if (tier === undefined) {
                 throw new ConflictError('این کارت برای فروش نیست');
             }
 
@@ -138,14 +135,13 @@ export function payHandlers(options: PayOptions): PayHandlers
 
             // Stock is claimed BEFORE the gateway is opened. A buyer is never sent to pay for
             // a card that has already been sold to someone else.
-            if (!store.startOrder(order, HOLD_MS))
-            {
+            if (!store.startOrder(order, HOLD_MS)) {
                 throw new ConflictError('این کارت فعلاً موجود نیست');
             }
 
             const opened = await payment.request({
                 tomanAmount: order.toman,
-                description: `خرید گیفت کارت ${ settings.current().appName } ${ input.amount } دلاری`,
+                description: `خرید گیفت کارت ${settings.current().appName} ${input.amount} دلاری`,
                 callbackUrl,
                 phone
             });
@@ -156,27 +152,31 @@ export function payHandlers(options: PayOptions): PayHandlers
             // Either way the held code goes straight back to stock rather than sitting out
             // the hold window.
             const tracked = opened.ok && store.attachAuthority(order.id, opened.authority);
-            if (!tracked)
-            {
+            if (!tracked) {
                 store.abandonOrder(order.id);
-                log?.error({
-                    amount: input.amount,
-                    reason: opened.ok ? 'duplicate authority' : opened.reason
-                }, 'could not open a trackable payment');
-                throw new HttpError(502, 'درگاه پرداخت در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.', { code: 'gateway-unavailable' });
+                log?.error(
+                    {
+                        amount: input.amount,
+                        reason: opened.ok ? 'duplicate authority' : opened.reason
+                    },
+                    'could not open a trackable payment'
+                );
+                throw new HttpError(
+                    502,
+                    'درگاه پرداخت در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.',
+                    { code: 'gateway-unavailable' }
+                );
             }
 
             return { payUrl: opened.payUrl };
         },
 
         // GET /api/pay/receipt
-        receipt: ({ query }) =>
-        {
+        receipt: ({ query }) => {
             const order = store.orderById(query.token);
             // A pending order is indistinguishable from no order here: until the gateway has
             // answered there is nothing true to report.
-            if (order === undefined || order.status === 'pending')
-            {
+            if (order === undefined || order.status === 'pending') {
                 throw new NotFoundError('نتیجه‌ای برای این پرداخت پیدا نشد');
             }
             return {

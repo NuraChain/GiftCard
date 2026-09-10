@@ -21,7 +21,6 @@ export const client = createClient(contract, { baseUrl: '/api' });
  * what this guards against is the other kind - a dropped connection, a parse failure - where
  * there is no message and the raw `Error` text would be English plumbing.
  */
-export function failureText(error: unknown, fallback: string): string
-{
+export function failureText(error: unknown, fallback: string): string {
     return error instanceof Error && error.message !== '' ? error.message : fallback;
 }

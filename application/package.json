@@ -1,11 +1,8 @@
 {
     "name": "guardian-service-application",
-    "private": true,
     "version": "1.0.0",
+    "private": true,
     "type": "module",
-    "engines": {
-        "node": ">=24"
-    },
     "scripts": {
         "dev": "vite",
         "typecheck": "tsc --noEmit",
@@ -33,5 +30,8 @@
         "typescript": "~6.0.2",
         "vite": "^8.1.4",
         "vitest": "^4.0.0"
+    },
+    "engines": {
+        "node": ">=24"
     }
 }

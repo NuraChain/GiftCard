@@ -11,19 +11,14 @@ import { displayPhone } from '../../domain/phone.ts';
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
 const PAGE_SIZE = 25;
 
-export interface InventoryOptions
-{
+export interface InventoryOptions {
     store: Store;
 }
 
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
-type InventoryHandlers = Pick<
-    Handlers<typeof contract>['admin'],
-    'addCodes' | 'codes'
->;
+type InventoryHandlers = Pick<Handlers<typeof contract>['admin'], 'addCodes' | 'codes'>;
 
-export function inventoryHandlers(options: InventoryOptions): InventoryHandlers
-{
+export function inventoryHandlers(options: InventoryOptions): InventoryHandlers {
     const { store } = options;
 
     return {
@@ -31,8 +26,7 @@ export function inventoryHandlers(options: InventoryOptions): InventoryHandlers
         addCodes: ({ input }) => store.addCodes(input.amount, input.codes),
 
         // GET /api/admin/codes
-        codes: ({ query }) =>
-        {
+        codes: ({ query }) => {
             const page = Math.max(1, query.page ?? 1);
             const found = store.searchCodes({
                 search: query.search ?? '',

@@ -27,20 +27,15 @@ const FALLBACK_NAME = 'گاردین سرویس';
  * Wrapped because storage throws outright in some privacy modes, and a brand name is not
  * worth a blank page.
  */
-function rememberedName(): string
-{
-    try
-    {
+function rememberedName(): string {
+    try {
         return localStorage.getItem('guardian-app-name') ?? FALLBACK_NAME;
-    }
-    catch
-    {
+    } catch {
         return FALLBACK_NAME;
     }
 }
 
-export interface CatalogStore
-{
+export interface CatalogStore {
     tiers: CatalogTier[];
     appName: string;
     loading: boolean;
@@ -51,20 +46,17 @@ export interface CatalogStore
 
 const CatalogContext = createContext<CatalogStore | null>(null);
 
-export function CatalogProvider({ children }: { children: ReactNode }): ReactNode
-{
+export function CatalogProvider({ children }: { children: ReactNode }): ReactNode {
     const [tiers, setTiers] = useState<CatalogTier[]>([]);
     const [appName, setAppName] = useState(rememberedName);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [loaded, setLoaded] = useState(false);
 
-    const load = useCallback(async (): Promise<void> =>
-    {
+    const load = useCallback(async (): Promise<void> => {
         setLoading(true);
         setError('');
-        try
-        {
+        try {
             const result = await client.pay.catalog();
             setTiers(result.tiers);
             setAppName(result.appName);
@@ -72,24 +64,17 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
 
             // The title is in a built file, so a rebrand would leave it stale. Setting it
             // here is what makes the name in the console the name in the browser tab.
-            document.title = `${ result.appName } - خرید گیفت کارت`;
-            try
-            {
+            document.title = `${result.appName} - خرید گیفت کارت`;
+            try {
                 localStorage.setItem('guardian-app-name', result.appName);
-            }
-            catch
-            {
+            } catch {
                 // No storage: the name is still right for this visit.
             }
-        }
-        catch
-        {
+        } catch {
             // Named, not swallowed. A silent failure here used to leave the shop looking
             // open with no prices on it, which reads as broken rather than as unavailable.
             setError('فهرست کارت‌ها بارگذاری نشد. اتصال اینترنت را بررسی کنید.');
-        }
-        finally
-        {
+        } finally {
             setLoading(false);
         }
     }, []);
@@ -99,14 +84,12 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
         [tiers, appName, loading, error, loaded, load]
     );
 
-    return <CatalogContext value={ store }>{ children }</CatalogContext>;
+    return <CatalogContext value={store}>{children}</CatalogContext>;
 }
 
-export function useCatalog(): CatalogStore
-{
+export function useCatalog(): CatalogStore {
     const store = useContext(CatalogContext);
-    if (store === null)
-    {
+    if (store === null) {
         throw new Error('useCatalog was called outside <CatalogProvider>');
     }
     return store;

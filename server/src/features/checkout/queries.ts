@@ -10,8 +10,7 @@ import { shaped } from '../../platform/db.ts';
 import { phoneNeedle, toOrder, type OrderRow } from '../../db/shared.ts';
 import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
 
-export interface OrderQueries
-{
+export interface OrderQueries {
     startOrder(order: NewOrder, holdMs: number): boolean;
     attachAuthority(orderId: string, authority: string): boolean;
     abandonOrder(orderId: string): void;
@@ -25,8 +24,7 @@ export interface OrderQueries
     owedCount(): number;
 }
 
-export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries
-{
+export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
     const insertOrder = db.prepare(`
         INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at)
         VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL)`);
@@ -34,7 +32,9 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
     const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
     const selectById = db.prepare('SELECT * FROM orders WHERE id = ?');
     const selectByAuthority = db.prepare('SELECT * FROM orders WHERE authority = ?');
-    const setPaid = db.prepare("UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?");
+    const setPaid = db.prepare(
+        "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
+    );
     const setUnpaid = db.prepare('UPDATE orders SET status = ?, settled_at = ? WHERE id = ?');
     const setSms = db.prepare('UPDATE orders SET sms_delivered = ? WHERE id = ?');
     // Owed orders first: money taken, no code. They are the only rows needing a human.
@@ -42,7 +42,9 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         SELECT * FROM orders
         ORDER BY (status = 'paid' AND code IS NULL) DESC, created_at DESC
         LIMIT ?`);
-    const countOwed = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND code IS NULL");
+    const countOwed = db.prepare(
+        "SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND code IS NULL"
+    );
 
     // One WHERE clause, shared by the page and its count so the two can never disagree.
     // A phone is stored as +989..., and an operator types 0917... or just a fragment, so the
@@ -55,43 +57,34 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         OR CAST(ref_id AS TEXT) LIKE ?
     )`;
     const searchPage = db.prepare(`
-        SELECT * FROM orders WHERE ${ MATCHES }
+        SELECT * FROM orders WHERE ${MATCHES}
         ORDER BY (status = 'paid' AND code IS NULL) DESC, created_at DESC
         LIMIT ? OFFSET ?`);
-    const searchCount = db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE ${ MATCHES }`);
+    const searchCount = db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE ${MATCHES}`);
 
     return {
-        startOrder(order, holdMs)
-        {
+        startOrder(order, holdMs) {
             codes.sweep();
             db.exec('BEGIN IMMEDIATE');
-            try
-            {
-                if (!codes.claim(order.id, Date.now() + holdMs, order.amount))
-                {
+            try {
+                if (!codes.claim(order.id, Date.now() + holdMs, order.amount)) {
                     db.exec('ROLLBACK');
                     return false;
                 }
                 insertOrder.run(order.id, order.amount, order.toman, order.phone, order.createdAt);
                 db.exec('COMMIT');
                 return true;
-            }
-            catch (error)
-            {
+            } catch (error) {
                 db.exec('ROLLBACK');
                 throw error;
             }
         },
 
-        attachAuthority(orderId, authority)
-        {
-            try
-            {
+        attachAuthority(orderId, authority) {
+            try {
                 setAuthority.run(authority, orderId);
                 return true;
-            }
-            catch
-            {
+            } catch {
                 // The UNIQUE index on `authority` is the guard: one gateway handle, one
                 // order, always. Hitting it is the database refusing an ambiguity, not a
                 // crash to propagate.
@@ -99,54 +92,42 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        abandonOrder(orderId)
-        {
+        abandonOrder(orderId) {
             db.exec('BEGIN IMMEDIATE');
-            try
-            {
+            try {
                 codes.release(orderId);
                 deleteOrder.run(orderId);
                 db.exec('COMMIT');
-            }
-            catch (error)
-            {
+            } catch (error) {
                 db.exec('ROLLBACK');
                 throw error;
             }
         },
 
-        orderById(id)
-        {
+        orderById(id) {
             const row = shaped<OrderRow | undefined>(selectById.get(id));
             return row === undefined ? undefined : toOrder(row);
         },
 
-        orderByAuthority(authority)
-        {
+        orderByAuthority(authority) {
             const row = shaped<OrderRow | undefined>(selectByAuthority.get(authority));
             return row === undefined ? undefined : toOrder(row);
         },
 
-        settlePaid(orderId, refId)
-        {
+        settlePaid(orderId, refId) {
             db.exec('BEGIN IMMEDIATE');
-            try
-            {
+            try {
                 // The usual case: the hold survived, so the buyer gets the code reserved at
                 // checkout. Clearing the hold is what turns a reservation into a sale.
                 let code = codes.heldCode(orderId) ?? null;
-                if (code === null)
-                {
+                if (code === null) {
                     // The hold lapsed and the code went back to stock before this payment
                     // landed. The money is real, so take any free code of the denomination.
                     const order = shaped<OrderRow | undefined>(selectById.get(orderId));
-                    if (order !== undefined && codes.claim(orderId, null, order.amount))
-                    {
+                    if (order !== undefined && codes.claim(orderId, null, order.amount)) {
                         code = codes.heldCode(orderId) ?? null;
                     }
-                }
-                else
-                {
+                } else {
                     codes.keepCode(orderId);
                 }
                 // A null code here is the owed state, and it is still `paid`: pretending a
@@ -154,55 +135,47 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
                 setPaid.run(code, refId, new Date().toISOString(), orderId);
                 db.exec('COMMIT');
                 return code;
-            }
-            catch (error)
-            {
+            } catch (error) {
                 db.exec('ROLLBACK');
                 throw error;
             }
         },
 
-        settleUnpaid(orderId, status)
-        {
+        settleUnpaid(orderId, status) {
             db.exec('BEGIN IMMEDIATE');
-            try
-            {
+            try {
                 codes.release(orderId);
                 setUnpaid.run(status, new Date().toISOString(), orderId);
                 db.exec('COMMIT');
-            }
-            catch (error)
-            {
+            } catch (error) {
                 db.exec('ROLLBACK');
                 throw error;
             }
         },
 
-    markSmsDelivered(orderId, delivered)
-    {
-        setSms.run(delivered ? 1 : 0, orderId);
-    },
+        markSmsDelivered(orderId, delivered) {
+            setSms.run(delivered ? 1 : 0, orderId);
+        },
 
-    recentOrders(limit)
-    {
-        return shaped<OrderRow[]>(selectRecent.all(limit)).map(toOrder);
-    },
+        recentOrders(limit) {
+            return shaped<OrderRow[]>(selectRecent.all(limit)).map(toOrder);
+        },
 
-    searchOrders(query)
-    {
-        const term = query.search.trim();
-        const like = `%${ term.toLowerCase() }%`;
-        const digits = phoneNeedle(term);
-        const bind = [term, term, digits, `%${ digits }%`, like, like];
-        return {
-            rows: shaped<OrderRow[]>(searchPage.all(...bind, query.limit, query.offset)).map(toOrder),
-            total: shaped<{ n: number }>(searchCount.get(...bind)).n
-        };
-    },
+        searchOrders(query) {
+            const term = query.search.trim();
+            const like = `%${term.toLowerCase()}%`;
+            const digits = phoneNeedle(term);
+            const bind = [term, term, digits, `%${digits}%`, like, like];
+            return {
+                rows: shaped<OrderRow[]>(searchPage.all(...bind, query.limit, query.offset)).map(
+                    toOrder
+                ),
+                total: shaped<{ n: number }>(searchCount.get(...bind)).n
+            };
+        },
 
-    owedCount()
-    {
-        return shaped<{ n: number }>(countOwed.get()).n;
-    }
+        owedCount() {
+            return shaped<{ n: number }>(countOwed.get()).n;
+        }
     };
 }

@@ -34,14 +34,36 @@ const log = pino({
     base: { service: 'guardian-service-server' },
     redact: {
         paths: [
-            'merchantId', 'apiKey', 'adminKey', 'key', 'currentKey', 'newKey', 'authority', 'code', 'phone',
-            '*.merchantId', '*.apiKey', '*.adminKey', '*.key', '*.currentKey', '*.newKey', '*.authority', '*.code', '*.phone'
+            'merchantId',
+            'apiKey',
+            'adminKey',
+            'key',
+            'currentKey',
+            'newKey',
+            'authority',
+            'code',
+            'phone',
+            '*.merchantId',
+            '*.apiKey',
+            '*.adminKey',
+            '*.key',
+            '*.currentKey',
+            '*.newKey',
+            '*.authority',
+            '*.code',
+            '*.phone'
         ],
         censor: '[redacted]'
     },
     transport: {
         target: 'pino-roll',
-        options: { file: 'logs/app.ndjson', frequency: 'daily', extension: '.ndjson', mkdir: true, dateFormat: 'yyyy-MM-dd' }
+        options: {
+            file: 'logs/app.ndjson',
+            frequency: 'daily',
+            extension: '.ndjson',
+            mkdir: true,
+            dateFormat: 'yyyy-MM-dd'
+        }
     }
 });
 
@@ -51,10 +73,8 @@ const store = createStore(config.databaseFile);
 // A catalogue is seeded exactly once. After this the console owns it, so a later change to
 // seed.ts has no effect on a shop that is already trading - which is the point of moving the
 // catalogue into the database.
-if (store.isCatalogueEmpty())
-{
-    for (const tier of seedTiers())
-    {
+if (store.isCatalogueEmpty()) {
+    for (const tier of seedTiers()) {
         store.saveTier(tier);
     }
     log.info({ tiers: 3 }, 'catalogue seeded');
@@ -66,50 +86,51 @@ const settings = createSettings({ store, adminKey: config.adminKey });
 // in a public repository is a published credential - one is MINTED here and printed once.
 // Only its hash is stored, so this is the only moment it can be read.
 const mintedKey = settings.ensureAdminKey();
-if (mintedKey !== null)
-{
+if (mintedKey !== null) {
     process.stdout.write(
-        `\n  Console credential for this installation (shown once):\n\n      ${ mintedKey }\n\n`
-        + '  Sign in at /admin, then rotate it from the settings tab.\n'
-        + '  It is stored as a hash - nobody, including this server, can print it again.\n\n'
+        `\n  Console credential for this installation (shown once):\n\n      ${mintedKey}\n\n` +
+            '  Sign in at /admin, then rotate it from the settings tab.\n' +
+            '  It is stored as a hash - nobody, including this server, can print it again.\n\n'
     );
 }
 
 const live = settings.current();
-if (!settings.view('').smsReady)
-{
+if (!settings.view('').smsReady) {
     // A shop can trade without SMS: the code is on screen and valid either way. It is a
     // notice rather than a refusal because the operator can now fix it from the console
     // without a deploy.
     log.warn('SMS delivery is OFF - codes appear on screen only');
 }
-if (live.merchantId === '')
-{
-    log.warn('no Zarinpal merchant id - checkout will refuse to start until one is set in the console');
+if (live.merchantId === '') {
+    log.warn(
+        'no Zarinpal merchant id - checkout will refuse to start until one is set in the console'
+    );
 }
 
 const app = buildApp({
     store,
     settings,
     payment: createPayment({
-        settings: () =>
-        {
+        settings: () => {
             const now = settings.current();
             return { merchantId: now.merchantId, baseUrl: now.zarinpalBase };
         }
     }),
     sms: createSms({
-        settings: () =>
-        {
+        settings: () => {
             const now = settings.current();
-            return { apiKey: now.kavenegarKey, template: now.kavenegarTemplate, baseUrl: now.kavenegarBase };
+            return {
+                apiKey: now.kavenegarKey,
+                template: now.kavenegarTemplate,
+                baseUrl: now.kavenegarBase
+            };
         }
     }),
     admin: createAdmin({
         matches: (candidate) => settings.matchesAdminKey(candidate),
         secureCookie: config.cookieSecure
     }),
-    callbackUrl: `${ config.publicBaseUrl }/api/pay/callback`,
+    callbackUrl: `${config.publicBaseUrl}/api/pay/callback`,
     trustProxyHops: config.trustProxyHops,
     log
 });
@@ -119,12 +140,9 @@ const app = buildApp({
 app.addHook('onRequest', rateLimit(200, 60_000));
 
 // The database closes AFTER in-flight requests drain: a settle mid-flight is money.
-for (const signal of ['SIGINT', 'SIGTERM'] as const)
-{
-    process.once(signal, () =>
-    {
-        void app.close().then(() =>
-        {
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+        void app.close().then(() => {
             store.close();
             process.exit(0);
         });

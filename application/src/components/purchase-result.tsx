@@ -20,8 +20,7 @@ import { useToasts } from '../ui/toast.tsx';
 import Button from '../ui/button.tsx';
 import CodeCapsule from './code-capsule.tsx';
 
-export default function PurchaseResult(): ReactNode
-{
+export default function PurchaseResult(): ReactNode {
     const [params, setParams] = useSearchParams();
     const notify = useToasts();
 
@@ -38,33 +37,39 @@ export default function PurchaseResult(): ReactNode
     const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => clearTimeout(copyTimer.current), []);
 
-    useEffect(() =>
-    {
-        if (token === '')
-        {
+    useEffect(() => {
+        if (token === '') {
             return;
         }
         let current = true;
         setReceipt(undefined);
         setReceiptFailed(false);
-        client.pay.receipt({ query: { token } })
-            .then((value) => { if (current) { setReceipt(value); } })
-            .catch(() => { if (current) { setReceiptFailed(true); } });
+        client.pay
+            .receipt({ query: { token } })
+            .then((value) => {
+                if (current) {
+                    setReceipt(value);
+                }
+            })
+            .catch(() => {
+                if (current) {
+                    setReceiptFailed(true);
+                }
+            });
         // A second token arriving before the first answer would otherwise land out of order.
-        return () => { current = false; };
+        return () => {
+            current = false;
+        };
     }, [token]);
 
-    const startOver = (): void =>
-    {
+    const startOver = (): void => {
         setReceipt(undefined);
         setReceiptFailed(false);
         setParams({}, { replace: true });
     };
 
-    const copyCode = async (code: string): Promise<void> =>
-    {
-        try
-        {
+    const copyCode = async (code: string): Promise<void> => {
+        try {
             await navigator.clipboard.writeText(code);
             // The confirmation stays ON the button rather than in a toast: the reader's eye
             // is already there, and a notice in the corner of the screen would be further
@@ -72,53 +77,56 @@ export default function PurchaseResult(): ReactNode
             setCopied(true);
             clearTimeout(copyTimer.current);
             copyTimer.current = setTimeout(() => setCopied(false), 2000);
-        }
-        catch
-        {
+        } catch {
             // A refused clipboard is the one case worth a notice - the button would
             // otherwise say nothing at all and the buyer would assume the code was taken.
             notify.error('کپی نشد. کد را دستی انتخاب کنید؛ کد شما همان است که می‌بینید.');
         }
     };
 
-    if (token === '' && !strayCallback)
-    {
+    if (token === '' && !strayCallback) {
         return null;
     }
 
     return (
         <section id="purchase" className="mx-auto max-w-3xl scroll-mt-20 px-4 pt-section sm:px-5">
             <div className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
-                { strayCallback && (
+                {strayCallback && (
                     <>
                         <h2 className="font-bold">این پرداخت پیدا نشد</h2>
                         <p className="mt-3 text-small text-muted">
-                            سفارشی با این مشخصات نداریم. اگر مبلغی از حساب شما کم شده، با پشتیبانی تماس بگیرید تا بررسی کنیم.
+                            سفارشی با این مشخصات نداریم. اگر مبلغی از حساب شما کم شده، با پشتیبانی
+                            تماس بگیرید تا بررسی کنیم.
                         </p>
-                        <Button className="mt-5" onClick={ startOver }>بازگشت به خرید</Button>
+                        <Button className="mt-5" onClick={startOver}>
+                            بازگشت به خرید
+                        </Button>
                     </>
-                ) }
+                )}
 
-                { !strayCallback && receiptFailed && (
+                {!strayCallback && receiptFailed && (
                     <>
                         <h2 className="font-bold">نتیجهٔ پرداخت در دسترس نیست</h2>
                         <p className="mt-3 text-small text-muted">
-                            نتوانستیم وضعیت این سفارش را بخوانیم. صفحه را دوباره باز کنید؛ اگر باز هم نشد با پشتیبانی تماس بگیرید.
+                            نتوانستیم وضعیت این سفارش را بخوانیم. صفحه را دوباره باز کنید؛ اگر باز
+                            هم نشد با پشتیبانی تماس بگیرید.
                         </p>
                         <p className="mt-2 text-small text-muted">
-                            <span dir="ltr" className="latin">{ CONTACT.phone }</span>
+                            <span dir="ltr" className="latin">
+                                {CONTACT.phone}
+                            </span>
                         </p>
                     </>
-                ) }
+                )}
 
-                { !strayCallback && !receiptFailed && receipt === undefined && (
+                {!strayCallback && !receiptFailed && receipt === undefined && (
                     <p className="text-small text-muted">در حال بررسی نتیجهٔ پرداخت...</p>
-                ) }
+                )}
 
-                { receipt?.outcome === 'paid' && receipt.code !== null && (
+                {receipt?.outcome === 'paid' && receipt.code !== null && (
                     <>
                         <div className="flex items-center gap-2 text-firouze">
-                            <ShieldCheck className="size-5" aria-hidden="true"/>
+                            <ShieldCheck className="size-5" aria-hidden="true" />
                             <h2 className="font-bold">پرداخت تأیید شد</h2>
                         </div>
                         <p className="mt-2 text-small text-muted">
@@ -126,88 +134,103 @@ export default function PurchaseResult(): ReactNode
                         </p>
 
                         <div className="mt-5">
-                            <CodeCapsule code={ receipt.code } label="کد گیفت کارت شما" verified/>
+                            <CodeCapsule code={receipt.code} label="کد گیفت کارت شما" verified />
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-3">
                             <Button
                                 variant="primary"
-                                glyph={ copied ? Check : Copy }
-                                onClick={ () => void copyCode(receipt.code ?? '') }
+                                glyph={copied ? Check : Copy}
+                                onClick={() => void copyCode(receipt.code ?? '')}
                             >
-                                { copied ? 'کپی شد' : 'کپی کردن کد' }
+                                {copied ? 'کپی شد' : 'کپی کردن کد'}
                             </Button>
-                            <Button onClick={ startOver }>خرید کارت دیگر</Button>
+                            <Button onClick={startOver}>خرید کارت دیگر</Button>
                         </div>
 
                         <dl className="mt-6 grid gap-2 text-caption text-muted">
                             <div className="flex gap-2">
                                 <dt>شمارهٔ پیگیری:</dt>
-                                <dd dir="ltr" className="latin">{ String(receipt.refId ?? '-') }</dd>
+                                <dd dir="ltr" className="latin">
+                                    {String(receipt.refId ?? '-')}
+                                </dd>
                             </div>
                             <div className="flex gap-2">
                                 <dt>پرداخت‌شده:</dt>
-                                <dd>{ toman(receipt.toman) } تومان</dd>
+                                <dd>{toman(receipt.toman)} تومان</dd>
                             </div>
                             <div className="flex gap-2">
                                 <dt>شمارهٔ موبایل:</dt>
-                                <dd dir="ltr" className="latin">{ receipt.phone }</dd>
+                                <dd dir="ltr" className="latin">
+                                    {receipt.phone}
+                                </dd>
                             </div>
                         </dl>
 
                         <p className="mt-4 text-caption text-muted">
-                            { receipt.smsDelivered
+                            {receipt.smsDelivered
                                 ? 'یک نسخه از این کد با پیامک هم برایتان ارسال شد.'
-                                : 'پیامک ارسال نشد، اما کد شما همین است و معتبر است. آن را همین‌جا کپی کنید.' }
+                                : 'پیامک ارسال نشد، اما کد شما همین است و معتبر است. آن را همین‌جا کپی کنید.'}
                         </p>
                     </>
-                ) }
+                )}
 
                 {/* Money verified, nothing left to hand over. Saying "successful" and showing
                     no code would be worse than useless, so this state says what happened. */}
-                { receipt?.outcome === 'paid' && receipt.code === null && (
+                {receipt?.outcome === 'paid' && receipt.code === null && (
                     <>
                         <div className="flex items-center gap-2 text-gold">
-                            <TriangleAlert className="size-5" aria-hidden="true"/>
+                            <TriangleAlert className="size-5" aria-hidden="true" />
                             <h2 className="font-bold">پرداخت شما تأیید شد، اما کد آماده نیست</h2>
                         </div>
                         <p className="mt-3 text-small text-muted">
-                            مبلغ از حساب شما کم شده و سفارشتان ثبت است، ولی موجودی کد این کارت همان لحظه تمام شد.
-                            با شمارهٔ پیگیری زیر با پشتیبانی تماس بگیرید: یا کد را می‌فرستیم یا کل مبلغ را برمی‌گردانیم.
+                            مبلغ از حساب شما کم شده و سفارشتان ثبت است، ولی موجودی کد این کارت همان
+                            لحظه تمام شد. با شمارهٔ پیگیری زیر با پشتیبانی تماس بگیرید: یا کد را
+                            می‌فرستیم یا کل مبلغ را برمی‌گردانیم.
                         </p>
                         <div className="mt-4 rounded-xl border border-line bg-paper p-4">
                             <p className="text-caption text-muted">شمارهٔ پیگیری</p>
-                            <p dir="ltr" className="latin mt-1 text-start text-lg font-semibold">{ String(receipt.refId ?? '-') }</p>
+                            <p dir="ltr" className="latin mt-1 text-start text-lg font-semibold">
+                                {String(receipt.refId ?? '-')}
+                            </p>
                         </div>
                         <p className="mt-3 text-small">
-                            <span dir="ltr" className="latin">{ CONTACT.phone }</span>
+                            <span dir="ltr" className="latin">
+                                {CONTACT.phone}
+                            </span>
                         </p>
                     </>
-                ) }
+                )}
 
-                { receipt?.outcome === 'cancelled' && (
+                {receipt?.outcome === 'cancelled' && (
                     <>
                         <h2 className="font-bold">پرداخت لغو شد</h2>
                         <p className="mt-3 text-small text-muted">
                             مبلغی از حساب شما کم نشده است. هر وقت خواستید دوباره امتحان کنید.
                         </p>
-                        <Button variant="primary" className="mt-5" onClick={ startOver }>تلاش دوباره</Button>
+                        <Button variant="primary" className="mt-5" onClick={startOver}>
+                            تلاش دوباره
+                        </Button>
                     </>
-                ) }
+                )}
 
-                { receipt?.outcome === 'failed' && (
+                {receipt?.outcome === 'failed' && (
                     <>
                         <h2 className="font-bold">پرداخت تأیید نشد</h2>
                         <p className="mt-3 text-small text-muted">
-                            بانک این تراکنش را تأیید نکرد. اگر مبلغی از حساب شما کم شده باشد، طبق روال بانکی تا ۷۲ ساعت
-                            برمی‌گردد. برای پیگیری با پشتیبانی تماس بگیرید.
+                            بانک این تراکنش را تأیید نکرد. اگر مبلغی از حساب شما کم شده باشد، طبق
+                            روال بانکی تا ۷۲ ساعت برمی‌گردد. برای پیگیری با پشتیبانی تماس بگیرید.
                         </p>
                         <p className="mt-2 text-small">
-                            <span dir="ltr" className="latin">{ CONTACT.phone }</span>
+                            <span dir="ltr" className="latin">
+                                {CONTACT.phone}
+                            </span>
                         </p>
-                        <Button className="mt-5" onClick={ startOver }>تلاش دوباره</Button>
+                        <Button className="mt-5" onClick={startOver}>
+                            تلاش دوباره
+                        </Button>
                     </>
-                ) }
+                )}
             </div>
         </section>
     );

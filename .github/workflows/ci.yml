@@ -1,21 +1,21 @@
 # The same gates you run locally, on every push: check, build, test.
 name: CI
 on:
-  push:
-    branches: [main]
-  pull_request:
+    push:
+        branches: [main]
+    pull_request:
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm ci
-      # tsc --noEmit in both workspaces, then oxlint over the whole repo.
-      - run: npm run check
-      # The client bundle. The server has no build step, by design.
-      - run: npm run build
-      - run: npm test
+    verify:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+            - run: npm ci
+            # tsc --noEmit in both workspaces, then oxlint and oxfmt --check over the repo.
+            - run: npm run check
+            # The client bundle. The server has no build step, by design.
+            - run: npm run build
+            - run: npm test

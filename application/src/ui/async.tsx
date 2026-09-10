@@ -11,8 +11,7 @@
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export interface AsyncProps
-{
+export interface AsyncProps {
     /** True while a request is in flight. */
     loading: boolean;
 
@@ -38,45 +37,43 @@ export interface AsyncProps
     children: ReactNode;
 }
 
-export default function Async(props: AsyncProps): ReactNode
-{
+export default function Async(props: AsyncProps): ReactNode {
     // Failure first: a stale success underneath must never be what the reader sees while an
     // error is true.
-    if (props.error !== '')
-    {
+    if (props.error !== '') {
         return (
             <div className="rounded-2xl border border-danger/40 bg-danger/5 p-5">
                 <p className="flex items-start gap-2 text-small text-danger">
-                    <TriangleAlert className="size-5 shrink-0" aria-hidden="true"/>
-                    <span>{ props.error }</span>
+                    <TriangleAlert className="size-5 shrink-0" aria-hidden="true" />
+                    <span>{props.error}</span>
                 </p>
                 <button
                     type="button"
                     className="mt-4 flex min-h-tap items-center gap-2 rounded-xl border border-line px-4 text-small font-bold hover:border-firouze hover:text-firouze"
-                    onClick={ props.onRetry }
+                    onClick={props.onRetry}
                 >
-                    <RefreshCw className="size-4" aria-hidden="true"/>
+                    <RefreshCw className="size-4" aria-hidden="true" />
                     تلاش دوباره
                 </button>
             </div>
         );
     }
 
-    if (props.loading)
-    {
+    if (props.loading) {
         return (
             <div aria-busy="true" aria-live="polite">
                 <span className="sr-only">در حال بارگذاری...</span>
-                { props.skeleton ?? <div className="anim-pulse h-24 rounded-2xl border border-line bg-surface"></div> }
+                {props.skeleton ?? (
+                    <div className="anim-pulse h-24 rounded-2xl border border-line bg-surface"></div>
+                )}
             </div>
         );
     }
 
-    if (props.empty === true)
-    {
+    if (props.empty === true) {
         return (
             <p className="rounded-2xl border border-line bg-surface p-5 text-small text-muted">
-                { props.emptyText ?? 'چیزی برای نمایش نیست.' }
+                {props.emptyText ?? 'چیزی برای نمایش نیست.'}
             </p>
         );
     }

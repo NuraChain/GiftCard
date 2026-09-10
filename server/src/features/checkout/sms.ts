@@ -11,8 +11,7 @@
 
 import type { Fetch } from './zarinpal.ts';
 
-export interface SmsOptions
-{
+export interface SmsOptions {
     /**
      * Read PER CALL: the key and the template are editable from the console, so turning
      * delivery on must not need a restart. An empty key or template still means delivery is
@@ -27,21 +26,23 @@ export interface SmsOptions
 export type SmsResult = { ok: true } | { ok: false; reason: string };
 
 /** What the app depends on - one method, so a test can hand it a spy. */
-export interface SmsSender
-{
+export interface SmsSender {
     sendCode(phone: string, code: string): Promise<SmsResult>;
 }
 
 /** Kavenegar's documented failures, in the words the operator needs to act on. */
-function explain(status: number | undefined): string
-{
-    switch (status)
-    {
-        case 411: return 'recipient rejected by the SMS provider';
-        case 418: return 'SMS account is out of credit';
-        case 424: return 'SMS template not found or not approved';
-        case 426: return 'SMS account needs the advanced service enabled';
-        default: return `SMS provider returned ${ status ?? 'no status' }`;
+function explain(status: number | undefined): string {
+    switch (status) {
+        case 411:
+            return 'recipient rejected by the SMS provider';
+        case 418:
+            return 'SMS account is out of credit';
+        case 424:
+            return 'SMS template not found or not approved';
+        case 426:
+            return 'SMS account needs the advanced service enabled';
+        default:
+            return `SMS provider returned ${status ?? 'no status'}`;
     }
 }
 
@@ -51,8 +52,7 @@ function explain(status: number | undefined): string
  * message arrives, so "no key yet" degrades to exactly the state a provider outage produces
  * - the buyer sees the code and the notice that no message was sent.
  */
-export function createSms(options: SmsOptions): SmsSender
-{
+export function createSms(options: SmsOptions): SmsSender {
     const call = options.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
     const timeoutMs = options.timeoutMs ?? 10_000;
 
@@ -62,28 +62,25 @@ export function createSms(options: SmsOptions): SmsSender
          * payment already succeeded and the code is stored and on screen, so a provider
          * outage must not be presented as a failed purchase.
          */
-        async sendCode(phone: string, code: string): Promise<SmsResult>
-        {
+        async sendCode(phone: string, code: string): Promise<SmsResult> {
             const live = options.settings();
-            if (live.apiKey === '' || live.template === '')
-            {
+            if (live.apiKey === '' || live.template === '') {
                 return { ok: false, reason: 'SMS delivery is not configured' };
             }
 
-            const url = new URL(`${ live.baseUrl }/v1/${ live.apiKey }/verify/lookup.json`);
+            const url = new URL(`${live.baseUrl}/v1/${live.apiKey}/verify/lookup.json`);
             url.searchParams.set('receptor', phone);
             url.searchParams.set('token', code);
             url.searchParams.set('template', live.template);
 
-            try
-            {
-                const response = await call(url.toString(), { signal: AbortSignal.timeout(timeoutMs) });
-                const body = await response.json() as { return?: { status?: number } };
+            try {
+                const response = await call(url.toString(), {
+                    signal: AbortSignal.timeout(timeoutMs)
+                });
+                const body = (await response.json()) as { return?: { status?: number } };
                 const status = body?.return?.status;
                 return status === 200 ? { ok: true } : { ok: false, reason: explain(status) };
-            }
-            catch
-            {
+            } catch {
                 return { ok: false, reason: 'SMS provider unreachable' };
             }
         }

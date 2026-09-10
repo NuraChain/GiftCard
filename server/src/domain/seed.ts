@@ -17,8 +17,7 @@ import type { TierInput } from '../db/index.ts';
  * two places to answer "what does a fresh install sell?", and one of those places kept
  * three variables that were read exactly once and then never again.
  */
-export function seedTiers(): TierInput[]
-{
+export function seedTiers(): TierInput[] {
     return [
         {
             amount: 5,

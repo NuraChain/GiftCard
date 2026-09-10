@@ -1,15 +1,12 @@
 {
     "name": "guardian-service",
-    "private": true,
     "version": "1.0.0",
-    "type": "module",
-    "engines": {
-        "node": ">=24"
-    },
+    "private": true,
     "workspaces": [
         "application",
         "server"
     ],
+    "type": "module",
     "scripts": {
         "dev:api": "npm start --workspace server",
         "dev:web": "npm run dev --workspace application",
@@ -17,7 +14,7 @@
         "lint": "oxlint",
         "format": "oxfmt",
         "format:check": "oxfmt --check",
-        "check": "npm run typecheck && npm run lint",
+        "check": "npm run typecheck && npm run lint && npm run format:check",
         "build": "npm run build --workspace application",
         "test": "npm test --workspaces --if-present",
         "start": "npm start --workspace server"
@@ -25,5 +22,8 @@
     "devDependencies": {
         "oxfmt": "^0.67.0",
         "oxlint": "^1.82.0"
+    },
+    "engines": {
+        "node": ">=24"
     }
 }

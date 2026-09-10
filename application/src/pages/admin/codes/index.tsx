@@ -15,31 +15,24 @@ import { useAdminSession } from '../session.tsx';
 import PasteForm from './paste-form.tsx';
 import InventoryTable from './inventory-table.tsx';
 
-export default function Codes(): ReactNode
-{
+export default function Codes(): ReactNode {
     const session = useAdminSession();
 
     const [tiers, setTiers] = useState<TierRow[]>([]);
     const [revision, setRevision] = useState(0);
 
-    const loadTiers = useCallback(async (): Promise<void> =>
-    {
-        try
-        {
+    const loadTiers = useCallback(async (): Promise<void> => {
+        try {
             setTiers((await client.admin.tiers()).tiers);
-        }
-        catch
-        {
+        } catch {
             // The paste form needs a denomination to be useful; the table below does not.
             // A tier failure is reported by the table's own error state on retry.
         }
     }, []);
 
     // Keyed on the session, not on mount - see the note in overview.tsx.
-    useEffect(() =>
-    {
-        if (session.unlocked)
-        {
+    useEffect(() => {
+        if (session.unlocked) {
             void loadTiers();
             setRevision((current) => current + 1);
         }
@@ -47,8 +40,8 @@ export default function Codes(): ReactNode
 
     return (
         <AdminShell>
-            <PasteForm tiers={ tiers } onAdded={ () => setRevision((current) => current + 1) }/>
-            <InventoryTable tiers={ tiers } revision={ revision }/>
+            <PasteForm tiers={tiers} onAdded={() => setRevision((current) => current + 1)} />
+            <InventoryTable tiers={tiers} revision={revision} />
         </AdminShell>
     );
 }

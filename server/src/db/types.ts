@@ -17,8 +17,7 @@ export type OrderStatus = 'pending' | 'paid' | 'cancelled' | 'failed';
 export type Amount = number;
 
 /** One sellable denomination, as the shop shows it and the console edits it. */
-export interface Tier
-{
+export interface Tier {
     /** The dollar figure, and the row's identity. */
     amount: Amount;
 
@@ -43,8 +42,7 @@ export type TierInput = Tier;
 /** Why a tier could not be removed outright, so the console can say which. */
 export type TierRemoval = 'deleted' | 'deactivated' | 'missing';
 
-export interface Order
-{
+export interface Order {
     /** The public receipt handle: 32 random characters, and the row's primary key. */
     id: string;
 
@@ -79,8 +77,7 @@ export interface Order
 }
 
 /** What a purchase knows before the gateway has said anything. */
-export interface NewOrder
-{
+export interface NewOrder {
     id: string;
     amount: Amount;
     toman: number;
@@ -89,8 +86,7 @@ export interface NewOrder
 }
 
 /** One denomination's inventory, as the shop and the console both need it. */
-export interface StockLine
-{
+export interface StockLine {
     amount: Amount;
     available: number;
     held: number;
@@ -98,8 +94,7 @@ export interface StockLine
 }
 
 /** What a paste of codes did. Nothing is swallowed: every line is accounted for. */
-export interface AddCodesResult
-{
+export interface AddCodesResult {
     added: number;
     duplicate: number;
 
@@ -114,8 +109,7 @@ export interface AddCodesResult
 export type CodeState = 'free' | 'held' | 'sold';
 
 /** One row of the inventory, joined to whoever received it. */
-export interface CodeRow
-{
+export interface CodeRow {
     code: string;
     amount: Amount;
     state: CodeState;
@@ -132,8 +126,7 @@ export interface CodeRow
 }
 
 /** One page of the ledger. An empty `search` means the whole ledger. */
-export interface OrderQuery
-{
+export interface OrderQuery {
     /** Free text: part of a phone number, a code, a reference, or a receipt handle. */
     search: string;
 
@@ -142,8 +135,7 @@ export interface OrderQuery
 }
 
 /** One page of the inventory. */
-export interface CodeQuery
-{
+export interface CodeQuery {
     /** Free text over the code itself and over the buyer's number. */
     search: string;
 
@@ -158,8 +150,7 @@ export interface CodeQuery
 }
 
 /** One recorded settings change. Values are masked before they reach here. */
-export interface SettingsLogEntry
-{
+export interface SettingsLogEntry {
     key: string;
     before: string;
     after: string;
@@ -170,8 +161,7 @@ export interface SettingsLogEntry
  * The settings half of the store, kept as its own interface so `features/settings/settings.ts`
  * depends on the four calls it needs rather than on the whole database.
  */
-export interface SettingsStore
-{
+export interface SettingsStore {
     /** The raw stored string - sealed, if it is a secret. undefined means "never set". */
     getSetting(key: string): string | undefined;
 
@@ -183,8 +173,7 @@ export interface SettingsStore
 }
 
 /** Everything the application asks of the database. */
-export interface Store extends SettingsStore
-{
+export interface Store extends SettingsStore {
     // --- The catalogue ---
 
     /** Every tier, ordered for display. `active: false` ones are included - the console needs them. */

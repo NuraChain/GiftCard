@@ -21,8 +21,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 type Choice = 'system' | 'light' | 'dark';
 
-interface Mode
-{
+interface Mode {
     value: Choice;
     glyph: LucideIcon;
 
@@ -32,26 +31,20 @@ interface Mode
 
 // Cycle order is deliberate: the two explicit modes first, then back to following the
 // system. A user who only wants "make it dark" gets there in one tap.
-const MODES: Mode[] =
-[
+const MODES: Mode[] = [
     { value: 'light', glyph: Sun, label: 'روشن' },
     { value: 'dark', glyph: Moon, label: 'تاریک' },
     { value: 'system', glyph: Monitor, label: 'پیروی از سیستم' }
 ];
 
-export default function ThemeToggle(): ReactNode
-{
+export default function ThemeToggle(): ReactNode {
     const [choice, setChoice] = useState<Choice>('system');
 
-    useEffect(() =>
-    {
-        try
-        {
+    useEffect(() => {
+        try {
             const stored = localStorage.getItem('guardian-theme');
             setChoice(stored === 'light' || stored === 'dark' ? stored : 'system');
-        }
-        catch
-        {
+        } catch {
             setChoice('system');
         }
     }, []);
@@ -61,23 +54,18 @@ export default function ThemeToggle(): ReactNode
     const current = MODES[settled];
     const next = MODES[(settled + 1) % MODES.length];
 
-    const apply = (value: Choice): void =>
-    {
+    const apply = (value: Choice): void => {
         setChoice(value);
         const root = document.documentElement;
-        try
-        {
-            if (value === 'system')
-            {
+        try {
+            if (value === 'system') {
                 root.removeAttribute('data-theme');
                 localStorage.removeItem('guardian-theme');
                 return;
             }
             root.setAttribute('data-theme', value);
             localStorage.setItem('guardian-theme', value);
-        }
-        catch
-        {
+        } catch {
             // Storage unavailable: the attribute still applies for this session.
         }
     };
@@ -88,13 +76,13 @@ export default function ThemeToggle(): ReactNode
         <button
             type="button"
             className="flex size-tap items-center justify-center rounded-xl border border-line text-muted transition-colors hover:border-firouze hover:text-firouze"
-            aria-label={ `تغییر پوسته به ${ next.label }` }
-            title={ `تغییر پوسته به ${ next.label }` }
-            onClick={ () => apply(next.value) }
+            aria-label={`تغییر پوسته به ${next.label}`}
+            title={`تغییر پوسته به ${next.label}`}
+            onClick={() => apply(next.value)}
         >
             {/* Keyed on the mode so React mounts a FRESH glyph on every change, which is what
                 lets the swap animation play once per press with no state to track. */}
-            <Glyph key={ current.value } className="size-5 animate-icon-swap" aria-hidden="true"/>
+            <Glyph key={current.value} className="size-5 animate-icon-swap" aria-hidden="true" />
         </button>
     );
 }

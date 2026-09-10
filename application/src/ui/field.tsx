@@ -5,8 +5,7 @@
 // target and a 16px one. Passing the id through here makes the binding impossible to forget.
 import type { ReactNode } from 'react';
 
-export interface FieldProps
-{
+export interface FieldProps {
     children: ReactNode;
     label: string;
 
@@ -22,19 +21,18 @@ export interface FieldProps
     className?: string;
 }
 
-export default function Field(props: FieldProps): ReactNode
-{
+export default function Field(props: FieldProps): ReactNode {
     const error = props.error ?? '';
     const hint = props.hint ?? '';
 
     return (
-        <div className={ props.className ?? '' }>
-            <label className="block text-small font-bold" htmlFor={ props.htmlFor }>{ props.label }</label>
-            <div className="mt-2">
-                { props.children }
-            </div>
-            { error !== '' && <p className="mt-1 text-caption font-bold text-danger">{ error }</p> }
-            { error === '' && hint !== '' && <p className="mt-1 text-caption text-muted">{ hint }</p> }
+        <div className={props.className ?? ''}>
+            <label className="block text-small font-bold" htmlFor={props.htmlFor}>
+                {props.label}
+            </label>
+            <div className="mt-2">{props.children}</div>
+            {error !== '' && <p className="mt-1 text-caption font-bold text-danger">{error}</p>}
+            {error === '' && hint !== '' && <p className="mt-1 text-caption text-muted">{hint}</p>}
         </div>
     );
 }

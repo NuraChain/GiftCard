@@ -5,8 +5,7 @@
    Palette grounded in Persian pigment rather than generic SaaS blue: firouze is Isfahan
    tilework turquoise, and gold is a warm accent spent ONLY on a verified/delivered or
    needs-attention state - never as decoration, so its appearance always means something. */
-:root
-{
+:root {
     color-scheme: light dark;
 
     --paper: light-dark(#eff4f3, #0e1633);
@@ -32,18 +31,15 @@
 
 /* An explicit choice overrides the system preference. Both selectors are needed so the
    attribute wins over the media query in BOTH directions. */
-:root[data-theme='light']
-{
+:root[data-theme='light'] {
     color-scheme: light;
 }
 
-:root[data-theme='dark']
-{
+:root[data-theme='dark'] {
     color-scheme: dark;
 }
 
-@theme inline
-{
+@theme inline {
     --color-paper: var(--paper);
     --color-surface: var(--surface);
     --color-ink: var(--ink);
@@ -104,13 +100,35 @@
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
     /* Gentle spring, ~6% overshoot: the theme glyph pop. */
-    --ease-spring: linear(0, 0.008, 0.031 2.7%, 0.129 6.1%, 0.257, 0.534 15.9%, 0.638, 0.731, 0.81, 0.876, 0.928 30.8%, 0.983, 1.02, 1.046 41.6%, 1.058, 1.061, 1.057 50.9%, 1.048, 1.021 62.6%, 1.008 69.7%, 0.998, 0.995 82.4%, 1);
+    --ease-spring: linear(
+        0,
+        0.008,
+        0.031 2.7%,
+        0.129 6.1%,
+        0.257,
+        0.534 15.9%,
+        0.638,
+        0.731,
+        0.81,
+        0.876,
+        0.928 30.8%,
+        0.983,
+        1.02,
+        1.046 41.6%,
+        1.058,
+        1.061,
+        1.057 50.9%,
+        1.048,
+        1.021 62.6%,
+        1.008 69.7%,
+        0.998,
+        0.995 82.4%,
+        1
+    );
 }
 
-@layer base
-{
-    html
-    {
+@layer base {
+    html {
         background: var(--paper);
         color: var(--ink);
         font-family: var(--font-fa);
@@ -130,20 +148,17 @@
     /* Headings take their own leading from the scale: Persian body leading looks
        unset on a two-line heading. Weight and colour stay with the utilities so a
        heading can still be quiet where the design wants it quiet. */
-    h1
-    {
+    h1 {
         font-size: var(--text-display);
         line-height: var(--text-display--line-height);
     }
 
-    h2
-    {
+    h2 {
         font-size: var(--text-h2);
         line-height: var(--text-h2--line-height);
     }
 
-    h3
-    {
+    h3 {
         font-size: var(--text-h3);
         line-height: var(--text-h3--line-height);
     }
@@ -152,13 +167,11 @@
        disconnected glyphs, so tracking is off globally and re-enabled only on .latin -
        the monospace code motif, which is unaffected by joining rules. */
     body,
-    body *
-    {
+    body * {
         letter-spacing: 0;
     }
 
-    .latin
-    {
+    .latin {
         font-family: var(--font-code);
         letter-spacing: 0.04em;
         line-height: 1.4;
@@ -171,14 +184,12 @@
        over something that will not respond is a small lie. */
     button:not(:disabled),
     summary,
-    [role='button']:not([aria-disabled='true'])
-    {
+    [role='button']:not([aria-disabled='true']) {
         cursor: pointer;
     }
 
     button:disabled,
-    [role='button'][aria-disabled='true']
-    {
+    [role='button'][aria-disabled='true'] {
         cursor: not-allowed;
     }
 
@@ -186,38 +197,31 @@
        itself in RTL, and driven by nth-child rather than a border on every cell,
        which would double up against the panel's own border. 2 columns on a phone,
        4 from `lg`. */
-    .trust-cell + .trust-cell
-    {
+    .trust-cell + .trust-cell {
         border-inline-start: 1px solid var(--line);
     }
 
-    .trust-cell:nth-child(3)
-    {
+    .trust-cell:nth-child(3) {
         border-block-start: 1px solid var(--line);
     }
 
-    .trust-cell:nth-child(4)
-    {
+    .trust-cell:nth-child(4) {
         border-block-start: 1px solid var(--line);
     }
 
-    @media (width >= 64rem)
-    {
+    @media (width >= 64rem) {
         /* At 4 columns nothing sits on a second row, so the horizontal rules go and
            the third cell regains the vertical one it lost as a row-start. */
         .trust-cell:nth-child(3),
-        .trust-cell:nth-child(4)
-        {
+        .trust-cell:nth-child(4) {
             border-block-start: 0;
         }
     }
 
-    @media (width < 64rem)
-    {
+    @media (width < 64rem) {
         /* In the 2-column layout the third cell starts a row: it must not carry a
            vertical rule against the panel edge. */
-        .trust-cell:nth-child(3)
-        {
+        .trust-cell:nth-child(3) {
             border-inline-start: 0;
         }
     }
@@ -225,21 +229,18 @@
     /* Persian has no italic form: a synthesised oblique is a rendering artefact, not a
        typographic style. */
     i,
-    em
-    {
+    em {
         font-style: normal;
         font-weight: 700;
     }
 
-    :focus-visible
-    {
+    :focus-visible {
         outline: 2px solid var(--firouze);
         outline-offset: 3px;
         border-radius: 4px;
     }
 
-    ::selection
-    {
+    ::selection {
         background: color-mix(in srgb, var(--firouze) 30%, transparent);
     }
 }
@@ -249,14 +250,12 @@
    every control. Declared with `@utility` rather than as plain classes so they take
    variants - `max-sm:size-tap` is how a labelled action becomes a square icon button
    on a phone without hardcoding the token's value a second time. */
-@utility size-tap
-{
+@utility size-tap {
     width: var(--spacing-tap);
     height: var(--spacing-tap);
 }
 
-@utility min-h-tap
-{
+@utility min-h-tap {
     min-height: var(--spacing-tap);
 }
 
@@ -264,10 +263,8 @@
    tap target instead of a wide one. The label goes `sr-only` rather than `display:none`
    at the call site, so the button is still CALLED what it does - an icon-only control
    with no accessible name is the usual way this pattern goes wrong. */
-@media (width < 40rem)
-{
-    .action-compact
-    {
+@media (width < 40rem) {
+    .action-compact {
         width: var(--spacing-tap);
         justify-content: center;
         padding-inline: 0;
@@ -289,25 +286,21 @@
 
    Set once on the root because both properties INHERIT: every panel that scrolls
    picks this up without opting in, and only the tab strip opts back out. */
-html
-{
+html {
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
 }
 
-::-webkit-scrollbar
-{
+::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 
-::-webkit-scrollbar-track
-{
+::-webkit-scrollbar-track {
     background: var(--scroll-track);
 }
 
-::-webkit-scrollbar-thumb
-{
+::-webkit-scrollbar-thumb {
     background: var(--scroll-thumb);
     border-radius: 9999px;
     /* A transparent border inset by the track colour: the thumb reads as a floating
@@ -316,21 +309,18 @@ html
     background-clip: padding-box;
 }
 
-::-webkit-scrollbar-thumb:hover
-{
+::-webkit-scrollbar-thumb:hover {
     background: var(--muted);
     background-clip: padding-box;
 }
 
 /* For strips whose cut-off edge already says "there is more this way" - the console
    tabs. A scrollbar under four tab labels is louder than the thing it describes. */
-.no-scrollbar
-{
+.no-scrollbar {
     scrollbar-width: none;
 }
 
-.no-scrollbar::-webkit-scrollbar
-{
+.no-scrollbar::-webkit-scrollbar {
     display: none;
 }
 
@@ -355,22 +345,18 @@ html
    a card leads with what identifies it, which is not the order a desktop ledger
    reads in.
    --------------------------------------------------------------------------- */
-@media (width < 48rem)
-{
+@media (width < 48rem) {
     .table-cards,
-    .table-cards tbody
-    {
+    .table-cards tbody {
         display: block;
         width: 100%;
     }
 
-    .table-cards thead
-    {
+    .table-cards thead {
         display: none;
     }
 
-    .table-cards tr
-    {
+    .table-cards tr {
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
@@ -378,8 +364,7 @@ html
         padding: 0.5rem 0.25rem;
     }
 
-    .table-cards td
-    {
+    .table-cards td {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
@@ -390,8 +375,7 @@ html
         white-space: normal;
     }
 
-    .table-cards td::before
-    {
+    .table-cards td::before {
         content: attr(data-label);
         flex: none;
         color: var(--muted);
@@ -399,20 +383,17 @@ html
         text-align: start;
     }
 
-    .table-cards td.cell-inline
-    {
+    .table-cards td.cell-inline {
         width: auto;
         max-width: 100%;
         gap: 0.375rem;
     }
 
-    .table-cards td.cell-action
-    {
+    .table-cards td.cell-action {
         padding-block: 0.375rem 0.25rem;
     }
 
-    .table-cards td.cell-action::before
-    {
+    .table-cards td.cell-action::before {
         display: none;
     }
 }
@@ -435,32 +416,25 @@ html
    reduced-motion block at the end of this file, so no component carries its own
    guard.
    --------------------------------------------------------------------------- */
-@keyframes scan
-{
-    from
-    {
+@keyframes scan {
+    from {
         inset-inline-start: -30%;
     }
 
-    to
-    {
+    to {
         inset-inline-start: 115%;
     }
 }
 
-@keyframes settle
-{
-    from
-    {
+@keyframes settle {
+    from {
         opacity: 0;
         transform: translateY(10px);
     }
 }
 
-@keyframes rise
-{
-    from
-    {
+@keyframes rise {
+    from {
         opacity: 0;
         transform: translateY(8px);
     }
@@ -468,39 +442,32 @@ html
 
 /* The icon swap: the reactive binding mounts a FRESH glyph on every theme change,
    so this plays once per change without any state to track. */
-@keyframes icon-swap
-{
-    from
-    {
+@keyframes icon-swap {
+    from {
         opacity: 0;
         transform: scale(0.5) rotate(-15deg);
     }
 }
 
-.anim-scan
-{
+.anim-scan {
     animation: scan var(--dur-scan) var(--ease-standard) var(--dur-base) 2 both;
 }
 
-.anim-settle
-{
+.anim-settle {
     animation: settle var(--dur-slower) var(--ease-out) both;
 }
 
 /* A notice slides in from the edge it lives on. `translateX` is written against the
    INLINE axis so it enters from the page's start side in either direction - a hard-coded
    -8px would have it fly in from the wrong side of an RTL page. */
-@keyframes toast-in
-{
-    from
-    {
+@keyframes toast-in {
+    from {
         opacity: 0;
         transform: translate(calc(-8px * var(--inline-sign)), 4px);
     }
 }
 
-.anim-toast
-{
+.anim-toast {
     --inline-sign: 1;
     animation: toast-in var(--dur-base) var(--ease-out) both;
 }
@@ -508,77 +475,70 @@ html
 /* A refusal, felt rather than read: the console's key field shakes when the key is wrong.
    It is the one horizontal animation here that needs no RTL mirror - the motion is
    SYMMETRIC, so it looks the same travelling either way. */
-@keyframes shake
-{
-    25%
-    {
+@keyframes shake {
+    25% {
         transform: translateX(-5px);
     }
 
-    75%
-    {
+    75% {
         transform: translateX(5px);
     }
 }
 
-.anim-shake
-{
+.anim-shake {
     animation: shake var(--dur-quick) var(--ease-standard) 2;
 }
 
 /* A skeleton breathes rather than sweeps: a shimmer that travels needs a direction, and a
    direction has to be flipped for RTL. Opacity has no handedness. */
-@keyframes pulse
-{
-    50%
-    {
+@keyframes pulse {
+    50% {
         opacity: 0.45;
     }
 }
 
-.anim-pulse
-{
+.anim-pulse {
     animation: pulse var(--dur-slower) var(--ease-standard) infinite;
 }
 
-[dir='rtl'] .anim-toast
-{
+[dir='rtl'] .anim-toast {
     --inline-sign: -1;
 }
 
-@utility animate-icon-swap
-{
+@utility animate-icon-swap {
     animation: icon-swap var(--dur-base) var(--ease-spring);
 }
 
 /* A small, FIXED group rises in a quick cascade on mount - the trust strip's four
    cells. Deliberately not for lists: a cascade over unbounded rows reads as lag. */
-.stagger > *
-{
+.stagger > * {
     animation: rise var(--dur-slow) var(--ease-out) both;
 }
 
-.stagger > *:nth-child(2) { animation-delay: 70ms; }
-.stagger > *:nth-child(3) { animation-delay: 140ms; }
-.stagger > *:nth-child(4) { animation-delay: 210ms; }
+.stagger > *:nth-child(2) {
+    animation-delay: 70ms;
+}
+.stagger > *:nth-child(3) {
+    animation-delay: 140ms;
+}
+.stagger > *:nth-child(4) {
+    animation-delay: 210ms;
+}
 
 /* ONE global reduced-motion contract: everything animated collapses to an instant
    state change. Declared once here so a component can never forget its own guard -
    the failure mode where a new animation ships unguarded because the author did not
    know the convention. */
-@media (prefers-reduced-motion: reduce)
-{
+@media (prefers-reduced-motion: reduce) {
     /* Scrolling is motion too, and a page that glides several screens is exactly what a
        reader with vestibular sensitivity asked not to happen. The jump comes back. */
-    html
-    {
+    html {
         scroll-behavior: auto;
     }
 
     *,
     *::before,
-    *::after
-    {
+    *::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         animation-delay: 0ms !important;

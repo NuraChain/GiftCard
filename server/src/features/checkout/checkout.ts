@@ -25,16 +25,14 @@ import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 import type { SmsSender } from './sms.ts';
 
-export interface CheckoutOptions
-{
+export interface CheckoutOptions {
     store: Store;
     payment: PaymentGateway;
     sms: SmsSender;
     log?: Logger;
 }
 
-export interface Checkout
-{
+export interface Checkout {
     /**
      * Brings an order to rest against the gateway's answer. Safe to call repeatedly and
      * concurrently: calls for the same order share one in-flight settlement.
@@ -42,8 +40,7 @@ export interface Checkout
     settle(order: Order, gatewaySaidOk: boolean): Promise<void>;
 }
 
-export function createCheckout(options: CheckoutOptions): Checkout
-{
+export function createCheckout(options: CheckoutOptions): Checkout {
     const { store, payment, sms, log } = options;
 
     // Settling is serialised per order. Without this, two callbacks arriving together (a
@@ -51,45 +48,47 @@ export function createCheckout(options: CheckoutOptions): Checkout
     // unsettled order, both verify, and both take a code from stock for one payment.
     const settling = new Map<string, Promise<void>>();
 
-    async function settleOnce(order: Order, gatewaySaidOk: boolean): Promise<void>
-    {
-        if (order.status === 'paid')
-        {
+    async function settleOnce(order: Order, gatewaySaidOk: boolean): Promise<void> {
+        if (order.status === 'paid') {
             return;
         }
 
         const verified = await payment.verify(order.authority ?? '', order.toman);
-        if (!verified.ok)
-        {
+        if (!verified.ok) {
             store.settleUnpaid(order.id, gatewaySaidOk ? 'failed' : 'cancelled');
-            log?.warn({ amount: order.amount, said: gatewaySaidOk, reason: verified.reason }, 'payment not verified');
+            log?.warn(
+                { amount: order.amount, said: gatewaySaidOk, reason: verified.reason },
+                'payment not verified'
+            );
             return;
         }
 
         const code = store.settlePaid(order.id, verified.refId);
-        if (code === null)
-        {
+        if (code === null) {
             // Money verified with no code left to give. It is recorded as PAID because it
             // was paid; calling it a failure would be a lie about money that has moved.
             // The buyer sees an apology with their reference, the console pins the row.
-            log?.error({ refId: verified.refId, amount: order.amount }, 'paid order has no code available');
+            log?.error(
+                { refId: verified.refId, amount: order.amount },
+                'paid order has no code available'
+            );
             return;
         }
 
         const sent = await sms.sendCode(order.phone, code);
         store.markSmsDelivered(order.id, sent.ok);
-        if (!sent.ok)
-        {
-            log?.error({ refId: verified.refId, reason: sent.reason }, 'gift code SMS not delivered');
+        if (!sent.ok) {
+            log?.error(
+                { refId: verified.refId, reason: sent.reason },
+                'gift code SMS not delivered'
+            );
         }
     }
 
     return {
-        settle(order, gatewaySaidOk)
-        {
+        settle(order, gatewaySaidOk) {
             const inFlight = settling.get(order.id);
-            if (inFlight !== undefined)
-            {
+            if (inFlight !== undefined) {
                 return inFlight;
             }
             const run = settleOnce(order, gatewaySaidOk).finally(() => settling.delete(order.id));

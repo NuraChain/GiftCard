@@ -20,8 +20,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Guard } from './api.ts';
 import { TooManyRequestsError } from './http.ts';
 
-interface Bucket
-{
+interface Bucket {
     count: number;
 
     /** When this bucket resets, as an epoch millisecond. */
@@ -36,20 +35,21 @@ interface Bucket
  * addresses would make every request slower for everybody, which is a CPU exhaustion handed
  * to the one party you least want to hand one to. The gate makes it amortised O(1).
  */
-export class MemoryRateStore
-{
+export class MemoryRateStore {
     readonly #buckets = new Map<string, Bucket>();
     #nextSweep = 0;
 
-    public hit(key: string, limit: number, windowMs: number): { limited: boolean; resetSeconds: number }
-    {
+    public hit(
+        key: string,
+        limit: number,
+        windowMs: number
+    ): { limited: boolean; resetSeconds: number } {
         const now = Date.now();
         this.#sweep(now);
 
         const found = this.#buckets.get(key);
-        const bucket = found !== undefined && found.until > now
-            ? found
-            : { count: 0, until: now + windowMs };
+        const bucket =
+            found !== undefined && found.until > now ? found : { count: 0, until: now + windowMs };
 
         bucket.count += 1;
         this.#buckets.set(key, bucket);
@@ -60,17 +60,13 @@ export class MemoryRateStore
         };
     }
 
-    #sweep(now: number): void
-    {
-        if (now < this.#nextSweep)
-        {
+    #sweep(now: number): void {
+        if (now < this.#nextSweep) {
             return;
         }
         this.#nextSweep = now + 60_000;
-        for (const [key, bucket] of this.#buckets)
-        {
-            if (bucket.until <= now)
-            {
+        for (const [key, bucket] of this.#buckets) {
+            if (bucket.until <= now) {
                 this.#buckets.delete(key);
             }
         }
@@ -83,14 +79,11 @@ export class MemoryRateStore
  * The edge limiter is generous because most traffic is ordinary reads; these are tight
  * because each call costs a gateway request, an SMS, or one guess at a credential.
  */
-export function throttle(limit: number, windowMs: number): Guard
-{
+export function throttle(limit: number, windowMs: number): Guard {
     const store = new MemoryRateStore();
-    return ({ request }) =>
-    {
+    return ({ request }) => {
         const decision = store.hit(request.ip, limit, windowMs);
-        if (decision.limited)
-        {
+        if (decision.limited) {
             throw new TooManyRequestsError(decision.resetSeconds);
         }
     };
@@ -105,14 +98,14 @@ export function throttle(limit: number, windowMs: number): Guard
  * finishes - the request is accepted, logged, and then hangs until the client gives up, with
  * no error anywhere to say why. `async` makes the return a promise and closes that door.
  */
-export function rateLimit(limit: number, windowMs: number): (request: FastifyRequest, reply: FastifyReply) => Promise<void>
-{
+export function rateLimit(
+    limit: number,
+    windowMs: number
+): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {
     const store = new MemoryRateStore();
-    return async (request) =>
-    {
+    return async (request) => {
         const decision = store.hit(request.ip, limit, windowMs);
-        if (decision.limited)
-        {
+        if (decision.limited) {
             throw new TooManyRequestsError(decision.resetSeconds);
         }
     };

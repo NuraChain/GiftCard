@@ -20,8 +20,7 @@ import Field from '../../../ui/field.tsx';
 import TextInput from '../../../ui/text-input.tsx';
 import { useAdminSession } from '../session.tsx';
 
-export default function GatewaySettings(): ReactNode
-{
+export default function GatewaySettings(): ReactNode {
     const notify = useToasts();
     const session = useAdminSession();
     const catalog = useCatalog();
@@ -43,101 +42,82 @@ export default function GatewaySettings(): ReactNode
     const [testPhone, setTestPhone] = useState('');
     const [testing, setTesting] = useState(false);
 
-    const load = useCallback(async (): Promise<void> =>
-    {
+    const load = useCallback(async (): Promise<void> => {
         setLoading(true);
         setError('');
-        try
-        {
+        try {
             const view = await client.admin.settings();
             setSettings(view);
             setFormAppName(view.appName);
             setFormBase(view.zarinpalBase);
             setFormKavenegarTemplate(view.kavenegarTemplate);
             setFormKavenegarBase(view.kavenegarBase);
-        }
-        catch (failure)
-        {
+        } catch (failure) {
             setError(failureText(failure, 'تنظیمات خوانده نشد'));
-        }
-        finally
-        {
+        } finally {
             setLoading(false);
         }
     }, []);
 
     // Keyed on the session, not on mount - see the note in overview.tsx.
-    useEffect(() =>
-    {
-        if (session.unlocked)
-        {
+    useEffect(() => {
+        if (session.unlocked) {
             void load();
         }
     }, [session.revision, session.unlocked, load]);
 
-    const save = async (event: FormEvent): Promise<void> =>
-    {
+    const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
         // Changing the merchant id changes WHERE THE MONEY GOES. It is the one field on this
         // page that deserves a second question.
-        if (formMerchantId !== '' && !confirm('شناسهٔ پذیرنده عوض می‌شود. از این پس پرداخت‌ها به حساب تازه می‌رود. مطمئنید؟'))
-        {
+        if (
+            formMerchantId !== '' &&
+            !confirm('شناسهٔ پذیرنده عوض می‌شود. از این پس پرداخت‌ها به حساب تازه می‌رود. مطمئنید؟')
+        ) {
             return;
         }
         setSaving(true);
-        try
-        {
+        try {
             // Absent, not empty: an untouched secret input must not clear a working
             // credential, so a blank field is simply not sent.
-            setSettings(await client.admin.saveSettings({
-                input: {
-                    appName: formAppName,
-                    zarinpalBase: formBase,
-                    kavenegarTemplate: formKavenegarTemplate,
-                    kavenegarBase: formKavenegarBase,
-                    merchantId: formMerchantId === '' ? undefined : formMerchantId,
-                    kavenegarKey: formKavenegarKey === '' ? undefined : formKavenegarKey
-                }
-            }));
+            setSettings(
+                await client.admin.saveSettings({
+                    input: {
+                        appName: formAppName,
+                        zarinpalBase: formBase,
+                        kavenegarTemplate: formKavenegarTemplate,
+                        kavenegarBase: formKavenegarBase,
+                        merchantId: formMerchantId === '' ? undefined : formMerchantId,
+                        kavenegarKey: formKavenegarKey === '' ? undefined : formKavenegarKey
+                    }
+                })
+            );
             setFormMerchantId('');
             setFormKavenegarKey('');
             // The name appears in the tab title and on every page, so the shop is told to
             // re-read it rather than left showing the old one until a reload.
             void catalog.load();
             notify.success('تنظیمات ذخیره شد');
-        }
-        catch (failure)
-        {
+        } catch (failure) {
             notify.error(failureText(failure, 'ذخیره نشد'));
-        }
-        finally
-        {
+        } finally {
             setSaving(false);
         }
     };
 
-    const sendTest = async (event: FormEvent): Promise<void> =>
-    {
+    const sendTest = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
         setTesting(true);
-        try
-        {
+        try {
             const result = await client.admin.testSms({ input: { phone: testPhone } });
-            if (result.ok)
-            {
+            if (result.ok) {
                 notify.success('پیامک آزمایشی ارسال شد');
+            } else {
+                notify.error(`ارسال نشد: ${result.reason}`);
             }
-            else
-            {
-                notify.error(`ارسال نشد: ${ result.reason }`);
-            }
-        }
-        catch (failure)
-        {
+        } catch (failure) {
             notify.error(failureText(failure, 'ارسال نشد'));
-        }
-        finally
-        {
+        } finally {
             setTesting(false);
         }
     };
@@ -148,35 +128,56 @@ export default function GatewaySettings(): ReactNode
 
             <div className="mt-4">
                 <Async
-                    loading={ loading && settings === null }
-                    error={ error }
-                    onRetry={ () => void load() }
-                    skeleton={ <div className="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div> }
+                    loading={loading && settings === null}
+                    error={error}
+                    onRetry={() => void load()}
+                    skeleton={
+                        <div className="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div>
+                    }
                 >
                     <p className="mb-4 flex items-start gap-2 rounded-xl border border-gold/40 bg-gold/10 p-4 text-small">
-                        <AlertTriangle className="size-5 shrink-0 text-gold" aria-hidden="true"/>
+                        <AlertTriangle className="size-5 shrink-0 text-gold" aria-hidden="true" />
                         <span>
-                            تغییر شناسهٔ پذیرنده مقصد پول را عوض می‌کند. مقادیر محرمانه پس از ذخیره دیگر نمایش داده نمی‌شوند؛
-                            برای نگه داشتن مقدار فعلی، کادر را خالی بگذارید.
+                            تغییر شناسهٔ پذیرنده مقصد پول را عوض می‌کند. مقادیر محرمانه پس از ذخیره
+                            دیگر نمایش داده نمی‌شوند؛ برای نگه داشتن مقدار فعلی، کادر را خالی
+                            بگذارید.
                         </span>
                     </p>
 
-                    <form className="rounded-2xl border border-line bg-surface p-5" noValidate onSubmit={ (event) => void save(event) }>
+                    <form
+                        className="rounded-2xl border border-line bg-surface p-5"
+                        noValidate
+                        onSubmit={(event) => void save(event)}
+                    >
                         <Field
                             label="نام فروشگاه"
                             htmlFor="app-name"
                             hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، و توضیح تراکنش در درگاه دیده می‌شود."
                         >
-                            <TextInput id="app-name" placeholder="گاردین سرویس" value={ formAppName } onChange={ setFormAppName }/>
+                            <TextInput
+                                id="app-name"
+                                placeholder="گاردین سرویس"
+                                value={formAppName}
+                                onChange={setFormAppName}
+                            />
                         </Field>
 
                         <Field label="آدرس درگاه" htmlFor="zarinpal-base" className="mt-4">
-                            <TextInput id="zarinpal-base" latin value={ formBase } onChange={ setFormBase }/>
+                            <TextInput
+                                id="zarinpal-base"
+                                latin
+                                value={formBase}
+                                onChange={setFormBase}
+                            />
                         </Field>
                         <p className="mt-1 text-caption text-muted">
-                            { settings?.sandbox === true
-                                ? <span className="text-gold">حالت آزمایشی (سندباکس) - پولی جابه‌جا نمی‌شود.</span>
-                                : <span>درگاه واقعی. پرداخت‌ها با پول واقعی انجام می‌شود.</span> }
+                            {settings?.sandbox === true ? (
+                                <span className="text-gold">
+                                    حالت آزمایشی (سندباکس) - پولی جابه‌جا نمی‌شود.
+                                </span>
+                            ) : (
+                                <span>درگاه واقعی. پرداخت‌ها با پول واقعی انجام می‌شود.</span>
+                            )}
                         </p>
 
                         <Field label="شناسهٔ پذیرنده" htmlFor="merchant-id" className="mt-4">
@@ -184,9 +185,13 @@ export default function GatewaySettings(): ReactNode
                                 id="merchant-id"
                                 latin
                                 autoComplete="off"
-                                placeholder={ settings?.merchantIdSet === true ? `${ settings.merchantIdMasked } (برای تغییر بنویسید)` : 'تنظیم نشده' }
-                                value={ formMerchantId }
-                                onChange={ setFormMerchantId }
+                                placeholder={
+                                    settings?.merchantIdSet === true
+                                        ? `${settings.merchantIdMasked} (برای تغییر بنویسید)`
+                                        : 'تنظیم نشده'
+                                }
+                                value={formMerchantId}
+                                onChange={setFormMerchantId}
                             />
                         </Field>
 
@@ -196,18 +201,32 @@ export default function GatewaySettings(): ReactNode
                                 type="password"
                                 latin
                                 autoComplete="off"
-                                placeholder={ settings?.kavenegarKeySet === true ? `${ settings.kavenegarKeyMasked } (برای تغییر بنویسید)` : 'تنظیم نشده' }
-                                value={ formKavenegarKey }
-                                onChange={ setFormKavenegarKey }
+                                placeholder={
+                                    settings?.kavenegarKeySet === true
+                                        ? `${settings.kavenegarKeyMasked} (برای تغییر بنویسید)`
+                                        : 'تنظیم نشده'
+                                }
+                                value={formKavenegarKey}
+                                onChange={setFormKavenegarKey}
                             />
                         </Field>
 
                         <div className="mt-4 grid gap-4 sm:grid-cols-2">
                             <Field label="نام قالب" htmlFor="kavenegar-template">
-                                <TextInput id="kavenegar-template" latin value={ formKavenegarTemplate } onChange={ setFormKavenegarTemplate }/>
+                                <TextInput
+                                    id="kavenegar-template"
+                                    latin
+                                    value={formKavenegarTemplate}
+                                    onChange={setFormKavenegarTemplate}
+                                />
                             </Field>
                             <Field label="آدرس کاوه‌نگار" htmlFor="kavenegar-base">
-                                <TextInput id="kavenegar-base" latin value={ formKavenegarBase } onChange={ setFormKavenegarBase }/>
+                                <TextInput
+                                    id="kavenegar-base"
+                                    latin
+                                    value={formKavenegarBase}
+                                    onChange={setFormKavenegarBase}
+                                />
                             </Field>
                         </div>
 
@@ -218,22 +237,30 @@ export default function GatewaySettings(): ReactNode
                         <dl className="mt-5 grid gap-2 border-t border-line pt-4 text-caption text-muted">
                             <div className="flex justify-between gap-2">
                                 <dt>وضعیت پیامک</dt>
-                                <dd className={ settings?.smsReady === true ? 'font-bold text-firouze' : 'font-bold text-gold' }>
-                                    { settings?.smsReady === true ? 'آماده' : 'خاموش' }
+                                <dd
+                                    className={
+                                        settings?.smsReady === true
+                                            ? 'font-bold text-firouze'
+                                            : 'font-bold text-gold'
+                                    }
+                                >
+                                    {settings?.smsReady === true ? 'آماده' : 'خاموش'}
                                 </dd>
                             </div>
                             <div className="flex justify-between gap-2">
                                 <dt className="shrink-0">آدرس بازگشت از درگاه</dt>
-                                <dd dir="ltr" className="latin min-w-0 break-all text-end">{ settings?.callbackUrl ?? '' }</dd>
+                                <dd dir="ltr" className="latin min-w-0 break-all text-end">
+                                    {settings?.callbackUrl ?? ''}
+                                </dd>
                             </div>
                         </dl>
 
                         <Button
                             type="submit"
                             variant="primary"
-                            glyph={ Save }
+                            glyph={Save}
                             className="mt-5"
-                            busy={ saving }
+                            busy={saving}
                             busyText="در حال ذخیره..."
                         >
                             ذخیره تنظیمات
@@ -245,25 +272,29 @@ export default function GatewaySettings(): ReactNode
                     <form
                         className="mt-4 flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-5"
                         noValidate
-                        onSubmit={ (event) => void sendTest(event) }
+                        onSubmit={(event) => void sendTest(event)}
                     >
-                        <Field label="پیامک آزمایشی به" htmlFor="test-phone" className="min-w-0 flex-1">
+                        <Field
+                            label="پیامک آزمایشی به"
+                            htmlFor="test-phone"
+                            className="min-w-0 flex-1"
+                        >
                             <TextInput
                                 id="test-phone"
                                 type="tel"
                                 latin
                                 inputMode="tel"
                                 placeholder="09170459330"
-                                value={ testPhone }
-                                onChange={ setTestPhone }
+                                value={testPhone}
+                                onChange={setTestPhone}
                             />
                         </Field>
                         <Button
                             type="submit"
-                            glyph={ Send }
-                            busy={ testing }
+                            glyph={Send}
+                            busy={testing}
                             busyText="در حال ارسال..."
-                            disabled={ testPhone === '' }
+                            disabled={testPhone === ''}
                         >
                             ارسال
                         </Button>

@@ -18,8 +18,7 @@ export type Method = 'GET' | 'POST' | 'DELETE';
  * One route: where it lives, and the shapes it speaks. The three schemas are what the
  * server validates at the boundary and what the client checks BEFORE the wire.
  */
-export interface Route<Input = undefined, Query = undefined, Output = undefined>
-{
+export interface Route<Input = undefined, Query = undefined, Output = undefined> {
     method: Method;
     path: string;
     input?: ZodType<Input>;
@@ -33,8 +32,7 @@ export interface Route<Input = undefined, Query = undefined, Output = undefined>
  * the extractors below read them from ITS generic parameters. A stricter constraint here
  * would reject the very routes it exists to describe.
  */
-export interface AnyRoute
-{
+export interface AnyRoute {
     method: Method;
     path: string;
     input?: unknown;
@@ -48,8 +46,7 @@ export type ContractShape = Record<string, Record<string, AnyRoute>>;
 export function get<Query = undefined, Output = undefined>(
     path: string,
     options: { query?: ZodType<Query>; output?: ZodType<Output> } = {}
-): Route<undefined, Query, Output>
-{
+): Route<undefined, Query, Output> {
     return { method: 'GET', path, query: options.query, output: options.output };
 }
 
@@ -57,8 +54,7 @@ export function get<Query = undefined, Output = undefined>(
 export function post<Input = undefined, Output = undefined>(
     path: string,
     options: { input?: ZodType<Input>; output?: ZodType<Output> } = {}
-): Route<Input, undefined, Output>
-{
+): Route<Input, undefined, Output> {
     return { method: 'POST', path, input: options.input, output: options.output };
 }
 
@@ -69,14 +65,12 @@ export function post<Input = undefined, Output = undefined>(
 export function del<Query = undefined, Output = undefined>(
     path: string,
     options: { query?: ZodType<Query>; output?: ZodType<Output> } = {}
-): Route<undefined, Query, Output>
-{
+): Route<undefined, Query, Output> {
     return { method: 'DELETE', path, query: options.query, output: options.output };
 }
 
 /** The whole API in one object. Identity at runtime; the types are the point. */
-export function defineContract<C extends ContractShape>(groups: C): C
-{
+export function defineContract<C extends ContractShape>(groups: C): C {
     return groups;
 }
 
@@ -88,24 +82,22 @@ export type OutputOf<R> = R extends Route<infer _I, infer _Q, infer O> ? O : nev
 
 /** `'pay.start'`, `'admin.overview'` - every route in the contract, as a literal type. */
 export type RouteKey<C> = {
-    [G in keyof C & string]: `${ G }.${ keyof C[G] & string }`
+    [G in keyof C & string]: `${G}.${keyof C[G] & string}`;
 }[keyof C & string];
 
 /** What one call takes. A route with neither an input nor a query takes nothing at all. */
-export type CallArgs<R> =
-    (InputOf<R> extends undefined ? object : { input: InputOf<R> })
-    & (QueryOf<R> extends undefined ? object : { query: QueryOf<R> });
+export type CallArgs<R> = (InputOf<R> extends undefined ? object : { input: InputOf<R> }) &
+    (QueryOf<R> extends undefined ? object : { query: QueryOf<R> });
 
-type NeedsArgs<R> = InputOf<R> extends undefined
-    ? (QueryOf<R> extends undefined ? false : true)
-    : true;
+type NeedsArgs<R> =
+    InputOf<R> extends undefined ? (QueryOf<R> extends undefined ? false : true) : true;
 
 export type Client<C> = {
     [G in keyof C]: {
         [K in keyof C[G]]: NeedsArgs<C[G][K]> extends true
             ? (args: CallArgs<C[G][K]>) => Promise<OutputOf<C[G][K]>>
-            : () => Promise<OutputOf<C[G][K]>>
-    }
+            : () => Promise<OutputOf<C[G][K]>>;
+    };
 };
 
 /**
@@ -113,14 +105,17 @@ export type Client<C> = {
  * ended" from "something broke", `message` to show the reader, and `fields` so a form can
  * mark the input that was refused.
  */
-export class ApiError extends Error
-{
+export class ApiError extends Error {
     public readonly status: number;
     public readonly code: string;
     public readonly fields: Record<string, string>;
 
-    constructor(status: number, message: string, code = 'error', fields: Record<string, string> = {})
-    {
+    constructor(
+        status: number,
+        message: string,
+        code = 'error',
+        fields: Record<string, string> = {}
+    ) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
@@ -130,8 +125,7 @@ export class ApiError extends Error
 }
 
 /** The envelope every failure crosses the wire in. Produced by the server's error handler. */
-interface ErrorBody
-{
+interface ErrorBody {
     error?: {
         code?: string;
         message?: string;
@@ -139,8 +133,7 @@ interface ErrorBody
     };
 }
 
-export interface ClientOptions
-{
+export interface ClientOptions {
     /** Prefixed to every path. `/api` in this app, matching the server's mount. */
     baseUrl: string;
 
@@ -156,64 +149,70 @@ export interface ClientOptions
  * trip. The response is NOT re-validated - the server owns its own output, and paying to
  * parse every row twice buys nothing the type system has not already promised.
  */
-export function createClient<C extends ContractShape>(contract: C, options: ClientOptions): Client<C>
-{
-    const call = options.fetch ?? ((input: string, init?: RequestInit) => globalThis.fetch(input, init));
+export function createClient<C extends ContractShape>(
+    contract: C,
+    options: ClientOptions
+): Client<C> {
+    const call =
+        options.fetch ?? ((input: string, init?: RequestInit) => globalThis.fetch(input, init));
     const client: Record<string, Record<string, unknown>> = {};
 
-    for (const [group, routes] of Object.entries(contract))
-    {
+    for (const [group, routes] of Object.entries(contract)) {
         client[group] = {};
-        for (const [name, route] of Object.entries(routes))
-        {
-            client[group][name] = async (args: { input?: unknown; query?: unknown } = {}): Promise<unknown> =>
-            {
+        for (const [name, route] of Object.entries(routes)) {
+            client[group][name] = async (
+                args: { input?: unknown; query?: unknown } = {}
+            ): Promise<unknown> => {
                 const declared = route as Route<unknown, unknown, unknown>;
-                let path = `${ options.baseUrl }${ declared.path }`;
+                let path = `${options.baseUrl}${declared.path}`;
 
-                if (declared.query !== undefined)
-                {
+                if (declared.query !== undefined) {
                     const parsed = declared.query.safeParse(args.query ?? {});
-                    if (!parsed.success)
-                    {
-                        throw new ApiError(422, 'درخواست نامعتبر است', 'validation', fieldsOf(parsed.error.issues));
+                    if (!parsed.success) {
+                        throw new ApiError(
+                            422,
+                            'درخواست نامعتبر است',
+                            'validation',
+                            fieldsOf(parsed.error.issues)
+                        );
                     }
                     const search = new URLSearchParams();
-                    for (const [key, value] of Object.entries(parsed.data as Record<string, unknown>))
-                    {
+                    for (const [key, value] of Object.entries(
+                        parsed.data as Record<string, unknown>
+                    )) {
                         // An absent filter is absent from the URL rather than sent empty:
                         // `?state=` is a value the server would have to special-case.
-                        if (value !== undefined && value !== null && value !== '')
-                        {
+                        if (value !== undefined && value !== null && value !== '') {
                             search.set(key, String(value));
                         }
                     }
                     const query = search.toString();
-                    path += query === '' ? '' : `?${ query }`;
+                    path += query === '' ? '' : `?${query}`;
                 }
 
                 const init: RequestInit = { method: declared.method, credentials: 'same-origin' };
-                if (declared.input !== undefined)
-                {
+                if (declared.input !== undefined) {
                     const parsed = declared.input.safeParse(args.input);
-                    if (!parsed.success)
-                    {
-                        throw new ApiError(422, 'درخواست نامعتبر است', 'validation', fieldsOf(parsed.error.issues));
+                    if (!parsed.success) {
+                        throw new ApiError(
+                            422,
+                            'درخواست نامعتبر است',
+                            'validation',
+                            fieldsOf(parsed.error.issues)
+                        );
                     }
                     init.headers = { 'content-type': 'application/json' };
                     init.body = JSON.stringify(parsed.data);
                 }
 
                 const response = await call(path, init);
-                if (!response.ok)
-                {
+                if (!response.ok) {
                     throw await toError(response);
                 }
-                if (response.status === 204)
-                {
+                if (response.status === 204) {
                     return undefined;
                 }
-                return await response.json() as unknown;
+                return (await response.json()) as unknown;
             };
         }
     }
@@ -222,11 +221,11 @@ export function createClient<C extends ContractShape>(contract: C, options: Clie
 }
 
 /** @internal One message per field, keyed the way a form indexes its inputs. */
-function fieldsOf(issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>): Record<string, string>
-{
+function fieldsOf(
+    issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>
+): Record<string, string> {
     const fields: Record<string, string> = {};
-    for (const issue of issues)
-    {
+    for (const issue of issues) {
         const key = issue.path.map(String).join('.');
         fields[key === '' ? '_' : key] = issue.message;
     }
@@ -234,15 +233,11 @@ function fieldsOf(issues: ReadonlyArray<{ path: PropertyKey[]; message: string }
 }
 
 /** @internal Turns a failed response into the error the page reads, body or no body. */
-async function toError(response: Response): Promise<ApiError>
-{
+async function toError(response: Response): Promise<ApiError> {
     let body: ErrorBody = {};
-    try
-    {
-        body = await response.json() as ErrorBody;
-    }
-    catch
-    {
+    try {
+        body = (await response.json()) as ErrorBody;
+    } catch {
         // A gateway, a proxy, or a crash can answer with something that is not our
         // envelope. The status is still true, so the error is still useful.
     }

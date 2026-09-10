@@ -18,8 +18,7 @@ export type Database = DatabaseSync;
  * A foreign-key pragma is deliberately absent: codes and orders are joined by application
  * logic on purpose, so a deleted order can never orphan a code that is still worth money.
  */
-export function openDatabase(file: string): Database
-{
+export function openDatabase(file: string): Database {
     const db = new DatabaseSync(file);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA busy_timeout = 5000');
@@ -32,7 +31,6 @@ export function openDatabase(file: string): Database
  * columns from the schema next door, so the shape is asserted HERE rather than at each call
  * site - one place to look when a column is renamed.
  */
-export function shaped<T>(row: unknown): T
-{
+export function shaped<T>(row: unknown): T {
     return row as T;
 }

@@ -12,13 +12,11 @@
 import { Menu, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-export interface MobileNavProps
-{
+export interface MobileNavProps {
     links: Array<{ href: string; label: string }>;
 }
 
-export default function MobileNav({ links }: MobileNavProps): ReactNode
-{
+export default function MobileNav({ links }: MobileNavProps): ReactNode {
     const [open, setOpen] = useState(false);
 
     // The trigger, so Escape can hand focus back to it. Losing focus to <body> on close is
@@ -27,17 +25,13 @@ export default function MobileNav({ links }: MobileNavProps): ReactNode
     const trigger = useRef<HTMLButtonElement | null>(null);
     const panel = useRef<HTMLDivElement | null>(null);
 
-    useEffect(() =>
-    {
-        if (!open)
-        {
+    useEffect(() => {
+        if (!open) {
             return;
         }
 
-        const onKey = (event: KeyboardEvent): void =>
-        {
-            if (event.key === 'Escape')
-            {
+        const onKey = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape') {
                 setOpen(false);
                 trigger.current?.focus();
             }
@@ -46,15 +40,14 @@ export default function MobileNav({ links }: MobileNavProps): ReactNode
         // Armed one task late: the pointerdown that OPENED the panel is still propagating,
         // and a listener attached synchronously would see it and close the panel immediately.
         let onOutside: ((event: Event) => void) | undefined;
-        const arm = setTimeout(() =>
-        {
-            onOutside = (event: Event): void =>
-            {
+        const arm = setTimeout(() => {
+            onOutside = (event: Event): void => {
                 const target = event.target as Node | null;
-                if (target !== null
-                    && !(panel.current?.contains(target) ?? false)
-                    && !(trigger.current?.contains(target) ?? false))
-                {
+                if (
+                    target !== null &&
+                    !(panel.current?.contains(target) ?? false) &&
+                    !(trigger.current?.contains(target) ?? false)
+                ) {
                     setOpen(false);
                 }
             };
@@ -63,12 +56,10 @@ export default function MobileNav({ links }: MobileNavProps): ReactNode
 
         document.addEventListener('keydown', onKey);
 
-        return () =>
-        {
+        return () => {
             clearTimeout(arm);
             document.removeEventListener('keydown', onKey);
-            if (onOutside !== undefined)
-            {
+            if (onOutside !== undefined) {
                 document.removeEventListener('pointerdown', onOutside);
             }
         };
@@ -78,37 +69,41 @@ export default function MobileNav({ links }: MobileNavProps): ReactNode
         <div className="md:hidden">
             <button
                 type="button"
-                ref={ trigger }
+                ref={trigger}
                 className="flex size-tap items-center justify-center rounded-xl border border-line text-ink"
-                aria-expanded={ open ? 'true' : 'false' }
+                aria-expanded={open ? 'true' : 'false'}
                 aria-controls="mobile-nav-panel"
-                aria-label={ open ? 'بستن منو' : 'باز کردن منو' }
-                onClick={ () => setOpen((current) => !current) }
+                aria-label={open ? 'بستن منو' : 'باز کردن منو'}
+                onClick={() => setOpen((current) => !current)}
             >
-                { open ? <X className="size-5" aria-hidden="true"/> : <Menu className="size-5" aria-hidden="true"/> }
+                {open ? (
+                    <X className="size-5" aria-hidden="true" />
+                ) : (
+                    <Menu className="size-5" aria-hidden="true" />
+                )}
             </button>
 
-            { open && (
+            {open && (
                 <div
                     id="mobile-nav-panel"
-                    ref={ panel }
+                    ref={panel}
                     className="anim-settle absolute inset-x-0 top-full border-b border-line bg-paper p-3 shadow-lg"
                 >
                     <ul className="flex flex-col">
-                        { links.map((link) => (
-                            <li key={ link.href }>
+                        {links.map((link) => (
+                            <li key={link.href}>
                                 <a
                                     className="flex min-h-tap items-center rounded-xl px-3 text-small transition-colors hover:bg-surface hover:text-firouze"
-                                    href={ link.href }
-                                    onClick={ () => setOpen(false) }
+                                    href={link.href}
+                                    onClick={() => setOpen(false)}
                                 >
-                                    { link.label }
+                                    {link.label}
                                 </a>
                             </li>
-                        )) }
+                        ))}
                     </ul>
                 </div>
-            ) }
+            )}
         </div>
     );
 }

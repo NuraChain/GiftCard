@@ -7,8 +7,7 @@ import type { Handlers } from '../../platform/api.ts';
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
 
-export interface CatalogueOptions
-{
+export interface CatalogueOptions {
     store: Store;
     log?: Logger;
 }
@@ -19,8 +18,7 @@ type CatalogueHandlers = Pick<
     'tiers' | 'saveTier' | 'removeTier'
 >;
 
-export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers
-{
+export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers {
     const { store, log } = options;
 
     return {
@@ -28,16 +26,17 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers
         tiers: () => ({ tiers: store.tiers() }),
 
         // POST /api/admin/tiers
-        saveTier: ({ input }) =>
-        {
+        saveTier: ({ input }) => {
             store.saveTier(input);
-            log?.info({ amount: input.amount, toman: input.toman, active: input.active }, 'tier saved');
+            log?.info(
+                { amount: input.amount, toman: input.toman, active: input.active },
+                'tier saved'
+            );
             return { tiers: store.tiers() };
         },
 
         // DELETE /api/admin/tiers
-        removeTier: ({ query }) =>
-        {
+        removeTier: ({ query }) => {
             const outcome = store.removeTier(query.amount);
             log?.info({ amount: query.amount, outcome }, 'tier removed');
             return { outcome };

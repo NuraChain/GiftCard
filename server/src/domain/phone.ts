@@ -20,23 +20,16 @@ const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 
 /** @internal Rewrites Persian/Arabic-Indic digits to ASCII and drops spaces, dashes and dots. */
-function toAsciiDigits(input: string): string
-{
+function toAsciiDigits(input: string): string {
     let out = '';
-    for (const character of input)
-    {
+    for (const character of input) {
         const persian = PERSIAN_DIGITS.indexOf(character);
         const arabic = ARABIC_DIGITS.indexOf(character);
-        if (persian !== -1)
-        {
+        if (persian !== -1) {
             out += String(persian);
-        }
-        else if (arabic !== -1)
-        {
+        } else if (arabic !== -1) {
             out += String(arabic);
-        }
-        else if (!/[\s\-.()]/.test(character))
-        {
+        } else if (!/[\s\-.()]/.test(character)) {
             out += character;
         }
     }
@@ -50,41 +43,30 @@ function toAsciiDigits(input: string): string
  *
  * Returns null when the input is not an Iranian mobile number.
  */
-export function normalizePhone(input: string): string | null
-{
+export function normalizePhone(input: string): string | null {
     const digits = toAsciiDigits(input.trim());
 
     // Reduce every accepted prefix to the bare national number: 9XXXXXXXXX.
     let national: string;
-    if (digits.startsWith('+98'))
-    {
+    if (digits.startsWith('+98')) {
         national = digits.slice(3);
-    }
-    else if (digits.startsWith('0098'))
-    {
+    } else if (digits.startsWith('0098')) {
         national = digits.slice(4);
-    }
-    else if (digits.startsWith('98') && digits.length === 12)
-    {
+    } else if (digits.startsWith('98') && digits.length === 12) {
         national = digits.slice(2);
-    }
-    else if (digits.startsWith('0'))
-    {
+    } else if (digits.startsWith('0')) {
         national = digits.slice(1);
-    }
-    else
-    {
+    } else {
         national = digits;
     }
 
     // Every Iranian mobile is 10 digits starting with 9.
-    return /^9\d{9}$/.test(national) ? `+98${ national }` : null;
+    return /^9\d{9}$/.test(national) ? `+98${national}` : null;
 }
 
 /** The form an Iranian reader expects to see back: `09XXXXXXXXX`. */
-export function displayPhone(canonical: string): string
-{
-    return canonical.startsWith('+98') ? `0${ canonical.slice(3) }` : canonical;
+export function displayPhone(canonical: string): string {
+    return canonical.startsWith('+98') ? `0${canonical.slice(3)}` : canonical;
 }
 
 /**
@@ -96,7 +78,8 @@ export function displayPhone(canonical: string): string
  * The Persian message is what the form displays, so it is written for a buyer, not a
  * developer.
  */
-export const phoneField: z.ZodType<string> = z.string()
+export const phoneField: z.ZodType<string> = z
+    .string()
     .trim()
     .max(20, { message: 'شماره موبایل معتبر نیست' })
     .refine((value) => normalizePhone(value) !== null, { message: 'شماره موبایل معتبر نیست' });

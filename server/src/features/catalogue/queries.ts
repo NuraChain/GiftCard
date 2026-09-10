@@ -9,8 +9,7 @@ import { shaped } from '../../platform/db.ts';
 import type { Amount, Tier, TierInput, TierRemoval } from '../../db/types.ts';
 
 /** The row shape SQLite returns; booleans are integers. */
-interface TierRow
-{
+interface TierRow {
     amount: number;
     toman: number;
     title: string;
@@ -20,8 +19,7 @@ interface TierRow
     sort: number;
 }
 
-function toTier(row: TierRow): Tier
-{
+function toTier(row: TierRow): Tier {
     return {
         amount: row.amount,
         toman: row.toman,
@@ -33,8 +31,7 @@ function toTier(row: TierRow): Tier
     };
 }
 
-export interface TierQueries
-{
+export interface TierQueries {
     tiers(): Tier[];
     sellableTier(amount: Amount): Tier | undefined;
     saveTier(tier: TierInput): void;
@@ -42,8 +39,7 @@ export interface TierQueries
     isCatalogueEmpty(): boolean;
 }
 
-export function createTierQueries(db: DatabaseSync): TierQueries
-{
+export function createTierQueries(db: DatabaseSync): TierQueries {
     const selectTiers = db.prepare('SELECT * FROM tiers ORDER BY sort, amount');
     const selectSellable = db.prepare('SELECT * FROM tiers WHERE amount = ? AND active = 1');
     const upsertTier = db.prepare(`
@@ -64,68 +60,58 @@ export function createTierQueries(db: DatabaseSync): TierQueries
     const countTiers = db.prepare('SELECT COUNT(*) AS n FROM tiers');
 
     return {
-    tiers()
-    {
-        return shaped<TierRow[]>(selectTiers.all()).map(toTier);
-    },
+        tiers() {
+            return shaped<TierRow[]>(selectTiers.all()).map(toTier);
+        },
 
-    sellableTier(amount)
-    {
-        const row = shaped<TierRow | undefined>(selectSellable.get(amount));
-        return row === undefined ? undefined : toTier(row);
-    },
+        sellableTier(amount) {
+            const row = shaped<TierRow | undefined>(selectSellable.get(amount));
+            return row === undefined ? undefined : toTier(row);
+        },
 
-    saveTier(tier)
-    {
-        db.exec('BEGIN IMMEDIATE');
-        try
-        {
-            upsertTier.run(
-                tier.amount, tier.toman, tier.title, tier.blurb,
-                tier.recommended ? 1 : 0, tier.active ? 1 : 0, tier.sort
-            );
-            if (tier.recommended)
-            {
-                clearRecommended.run(tier.amount);
+        saveTier(tier) {
+            db.exec('BEGIN IMMEDIATE');
+            try {
+                upsertTier.run(
+                    tier.amount,
+                    tier.toman,
+                    tier.title,
+                    tier.blurb,
+                    tier.recommended ? 1 : 0,
+                    tier.active ? 1 : 0,
+                    tier.sort
+                );
+                if (tier.recommended) {
+                    clearRecommended.run(tier.amount);
+                }
+                db.exec('COMMIT');
+            } catch (error) {
+                db.exec('ROLLBACK');
+                throw error;
             }
-            db.exec('COMMIT');
-        }
-        catch (error)
-        {
-            db.exec('ROLLBACK');
-            throw error;
-        }
-    },
+        },
 
-    removeTier(amount)
-    {
-        db.exec('BEGIN IMMEDIATE');
-        try
-        {
-            let outcome: TierRemoval;
-            if (shaped<{ used: number }>(tierIsUsed.get(amount, amount)).used === 1)
-            {
-                // Codes or orders carry this amount. Dropping the row would orphan the
-                // history that explains what someone paid, so it is only hidden.
-                outcome = deactivateTier.run(amount).changes === 1 ? 'deactivated' : 'missing';
+        removeTier(amount) {
+            db.exec('BEGIN IMMEDIATE');
+            try {
+                let outcome: TierRemoval;
+                if (shaped<{ used: number }>(tierIsUsed.get(amount, amount)).used === 1) {
+                    // Codes or orders carry this amount. Dropping the row would orphan the
+                    // history that explains what someone paid, so it is only hidden.
+                    outcome = deactivateTier.run(amount).changes === 1 ? 'deactivated' : 'missing';
+                } else {
+                    outcome = deleteTier.run(amount).changes === 1 ? 'deleted' : 'missing';
+                }
+                db.exec('COMMIT');
+                return outcome;
+            } catch (error) {
+                db.exec('ROLLBACK');
+                throw error;
             }
-            else
-            {
-                outcome = deleteTier.run(amount).changes === 1 ? 'deleted' : 'missing';
-            }
-            db.exec('COMMIT');
-            return outcome;
-        }
-        catch (error)
-        {
-            db.exec('ROLLBACK');
-            throw error;
-        }
-    },
+        },
 
-    isCatalogueEmpty()
-    {
-        return shaped<{ n: number }>(countTiers.get()).n === 0;
-    }
+        isCatalogueEmpty() {
+            return shaped<{ n: number }>(countTiers.get()).n === 0;
+        }
     };
 }

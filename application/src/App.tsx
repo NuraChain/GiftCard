@@ -22,25 +22,21 @@ import { AdminSessionProvider } from './pages/admin/session.tsx';
 // Absolute, not bare fragments. The bar is shown on every route, and `#cards` from the
 // console would navigate to /admin#cards and scroll nowhere - the link has to name the page
 // it belongs to as well as the section.
-const NAV_LINKS =
-[
+const NAV_LINKS = [
     { href: '/#cards', label: 'کارت‌ها' },
     { href: '/#how', label: 'روش خرید' },
     { href: '/#faq', label: 'سوال‌های پرتکرار' }
 ];
 
 /** The chrome, and the routed page inside it. Split out so it can use the router's hooks. */
-function Chrome(): ReactNode
-{
+function Chrome(): ReactNode {
     // The shop's name is configuration, not a constant: the console can change it and every
     // place it appears - the tab title, this brand, the footer - follows without a deploy.
     const catalog = useCatalog();
     const { loaded, load } = catalog;
 
-    useEffect(() =>
-    {
-        if (!loaded)
-        {
+    useEffect(() => {
+        if (!loaded) {
             void load();
         }
     }, [loaded, load]);
@@ -55,40 +51,50 @@ function Chrome(): ReactNode
             </a>
 
             <header className="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur">
-                <nav className="relative mx-auto flex min-h-16 max-w-6xl items-center gap-4 px-4 sm:px-5" aria-label="ناوبری اصلی">
+                <nav
+                    className="relative mx-auto flex min-h-16 max-w-6xl items-center gap-4 px-4 sm:px-5"
+                    aria-label="ناوبری اصلی"
+                >
                     {/* The brand goes HOME, not to an in-page anchor: `#main` sent the console
                         to /admin#main, which looks broken and leaves the operator stranded. */}
                     <Link to="/" className="flex min-h-tap items-center gap-2 font-bold">
-                        <Link2 className="size-6 text-firouze" aria-hidden="true"/>
-                        { catalog.appName }
+                        <Link2 className="size-6 text-firouze" aria-hidden="true" />
+                        {catalog.appName}
                     </Link>
 
                     <ul className="ms-6 hidden items-center gap-6 text-small text-muted md:flex">
-                        { NAV_LINKS.map((link) => (
-                            <li key={ link.href }>
-                                <a className="flex min-h-tap items-center hover:text-ink" href={ link.href }>{ link.label }</a>
+                        {NAV_LINKS.map((link) => (
+                            <li key={link.href}>
+                                <a
+                                    className="flex min-h-tap items-center hover:text-ink"
+                                    href={link.href}
+                                >
+                                    {link.label}
+                                </a>
                             </li>
-                        )) }
+                        ))}
                     </ul>
 
                     {/* `ms-auto` belongs HERE, not on the link list: the list is hidden on the
                         console and on phones, and the controls would then bunch against the
                         brand instead of staying pinned to the end of the bar. */}
                     <div className="ms-auto flex items-center gap-2">
-                        <ThemeToggle/>
-                        <MobileNav links={ NAV_LINKS }/>
+                        <ThemeToggle />
+                        <MobileNav links={NAV_LINKS} />
                     </div>
                 </nav>
             </header>
 
             <main id="main">
                 <Routes>
-                    { routes.map(({ path, Component }) => <Route key={ path } path={ path } element={ <Component/> }/>) }
-                    <Route path="*" element={ <p className="p-10 text-center">صفحه پیدا نشد.</p> }/>
+                    {routes.map(({ path, Component }) => (
+                        <Route key={path} path={path} element={<Component />} />
+                    ))}
+                    <Route path="*" element={<p className="p-10 text-center">صفحه پیدا نشد.</p>} />
                 </Routes>
             </main>
 
-            <ToastHost/>
+            <ToastHost />
 
             {/* The console shares this footer rather than hiding it: it is the same product,
                 the support contacts in it are the ones an operator quotes, and one shell is
@@ -98,11 +104,12 @@ function Chrome(): ReactNode
                 <div className="mx-auto grid max-w-6xl gap-stack px-4 py-section sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
                     <div className="sm:col-span-2">
                         <p className="flex items-center gap-2 font-bold">
-                            <Link2 className="size-5 text-firouze" aria-hidden="true"/>
-                            { catalog.appName }
+                            <Link2 className="size-5 text-firouze" aria-hidden="true" />
+                            {catalog.appName}
                         </p>
                         <p className="mt-3 max-w-sm text-small text-muted">
-                            فروش گیفت کارت با تحویل آنی کد. اگر کدی که خریده‌اید فعال نشود، جایگزین می‌کنیم یا وجه را برمی‌گردانیم.
+                            فروش گیفت کارت با تحویل آنی کد. اگر کدی که خریده‌اید فعال نشود، جایگزین
+                            می‌کنیم یا وجه را برمی‌گردانیم.
                         </p>
                     </div>
 
@@ -110,15 +117,25 @@ function Chrome(): ReactNode
                         <h2 className="text-h3 font-bold">پشتیبانی</h2>
                         <ul className="mt-3 text-small text-muted">
                             <li>
-                                <a className="flex min-h-tap items-center gap-2 hover:text-firouze" href={ `mailto:${ CONTACT.email }` }>
-                                    <Mail className="size-4 shrink-0" aria-hidden="true"/>
-                                    <span dir="ltr" className="latin">{ CONTACT.email }</span>
+                                <a
+                                    className="flex min-h-tap items-center gap-2 hover:text-firouze"
+                                    href={`mailto:${CONTACT.email}`}
+                                >
+                                    <Mail className="size-4 shrink-0" aria-hidden="true" />
+                                    <span dir="ltr" className="latin">
+                                        {CONTACT.email}
+                                    </span>
                                 </a>
                             </li>
                             <li>
-                                <a className="flex min-h-tap items-center gap-2 hover:text-firouze" href={ `tel:${ CONTACT.phone.replace(/\s/g, '') }` }>
-                                    <Phone className="size-4 shrink-0" aria-hidden="true"/>
-                                    <span dir="ltr" className="latin">{ CONTACT.phone }</span>
+                                <a
+                                    className="flex min-h-tap items-center gap-2 hover:text-firouze"
+                                    href={`tel:${CONTACT.phone.replace(/\s/g, '')}`}
+                                >
+                                    <Phone className="size-4 shrink-0" aria-hidden="true" />
+                                    <span dir="ltr" className="latin">
+                                        {CONTACT.phone}
+                                    </span>
                                 </a>
                             </li>
                             {/* The one contact that leaves for another site, so it opens in a
@@ -131,17 +148,19 @@ function Chrome(): ReactNode
                             <li>
                                 <a
                                     className="flex min-h-tap items-center gap-2 hover:text-firouze"
-                                    href={ CONTACT.telegram }
+                                    href={CONTACT.telegram}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >
-                                    <MessageCircle className="size-4 shrink-0" aria-hidden="true"/>
-                                    <span dir="ltr" className="latin">{ CONTACT.telegram }</span>
+                                    <MessageCircle className="size-4 shrink-0" aria-hidden="true" />
+                                    <span dir="ltr" className="latin">
+                                        {CONTACT.telegram}
+                                    </span>
                                 </a>
                             </li>
                             <li className="flex min-h-tap items-center gap-2">
-                                <Clock className="size-4 shrink-0" aria-hidden="true"/>
-                                { CONTACT.hours }
+                                <Clock className="size-4 shrink-0" aria-hidden="true" />
+                                {CONTACT.hours}
                             </li>
                         </ul>
                     </div>
@@ -149,11 +168,16 @@ function Chrome(): ReactNode
                     <div>
                         <h2 className="text-h3 font-bold">راهنما</h2>
                         <ul className="mt-3 text-small text-muted">
-                            { NAV_LINKS.map((link) => (
-                                <li key={ link.href }>
-                                    <a className="flex min-h-tap items-center hover:text-firouze" href={ link.href }>{ link.label }</a>
+                            {NAV_LINKS.map((link) => (
+                                <li key={link.href}>
+                                    <a
+                                        className="flex min-h-tap items-center hover:text-firouze"
+                                        href={link.href}
+                                    >
+                                        {link.label}
+                                    </a>
                                 </li>
-                            )) }
+                            ))}
                         </ul>
                     </div>
                 </div>
@@ -162,7 +186,7 @@ function Chrome(): ReactNode
                     {/* The shop's own name, not a constant: renaming from the console renames
                         the copyright too, the same as the brand and the tab title. */}
                     <p className="mx-auto max-w-6xl px-4 py-5 text-caption text-muted sm:px-5">
-                        © { year() } { catalog.appName }. همهٔ حقوق محفوظ است.
+                        © {year()} {catalog.appName}. همهٔ حقوق محفوظ است.
                     </p>
                 </div>
             </footer>
@@ -170,17 +194,18 @@ function Chrome(): ReactNode
     );
 }
 
-export default function App({ url }: { url?: string }): ReactNode
-{
-    const inner = <Chrome/>;
+export default function App({ url }: { url?: string }): ReactNode {
+    const inner = <Chrome />;
 
     return (
         <ToastProvider>
             <CatalogProvider>
                 <AdminSessionProvider>
-                    { url === undefined
-                        ? <BrowserRouter>{ inner }</BrowserRouter>
-                        : <MemoryRouter initialEntries={ [url] }>{ inner }</MemoryRouter> }
+                    {url === undefined ? (
+                        <BrowserRouter>{inner}</BrowserRouter>
+                    ) : (
+                        <MemoryRouter initialEntries={[url]}>{inner}</MemoryRouter>
+                    )}
                 </AdminSessionProvider>
             </CatalogProvider>
         </ToastProvider>

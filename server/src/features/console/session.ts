@@ -21,7 +21,8 @@
 import { TooManyRequestsError, UnauthorizedError } from '../../platform/http.ts';
 
 /** The published shape: four groups of four, over the no-I/O/0/1 alphabet (~80 bits). */
-export const ADMIN_KEY_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
+export const ADMIN_KEY_PATTERN =
+    /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
 
 /** The cookie the browser carries. Read by the admin guard, written by the two session routes. */
 export const SESSION_COOKIE = 'guardian_session';
@@ -34,8 +35,7 @@ const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
 /** What the route needs in order to set the cookie. Deliberately not a framework type. */
-export interface CookieInstruction
-{
+export interface CookieInstruction {
     name: string;
     value: string;
     options: {
@@ -47,8 +47,7 @@ export interface CookieInstruction
     };
 }
 
-export interface AdminOptions
-{
+export interface AdminOptions {
     /**
      * Decides whether a candidate key is THE key. Owned by `settings.ts`, which prefers the
      * rotated hash in the database and falls back to the environment key when none exists -
@@ -66,8 +65,7 @@ export interface AdminOptions
     secureCookie: boolean;
 }
 
-export interface Admin
-{
+export interface Admin {
     /** Verifies the key and returns the cookie to set, or throws (wrong key / locked out). */
     signIn(clientAddress: string, key: string): CookieInstruction;
 
@@ -81,8 +79,7 @@ export interface Admin
     require(sessionId: string | undefined): void;
 }
 
-export function createAdmin(options: AdminOptions): Admin
-{
+export function createAdmin(options: AdminOptions): Admin {
     // Sessions live in memory on purpose: a restart signs every admin out, which is the
     // safe direction to fail, and it keeps a live credential out of the database file.
     const sessions = new Map<string, number>();
@@ -106,24 +103,18 @@ export function createAdmin(options: AdminOptions): Admin
      * same reason.
      */
     let nextSweep = 0;
-    function sweep(now: number): void
-    {
-        if (now < nextSweep)
-        {
+    function sweep(now: number): void {
+        if (now < nextSweep) {
             return;
         }
         nextSweep = now + SWEEP_INTERVAL_MS;
-        for (const [id, expiresAt] of sessions)
-        {
-            if (expiresAt <= now)
-            {
+        for (const [id, expiresAt] of sessions) {
+            if (expiresAt <= now) {
                 sessions.delete(id);
             }
         }
-        for (const [bucket, record] of attempts)
-        {
-            if (record.until <= now)
-            {
+        for (const [bucket, record] of attempts) {
+            if (record.until <= now) {
                 attempts.delete(bucket);
             }
         }
@@ -142,23 +133,21 @@ export function createAdmin(options: AdminOptions): Admin
     });
 
     return {
-        signIn(clientAddress, key)
-        {
+        signIn(clientAddress, key) {
             const now = Date.now();
             const bucketKey = clientAddress === '' ? 'unknown' : clientAddress;
             const bucket = attempts.get(bucketKey);
-            if (bucket !== undefined && bucket.until > now && bucket.count >= ATTEMPT_LIMIT)
-            {
+            if (bucket !== undefined && bucket.until > now && bucket.count >= ATTEMPT_LIMIT) {
                 throw new TooManyRequestsError(Math.ceil((bucket.until - now) / 1000));
             }
 
             sweep(now);
 
-            if (!options.matches(key))
-            {
-                const next = bucket !== undefined && bucket.until > now
-                    ? { count: bucket.count + 1, until: bucket.until }
-                    : { count: 1, until: now + ATTEMPT_WINDOW_MS };
+            if (!options.matches(key)) {
+                const next =
+                    bucket !== undefined && bucket.until > now
+                        ? { count: bucket.count + 1, until: bucket.until }
+                        : { count: 1, until: now + ATTEMPT_WINDOW_MS };
                 attempts.set(bucketKey, next);
                 // One message for every failure. Saying which part was wrong, or whether a
                 // key exists at all, would hand an attacker the only feedback they lack.
@@ -182,27 +171,22 @@ export function createAdmin(options: AdminOptions): Admin
             };
         },
 
-        signOut(sessionId)
-        {
-            if (sessionId !== undefined)
-            {
+        signOut(sessionId) {
+            if (sessionId !== undefined) {
                 sessions.delete(sessionId);
             }
             return clearing();
         },
 
-        signOutAll()
-        {
+        signOutAll() {
             sessions.clear();
         },
 
-        require(sessionId)
-        {
+        require(sessionId) {
             const now = Date.now();
             sweep(now);
             const expiresAt = sessionId === undefined ? undefined : sessions.get(sessionId);
-            if (expiresAt === undefined || expiresAt <= now)
-            {
+            if (expiresAt === undefined || expiresAt <= now) {
                 throw new UnauthorizedError('برای این بخش باید وارد شوید');
             }
         }

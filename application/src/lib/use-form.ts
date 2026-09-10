@@ -12,8 +12,7 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import type { ZodType } from 'zod';
 
-export interface Form<T extends Record<string, unknown>>
-{
+export interface Form<T extends Record<string, unknown>> {
     values: T;
 
     /** The message for a field, or '' when it is valid or not yet touched. */
@@ -30,56 +29,53 @@ export interface Form<T extends Record<string, unknown>>
     reset(): void;
 }
 
-export function useForm<T extends Record<string, unknown>>(schema: ZodType<T>, initial: T): Form<T>
-{
+export function useForm<T extends Record<string, unknown>>(
+    schema: ZodType<T>,
+    initial: T
+): Form<T> {
     const [values, setValues] = useState<T>(initial);
     const [touched, setTouched] = useState<Record<string, boolean>>({});
 
     // Derived rather than stored: an error map kept in state is a second source of truth
     // that drifts one render behind whatever the reader just typed.
-    const errors = useMemo(() =>
-    {
+    const errors = useMemo(() => {
         const result = schema.safeParse(values);
-        if (result.success)
-        {
+        if (result.success) {
             return {} as Record<string, string>;
         }
         const found: Record<string, string> = {};
-        for (const issue of result.error.issues)
-        {
+        for (const issue of result.error.issues) {
             const key = issue.path.map(String).join('.');
             found[key === '' ? '_' : key] = issue.message;
         }
         return found;
     }, [schema, values]);
 
-    const set = useCallback(<K extends keyof T & string>(name: K, value: T[K]): void =>
-    {
+    const set = useCallback(<K extends keyof T & string>(name: K, value: T[K]): void => {
         setValues((current) => ({ ...current, [name]: value }));
         setTouched((current) => ({ ...current, [name]: true }));
     }, []);
 
-    const handleSubmit = useCallback((onValid: (values: T) => void) =>
-        (event: FormEvent): void =>
-        {
-            event.preventDefault();
-            const result = schema.safeParse(values);
-            if (!result.success)
-            {
-                // Everything is fair to point at now, including fields never visited.
-                const all: Record<string, boolean> = {};
-                for (const key of Object.keys(values))
-                {
-                    all[key] = true;
+    const handleSubmit = useCallback(
+        (onValid: (values: T) => void) =>
+            (event: FormEvent): void => {
+                event.preventDefault();
+                const result = schema.safeParse(values);
+                if (!result.success) {
+                    // Everything is fair to point at now, including fields never visited.
+                    const all: Record<string, boolean> = {};
+                    for (const key of Object.keys(values)) {
+                        all[key] = true;
+                    }
+                    setTouched(all);
+                    return;
                 }
-                setTouched(all);
-                return;
-            }
-            onValid(result.data);
-        }, [schema, values]);
+                onValid(result.data);
+            },
+        [schema, values]
+    );
 
-    const reset = useCallback((): void =>
-    {
+    const reset = useCallback((): void => {
         setValues(initial);
         setTouched({});
         // `initial` is a literal at every call site, so it is stable in practice; listing it
@@ -90,7 +86,7 @@ export function useForm<T extends Record<string, unknown>>(schema: ZodType<T>, i
     return {
         values,
         valid: Object.keys(errors).length === 0,
-        errorFor: (name) => (touched[name] === true ? errors[name] ?? '' : ''),
+        errorFor: (name) => (touched[name] === true ? (errors[name] ?? '') : ''),
         set,
         handleSubmit,
         reset

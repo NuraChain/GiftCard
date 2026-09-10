@@ -15,8 +15,7 @@ import AdminCodes from './pages/admin/codes/index.tsx';
 import AdminOrders from './pages/admin/orders.tsx';
 import AdminSettings from './pages/admin/settings/index.tsx';
 
-export interface PageRoute
-{
+export interface PageRoute {
     path: string;
     Component: ComponentType;
 }

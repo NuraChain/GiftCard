@@ -18,20 +18,17 @@ import GiftCard from '../components/gift-card.tsx';
 import FaqItem from '../components/faq-item.tsx';
 import PurchaseResult from '../components/purchase-result.tsx';
 
-export default function Landing(): ReactNode
-{
+export default function Landing(): ReactNode {
     const catalog = useCatalog();
 
     // The hero capsule resolves from scanning to verified once, on load.
     const [scanning, setScanning] = useState(false);
     const [verified, setVerified] = useState(true);
 
-    useEffect(() =>
-    {
+    useEffect(() => {
         setScanning(true);
         setVerified(false);
-        const timer = setTimeout(() =>
-        {
+        const timer = setTimeout(() => {
             setScanning(false);
             setVerified(true);
         }, 4200);
@@ -43,11 +40,11 @@ export default function Landing(): ReactNode
 
     return (
         <div>
-            <PurchaseResult/>
+            <PurchaseResult />
 
             <section className="mx-auto grid max-w-6xl items-center gap-stack px-4 pt-section pb-stack sm:px-5 lg:grid-cols-[1.05fr_1fr]">
                 <div className="anim-settle">
-                    <p className="text-small font-bold text-firouze">گیفت کارت { catalog.appName }</p>
+                    <p className="text-small font-bold text-firouze">گیفت کارت {catalog.appName}</p>
                     <h1 className="mt-4 font-bold">
                         کد را همان لحظه تحویل می‌گیرید، نه بعد از انتظار
                     </h1>
@@ -56,10 +53,16 @@ export default function Landing(): ReactNode
                     </p>
 
                     <div className="mt-stack flex flex-wrap gap-3">
-                        <a href="#cards" className="flex min-h-tap items-center rounded-xl bg-firouze px-5 text-small font-bold text-paper hover:opacity-90">
+                        <a
+                            href="#cards"
+                            className="flex min-h-tap items-center rounded-xl bg-firouze px-5 text-small font-bold text-paper hover:opacity-90"
+                        >
                             دیدن کارت‌ها
                         </a>
-                        <a href="#how" className="flex min-h-tap items-center rounded-xl border border-line px-5 text-small font-bold hover:border-firouze hover:text-firouze">
+                        <a
+                            href="#how"
+                            className="flex min-h-tap items-center rounded-xl border border-line px-5 text-small font-bold hover:border-firouze hover:text-firouze"
+                        >
                             روش خرید
                         </a>
                     </div>
@@ -69,28 +72,28 @@ export default function Landing(): ReactNode
                     <CodeCapsule
                         code="7f3c1e2a-9b04-4d68-a5c1-0e7b2d9f4a31"
                         label="نمونه کد - این کد واقعی نیست"
-                        scanning={ scanning }
-                        verified={ verified }
+                        scanning={scanning}
+                        verified={verified}
                     />
                     <p className="mt-3 text-caption text-muted">
-                        کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و همزمان با پیامک به دستتان می‌رسد.
+                        کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و همزمان با پیامک به دستتان
+                        می‌رسد.
                     </p>
                 </div>
             </section>
 
             <section className="mx-auto max-w-6xl px-4 pb-section sm:px-5">
                 <ul className="stagger grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-surface lg:grid-cols-4">
-                    { ASSURANCES.map((item) =>
-                    {
+                    {ASSURANCES.map((item) => {
                         const Glyph = item.glyph;
                         return (
-                            <li key={ item.label } className="trust-cell p-4">
-                                <Glyph className="size-5 text-firouze" aria-hidden="true"/>
-                                <p className="mt-2.5 text-small font-bold">{ item.label }</p>
-                                <p className="mt-1 text-caption text-muted">{ item.detail }</p>
+                            <li key={item.label} className="trust-cell p-4">
+                                <Glyph className="size-5 text-firouze" aria-hidden="true" />
+                                <p className="mt-2.5 text-small font-bold">{item.label}</p>
+                                <p className="mt-1 text-caption text-muted">{item.detail}</p>
                             </li>
                         );
-                    }) }
+                    })}
                 </ul>
             </section>
 
@@ -99,16 +102,17 @@ export default function Landing(): ReactNode
                 <p className="mt-3 max-w-xl text-muted">
                     {/* No count in this sentence: the catalogue is editable, so "all three" was
                         a promise the page could not keep the moment a fourth card was added. */}
-                    شماره موبایلتان را روی همان کارتی که می‌خواهید وارد کنید. همهٔ کارت‌ها یک نوع کد می‌دهند و یک جور تحویل می‌شوند.
+                    شماره موبایلتان را روی همان کارتی که می‌خواهید وارد کنید. همهٔ کارت‌ها یک نوع کد
+                    می‌دهند و یک جور تحویل می‌شوند.
                 </p>
 
                 <div className="mt-stack">
                     <Async
-                        loading={ catalog.loading && !catalog.loaded }
-                        error={ catalog.error }
-                        empty={ catalog.loaded && catalog.tiers.length === 0 }
+                        loading={catalog.loading && !catalog.loaded}
+                        error={catalog.error}
+                        empty={catalog.loaded && catalog.tiers.length === 0}
                         emptyText="در حال حاضر کارتی برای فروش نیست."
-                        onRetry={ () => void catalog.load() }
+                        onRetry={() => void catalog.load()}
                         skeleton={
                             <div className="grid gap-5 md:grid-cols-3">
                                 <div className="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
@@ -118,7 +122,9 @@ export default function Landing(): ReactNode
                         }
                     >
                         <div className="grid gap-5 md:grid-cols-3">
-                            { catalog.tiers.map((tier) => <GiftCard key={ tier.amount } tier={ tier }/>) }
+                            {catalog.tiers.map((tier) => (
+                                <GiftCard key={tier.amount} tier={tier} />
+                            ))}
                         </div>
                     </Async>
                 </div>
@@ -128,20 +134,27 @@ export default function Landing(): ReactNode
                 <div className="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
                     <h2 className="font-bold">از پرداخت تا کد فعال</h2>
                     <ol className="mt-stack grid gap-6 md:grid-cols-3">
-                        { STEPS.map((step, index) =>
-                        {
+                        {STEPS.map((step, index) => {
                             const Glyph = step.glyph;
                             return (
-                                <li key={ step.title } className="rounded-2xl border border-line bg-surface p-5">
+                                <li
+                                    key={step.title}
+                                    className="rounded-2xl border border-line bg-surface p-5"
+                                >
                                     <div className="flex items-center gap-2.5 text-firouze">
-                                        <Glyph className="size-5 shrink-0" aria-hidden="true"/>
-                                        <span dir="ltr" className="latin inline-block text-caption font-bold">{ index + 1 }</span>
+                                        <Glyph className="size-5 shrink-0" aria-hidden="true" />
+                                        <span
+                                            dir="ltr"
+                                            className="latin inline-block text-caption font-bold"
+                                        >
+                                            {index + 1}
+                                        </span>
                                     </div>
-                                    <h3 className="mt-3 font-bold">{ step.title }</h3>
-                                    <p className="mt-2 text-small text-muted">{ step.body }</p>
+                                    <h3 className="mt-3 font-bold">{step.title}</h3>
+                                    <p className="mt-2 text-small text-muted">{step.body}</p>
                                 </li>
                             );
-                        }) }
+                        })}
                     </ol>
                 </div>
             </section>
@@ -149,20 +162,24 @@ export default function Landing(): ReactNode
             <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-section sm:px-5">
                 <h2 className="font-bold">سوال‌های پرتکرار</h2>
                 <p className="mt-3 text-muted">
-                    اگر پاسخ سوالتان اینجا نبود، به <span dir="ltr" className="latin">{ CONTACT.email }</span> بنویسید.
+                    اگر پاسخ سوالتان اینجا نبود، به{' '}
+                    <span dir="ltr" className="latin">
+                        {CONTACT.email}
+                    </span>{' '}
+                    بنویسید.
                 </p>
 
                 <div className="mt-6 rounded-2xl border border-line bg-surface px-5">
-                    { FAQS.map((faq) => (
+                    {FAQS.map((faq) => (
                         <FaqItem
-                            key={ faq.id }
-                            id={ faq.id }
-                            question={ faq.question }
-                            answer={ faq.answer }
-                            open={ openFaq === faq.id }
-                            onToggle={ toggleFaq }
+                            key={faq.id}
+                            id={faq.id}
+                            question={faq.question}
+                            answer={faq.answer}
+                            open={openFaq === faq.id}
+                            onToggle={toggleFaq}
                         />
-                    )) }
+                    ))}
                 </div>
             </section>
         </div>

@@ -20,7 +20,11 @@
         "typescript/consistent-type-imports": "error",
         "typescript/no-unused-vars": [
             "error",
-            { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "destructuredArrayIgnorePattern": "^_" }
+            {
+                "argsIgnorePattern": "^_",
+                "varsIgnorePattern": "^_",
+                "destructuredArrayIgnorePattern": "^_"
+            }
         ],
 
         // The two hook rules that catch bugs: a hook behind a condition is a crash on the

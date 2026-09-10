@@ -2,8 +2,7 @@
 import type { Order, OrderStatus } from './types.ts';
 
 /** The row shape SQLite returns for an order; booleans are integers and there are no unions. */
-export interface OrderRow
-{
+export interface OrderRow {
     id: string;
     authority: string | null;
     amount: number;
@@ -17,8 +16,7 @@ export interface OrderRow
     settled_at: string | null;
 }
 
-export function toOrder(row: OrderRow): Order
-{
+export function toOrder(row: OrderRow): Order {
     return {
         id: row.id,
         authority: row.authority,
@@ -41,8 +39,7 @@ export function toOrder(row: OrderRow): Order
  * substring of the stored form in all four cases. Returns '' when the term is not a phone
  * search at all, which the query then skips instead of matching everything.
  */
-export function phoneNeedle(term: string): string
-{
+export function phoneNeedle(term: string): string {
     const digits = term.replace(/[\s\-().]/g, '').replace(/^(\+98|0098|98|0)/, '');
     return /^\d{3,}$/.test(digits) ? digits : '';
 }
