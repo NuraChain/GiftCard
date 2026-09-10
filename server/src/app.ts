@@ -12,7 +12,7 @@
 // EVERYTHING IS UNDER /api, AND ONLY /api. This process serves JSON. nginx serves the built
 // client and proxies this prefix through - which is also why there is no CORS layer here and
 // no security-header layer: one origin as far as the browser is concerned, and the headers
-// that belong to a TLS terminator belong to the terminator. See deploy/nginx.conf.
+// that belong to a TLS terminator belong to the terminator.
 //
 // Nothing here reads config or touches the network by itself, so the whole flow - including
 // the forged-callback, replay and sold-out paths - is exercised by handing `buildApp` an

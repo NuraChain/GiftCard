@@ -334,7 +334,7 @@ describe('the shop', () =>
     {
         store.addCodes(10, uuids(1));
         const [first, second] = await Promise.all([buy(10), buy(10)]);
-        expect([first, second].sort((a, b) => a - b)).toEqual([200, 409]);
+        expect([first, second].toSorted((a, b) => a - b)).toEqual([200, 409]);
     });
 });
 
@@ -652,7 +652,7 @@ describe('the console', () =>
         const all = await (await get('/api/admin/codes', { cookie })).json() as
             { rows: Array<{ code: string; state: string; phone: string | null }>; total: number };
         expect(all.total).toBe(3);
-        expect(all.rows.map((row) => row.state).sort()).toEqual(['free', 'held', 'sold']);
+        expect(all.rows.map((row) => row.state).toSorted()).toEqual(['free', 'held', 'sold']);
         expect(all.rows.every((row) => loaded.includes(row.code))).toBe(true);
 
         // The sold one names its buyer; the others have nobody.

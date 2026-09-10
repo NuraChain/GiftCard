@@ -122,9 +122,9 @@ export const FAQS: Faq[] =
 /** Support and identity. MOCK VALUES - see the README's "Replace before launch". */
 export const CONTACT =
 {
-    email: 'support@guardian-service.ir',
-    telegram: '@guardian_service_support',
-    phone: '+98 21 9100 4477',
+    email: 'dev.khazaee@gmail.com',
+    telegram: 'https://t.me/awesomext',
+    phone: '+98 912 2636 180',
     hours: 'هر روز، ۹ صبح تا ۹ شب به وقت تهران',
     operator: 'شرکت داده‌پردازی گاردین سرویس'
 };

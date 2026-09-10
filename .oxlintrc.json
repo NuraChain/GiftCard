@@ -1,0 +1,72 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+    // One linter for the whole repo, run from the root. Stylistic concerns - quotes, indent,
+    // trailing commas - are NOT here: those belong to oxfmt, and a rule that both tools have
+    // an opinion about is a rule that will eventually disagree with itself.
+
+    "plugins": ["typescript", "unicorn", "oxc", "react", "promise", "vitest"],
+
+    "categories": {
+        "correctness": "error",
+        "suspicious": "error",
+        "perf": "warn"
+    },
+
+    "env": { "browser": true, "es2024": true, "node": true },
+
+    "rules": {
+        "typescript/no-explicit-any": "error",
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-unused-vars": [
+            "error",
+            { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "destructuredArrayIgnorePattern": "^_" }
+        ],
+
+        // The two hook rules that catch bugs: a hook behind a condition is a crash on the
+        // second render, and a missing dependency is a stale one.
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+
+        // The automatic JSX runtime is on (tsconfig `jsx: react-jsx`), so React is not
+        // required in scope and this rule is a false positive on every component.
+        "react/react-in-jsx-scope": "off",
+
+        // THE REACT COMPILER RULES, declined deliberately and for the same reason the
+        // ESLint config declined them before this: fetching a console tab's data when the
+        // session opens is a synchronisation with something outside React, which is what an
+        // effect is for. These rules call every such effect a mistake. Adopting them is a
+        // decision about how the whole application is written - worth revisiting on purpose,
+        // not by inheriting a preset.
+        "react/set-state-in-effect": "off",
+        "react/exhaustive-effect-dependencies": "off",
+
+        // Vitest's `expect(value, message)` takes a message as its second argument - unlike
+        // Jest, which is what this rule is written against. The suite uses it to say WHICH
+        // FAQ row failed, and losing that would make a failure harder to read.
+        "vitest/valid-expect": "off",
+
+        // Written for chains that continue. Every `.then()` here is a leaf with a `.catch()`
+        // beside it, where returning a value would mean nothing.
+        "promise/always-return": "off",
+
+        // The awaits it flags are sequential ON PURPOSE: route guards must run in order and
+        // short-circuit when one throws, and the tests that drain stock are asserting an
+        // order of operations. Running either in parallel would change what they mean.
+        "no-await-in-loop": "off",
+
+        "eqeqeq": "error",
+        "no-console": "warn"
+    },
+
+    "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/build/**"],
+
+    "overrides": [
+        {
+            "files": ["**/*.spec.ts", "**/*.spec.tsx", "**/tests/**"],
+            "rules": {
+                "no-console": "off"
+            }
+        }
+    ]
+}

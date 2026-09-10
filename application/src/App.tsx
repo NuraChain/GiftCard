@@ -12,6 +12,7 @@ import { BrowserRouter, MemoryRouter, Route, Routes, Link } from 'react-router';
 import { CatalogProvider, useCatalog } from './lib/catalog.tsx';
 import { routes } from './routes.tsx';
 import { CONTACT } from './lib/content.ts';
+import { year } from './lib/format.ts';
 import ThemeToggle from './components/theme-toggle.tsx';
 import MobileNav from './components/mobile-nav.tsx';
 import ToastHost from './ui/toast-host.tsx';
@@ -120,9 +121,23 @@ function Chrome(): ReactNode
                                     <span dir="ltr" className="latin">{ CONTACT.phone }</span>
                                 </a>
                             </li>
-                            <li className="flex min-h-tap items-center gap-2">
-                                <MessageCircle className="size-4 shrink-0" aria-hidden="true"/>
-                                <span dir="ltr" className="latin">{ CONTACT.telegram }</span>
+                            {/* The one contact that leaves for another site, so it opens in a
+                                new tab: a buyer who taps support mid-purchase has a phone
+                                number typed and a card on the confirm step, and that state
+                                lives in this page. Navigating away would throw it out.
+
+                                `rel` is stated rather than left to the browser's default -
+                                it costs nothing and does not depend on how new the browser is. */}
+                            <li>
+                                <a
+                                    className="flex min-h-tap items-center gap-2 hover:text-firouze"
+                                    href={ CONTACT.telegram }
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <MessageCircle className="size-4 shrink-0" aria-hidden="true"/>
+                                    <span dir="ltr" className="latin">{ CONTACT.telegram }</span>
+                                </a>
                             </li>
                             <li className="flex min-h-tap items-center gap-2">
                                 <Clock className="size-4 shrink-0" aria-hidden="true"/>
@@ -144,8 +159,10 @@ function Chrome(): ReactNode
                 </div>
 
                 <div className="border-t border-line">
+                    {/* The shop's own name, not a constant: renaming from the console renames
+                        the copyright too, the same as the brand and the tab title. */}
                     <p className="mx-auto max-w-6xl px-4 py-5 text-caption text-muted sm:px-5">
-                        گردانندهٔ سرویس: { CONTACT.operator }
+                        © { year() } { catalog.appName }. همهٔ حقوق محفوظ است.
                     </p>
                 </div>
             </footer>

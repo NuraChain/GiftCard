@@ -6,7 +6,7 @@
 //
 // The per-route `render` mode that used to sit here is gone with the server that read it.
 // Every page is rendered in the browser now - nginx serves one built shell for every path
-// (see deploy/nginx.conf) and the router decides what goes in it.
+// (the proxy answers every path with index.html) and the router decides what goes in it.
 import type { ComponentType } from 'react';
 
 import Landing from './pages/landing.tsx';

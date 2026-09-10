@@ -116,6 +116,15 @@
         font-family: var(--font-fa);
         font-size: var(--text-body);
         line-height: var(--leading-fa);
+
+        /* Anchor jumps GLIDE rather than teleport - the nav links, the hero's two
+           buttons, and the return from the bank to #purchase.
+
+           It has to be on the ROOT. `scroll-behavior` propagates to the viewport from
+           the root element and from nowhere else, so the same declaration on `body` -
+           which is where it used to sit - is silently inert: the document scroller is
+           `html`, and every #cards jump landed instantly. */
+        scroll-behavior: smooth;
     }
 
     /* Headings take their own leading from the scale: Persian body leading looks
@@ -146,7 +155,6 @@
     body *
     {
         letter-spacing: 0;
-        scroll-behavior: smooth;
     }
 
     .latin
@@ -554,33 +562,19 @@ html
 .stagger > *:nth-child(3) { animation-delay: 140ms; }
 .stagger > *:nth-child(4) { animation-delay: 210ms; }
 
-/* The mobile nav panel's 6-class family for <Transition name="nav">. Height is not
-   animated (it would need a measured value and forces layout); the panel slides a
-   few pixels and fades, which reads as the same gesture for a fraction of the cost. */
-.nav-enter-active,
-.nav-leave-active
-{
-    transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
-}
-
-.nav-leave-active
-{
-    transition-timing-function: var(--ease-in);
-}
-
-.nav-enter-from,
-.nav-leave-to
-{
-    opacity: 0;
-    transform: translateY(-8px);
-}
-
 /* ONE global reduced-motion contract: everything animated collapses to an instant
    state change. Declared once here so a component can never forget its own guard -
    the failure mode where a new animation ships unguarded because the author did not
    know the convention. */
 @media (prefers-reduced-motion: reduce)
 {
+    /* Scrolling is motion too, and a page that glides several screens is exactly what a
+       reader with vestibular sensitivity asked not to happen. The jump comes back. */
+    html
+    {
+        scroll-behavior: auto;
+    }
+
     *,
     *::before,
     *::after

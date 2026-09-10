@@ -4,9 +4,9 @@
 // and the response type is the contract's output type.
 //
 // The '/api' base is one string for both deployments on purpose: in dev vite proxies it to
-// the server (vite.config.ts), and in production nginx proxies it to the same place
-// (deploy/nginx.conf). The browser therefore only ever talks to the origin it loaded from,
-// which is why there is no CORS anywhere in this repo.
+// the server (vite.config.ts), and in production the reverse proxy in front does the same.
+// The browser therefore only ever talks to the origin it loaded from, which is why there is
+// no CORS anywhere in this repo.
 import { createClient } from '../../../server/src/platform/contract.ts';
 import { contract } from '../../../server/src/contract/index.ts';
 

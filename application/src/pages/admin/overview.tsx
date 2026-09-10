@@ -47,7 +47,7 @@ export default function Overview(): ReactNode
         }
         // `notify` is rebuilt whenever a toast appears; depending on it would re-create
         // `load` mid-flight and re-run the effect below for no reason.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        // oxlint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Keyed on the session rather than on mount: this component is mounted by the ROUTE,

@@ -9,8 +9,9 @@
 // would put every buyer in the world into one bucket - one attacker would lock out the whole
 // shop. So Fastify's `trustProxy` is on, set to a HOP COUNT rather than `true`: it takes the
 // address the last proxy recorded and ignores anything the client wrote in front of it.
-// `deploy/nginx.conf` closes the other half by OVERWRITING `X-Forwarded-For` with
-// `$remote_addr` rather than appending to it.
+// The proxy in front must close the other half by OVERWRITING `X-Forwarded-For` with
+// the connecting address rather than appending to it - nginx's usual
+// `$proxy_add_x_forwarded_for` APPENDS, which lets a client write the left of the chain.
 //
 // Get either half wrong and the lockout below is decorative. They are documented together
 // for that reason.

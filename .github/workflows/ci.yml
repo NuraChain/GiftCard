@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      # tsc --noEmit + eslint, in both workspaces.
+      # tsc --noEmit in both workspaces, then oxlint over the whole repo.
       - run: npm run check
       # The client bundle. The server has no build step, by design.
       - run: npm run build

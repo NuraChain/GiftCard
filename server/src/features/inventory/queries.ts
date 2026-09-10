@@ -119,7 +119,7 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries
                     sold: row?.sold ?? 0
                 };
             });
-            return [...lines, ...[...byAmount.values()]];
+            return [...lines, ...byAmount.values()];
         },
 
     availableFor(amount)

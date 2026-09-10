@@ -84,7 +84,7 @@ export function useForm<T extends Record<string, unknown>>(schema: ZodType<T>, i
         setTouched({});
         // `initial` is a literal at every call site, so it is stable in practice; listing it
         // would re-create `reset` on every render of a component that inlines the object.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        // oxlint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return {

@@ -1,0 +1,23 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+    // As close to the repo's long-standing style as this formatter can be held to.
+    //
+    // TWO THINGS IT CANNOT DO, so nobody goes looking for the option: brace style and
+    // template-literal spacing are not configurable. The codebase was written allman
+    // (`{` on its own line) with `${ value }`; oxfmt produces K&R and `${value}`, the same
+    // as Prettier. Everything below is the part that could be preserved.
+    "tabWidth": 4,
+    "useTabs": false,
+    "singleQuote": true,
+    "jsxSingleQuote": false,
+    "semi": true,
+    "trailingComma": "none",
+    "bracketSpacing": true,
+    "arrowParens": "always",
+    "printWidth": 100,
+    "endOfLine": "lf",
+    "insertFinalNewline": true,
+
+    "ignorePatterns": ["**/dist/**", "**/build/**"]
+}

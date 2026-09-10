@@ -1,16 +1,15 @@
 {
     "name": "guardian-service-server",
     "private": true,
-    "version": "0.0.0",
+    "version": "1.0.0",
     "type": "module",
     "engines": {
         "node": ">=24"
     },
     "scripts": {
-        "check": "tsc --noEmit && eslint .",
+        "typecheck": "tsc --noEmit",
         "test": "vitest run",
-        "start": "node src/main.ts",
-        "admin-key": "node scripts/admin-key.mjs"
+        "start": "node src/main.ts"
     },
     "dependencies": {
         "@fastify/cookie": "^11.1.2",
@@ -20,13 +19,8 @@
         "zod": "^4.6.1"
     },
     "devDependencies": {
-        "@eslint/js": "^10.0.1",
         "@types/node": "^24.0.0",
-        "eslint": "^10.7.0",
-        "globals": "^17.7.0",
-        "jiti": "^2.7.0",
         "typescript": "~6.0.2",
-        "typescript-eslint": "^8.63.0",
         "vitest": "^4.0.0"
     }
 }
