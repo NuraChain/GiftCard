@@ -94,6 +94,18 @@ describe('the gift-code email', () => {
         expect(mail.subject).toContain('گاردین سرویس');
     });
 
+    it('is a complete document with a declared charset', () => {
+        // A bare fragment is scored by spam classifiers, and a Persian message whose encoding
+        // is declared only in the MIME part renders as mojibake in clients that read the
+        // document first. Neither is worth risking on the email that carries what was paid for.
+        const mail = composeCodeMail(SETTINGS, 'ali@example.com', 'NC-1234-5678', 10);
+
+        expect(mail.html.startsWith('<!DOCTYPE html>')).toBe(true);
+        expect(mail.html).toContain('<meta charset="utf-8">');
+        expect(mail.html).toContain('lang="fa"');
+        expect(mail.html.endsWith('</html>')).toBe(true);
+    });
+
     it('isolates the code so RTL text cannot reorder it', () => {
         const mail = composeCodeMail(SETTINGS, 'ali@example.com', 'NC-1234-5678', 10);
         // Without dir="ltr" the Latin run reorders against the Persian around it and the
@@ -152,9 +164,17 @@ describe('sending through Resend', () => {
         const headers = spy.calls[0].init.headers as Record<string, string>;
         expect(headers.authorization).toBe('Bearer re_test_key');
 
-        const body = JSON.parse(String(spy.calls[0].init.body)) as Record<string, string>;
+        const body = JSON.parse(String(spy.calls[0].init.body)) as Record<string, string> & {
+            headers: Record<string, string>;
+        };
         expect(body.from).toBe('shop@test');
         expect(body.to).toBe('ali@example.com');
+
+        // A unique reference per message, so Gmail does not fold near-identical code emails
+        // into one thread and hide the newest behind "show trimmed content".
+        expect(body.headers['X-Entity-Ref-ID']).toMatch(/^[0-9a-f-]{36}$/);
+        // Never the code itself - a header travels through relays and lands in logs.
+        expect(JSON.stringify(body.headers)).not.toContain('NC-1234-5678');
         // Both parts travel. The text one is what survives a client with styling off, which
         // for a message whose entire payload is one code is the part that matters.
         expect(body.text).toContain('NC-1234-5678');

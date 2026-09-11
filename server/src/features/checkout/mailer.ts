@@ -23,6 +23,8 @@
 // `fetch` is INJECTED the same way the gateway and the Telegram client take it: it is what
 // lets every path here - a 401, a 429, a timeout, a body that will not parse - be tested
 // without a network or an account.
+import { randomUUID } from 'node:crypto';
+
 import type { Fetch } from './zarinpal.ts';
 
 /** What the mailer needs to know, read fresh on every send. */
@@ -105,10 +107,23 @@ export function composeCodeMail(
         settings.appName
     ].join('\n');
 
-    // `dir="rtl"` on the wrapper, and the code itself in an LTR island: without that the
+    // A COMPLETE DOCUMENT, not a bare <div>. Two reasons, and neither is tidiness: spam
+    // classifiers score malformed HTML, and a Persian message whose charset is declared only
+    // in the MIME part renders as mojibake in the clients that read the document first. The
+    // `lang` and `dir` on <html> are what make a screen reader announce it as Persian.
+    //
+    // `dir="rtl"` all the way down, and the code itself in an LTR island: without that the
     // Latin characters of a UUID reorder against the Persian text around them and the buyer
     // copies a code that is not the one they were sent.
     const html = [
+        '<!DOCTYPE html>',
+        '<html lang="fa" dir="rtl">',
+        '<head>',
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width,initial-scale=1">',
+        `<title>${escapeHtml(subject)}</title>`,
+        '</head>',
+        '<body style="margin:0;padding:24px;background:#ffffff">',
         '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;line-height:1.9;color:#111">',
         '<p>سلام،</p>',
         `<p>کد گیفت کارت ${amountUsd} دلاری شما آماده است:</p>`,
@@ -119,7 +134,9 @@ export function composeCodeMail(
         '</p>',
         '<p>این کد بدون تاریخ انقضاست. آن را جایی امن نگه دارید و برای کسی نفرستید.</p>',
         `<p style="color:#666">${escapeHtml(settings.appName)}</p>`,
-        '</div>'
+        '</div>',
+        '</body>',
+        '</html>'
     ].join('');
 
     return { to: email, subject, text, html };
@@ -162,7 +179,17 @@ export function createMailer(options: MailerOptions): MailSender {
                     to: message.to,
                     subject: message.subject,
                     text: message.text,
-                    html: message.html
+                    html: message.html,
+
+                    // STOPS GMAIL COLLAPSING THESE INTO ONE THREAD. Every gift-code email has
+                    // near-identical structure and a subject that differs only by a number, so
+                    // Gmail groups them and hides all but the newest behind a "show trimmed
+                    // content" fold - which a buyer reads as "my code never arrived". A unique
+                    // reference per message is what Resend documents for breaking that up.
+                    //
+                    // It is a fresh random id, NEVER the gift code: a header travels through
+                    // relays and sits in logs, and the code is bearer value.
+                    headers: { 'X-Entity-Ref-ID': randomUUID() }
                 }),
                 signal: AbortSignal.timeout(timeoutMs)
             });
