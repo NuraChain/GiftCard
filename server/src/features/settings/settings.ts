@@ -119,10 +119,17 @@ export const MAX_MARGIN_PERCENT = 100;
  * about the provider rather than a choice. Credentials start EMPTY: the shop boots, the
  * console says the gateway is not configured, and checkout refuses to start a payment until
  * somebody sets one. Booting is not the same as being open for business.
+ *
+ * `publicBaseUrl` IS THE ONE EXCEPTION TO "a fact about the provider". It is this shop's own
+ * address, and there is one of this shop - so the fallback is the real domain rather than a
+ * development one. It used to be `http://localhost:4200`, which is correct on exactly one
+ * machine and silently wrong everywhere the shop actually runs: it builds the URL Zarinpal
+ * returns the buyer to, so a production boot that had never opened the settings panel sent
+ * every payer back to a host that does not exist, AFTER taking their money.
  */
 const DEFAULTS = {
     appName: 'گاردین سرویس',
-    publicBaseUrl: 'http://localhost:4200',
+    publicBaseUrl: 'https://guardian-server.ir',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
     resendApiKey: '',
