@@ -9,16 +9,32 @@
 // what a request has to get past before a handler sees it, and how a thrown failure becomes
 // a response.
 //
-// EVERYTHING IS UNDER /api, AND ONLY /api. This process serves JSON. nginx serves the built
-// client and proxies this prefix through - which is also why there is no CORS layer here and
-// no security-header layer: one origin as far as the browser is concerned, and the headers
-// that belong to a TLS terminator belong to the terminator.
+// EVERY ROUTE IS UNDER /api, AND ONLY /api. That is still true of the API: there is no CORS
+// layer here and no security-header layer, because it is one origin as far as the browser is
+// concerned and the headers that belong to a TLS terminator belong to the terminator.
+//
+// WHAT SITS UNDER EVERYTHING ELSE is the built client, when there is one - see `mountClient`
+// at the bottom. It is a fallback, not a feature: nginx pointed at the same directory is
+// faster and is still the right answer for a busy shop. It exists because the alternative
+// failure is catastrophic and silent. A proxy that forwards `/` here without a `root` and a
+// `try_files` produces a site whose every page is this API's 404, which looks like the app is
+// broken rather than like the proxy is misconfigured - and that is a bad trade for a saving
+// nobody at this size can measure.
 //
 // Nothing here reads config or touches the network by itself, so the whole flow - including
 // the forged-callback, replay and sold-out paths - is exercised by handing `buildApp` an
 // in-memory database and two fakes.
+import { existsSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
+
 import cookie from '@fastify/cookie';
-import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
+import fastifyStatic from '@fastify/static';
+import Fastify, {
+    type FastifyBaseLogger,
+    type FastifyError,
+    type FastifyInstance,
+    type FastifyReply
+} from 'fastify';
 
 import { guard, mountApi } from './platform/api.ts';
 import { HttpError } from './platform/http.ts';
@@ -73,12 +89,92 @@ export interface AppOptions {
     resultPath?: string;
 
     /**
+     * The directory `vite build` wrote, served at `/` with a single-page fallback.
+     *
+     * ABSENT OR MISSING IS A SUPPORTED STATE, not an error: the tests pass nothing, a dev run
+     * is served by vite itself, and a deployment where nginx holds the files wants this off.
+     * All three answer JSON on every path, exactly as this process always did.
+     */
+    clientDir?: string;
+
+    /**
      * How many proxies sit in front. See config.ts - at 0 every request appears to come from
      * nginx and every per-IP limit in the app becomes one shared bucket.
      */
     trustProxyHops?: number;
 
     log?: FastifyBaseLogger;
+}
+
+/**
+ * @internal The client's document, with the headers it must always carry.
+ *
+ * NO CACHING, EVER. It names the hashed bundles, so a stale copy points at files the next
+ * deploy deletes - and the site breaks for exactly the people who visited most recently,
+ * which is the worst possible set. The bundles it names are cached for a year instead, which
+ * is safe because a change of content is a change of filename.
+ *
+ * `cacheControl: false` is what makes that header survive: the static plugin is registered
+ * with a year of immutable caching for those bundles, and `sendFile` would otherwise stamp
+ * the same thing onto this document.
+ */
+function sendDocument(reply: FastifyReply): FastifyReply {
+    return reply
+        .header('cache-control', 'no-store')
+        .type('text/html; charset=utf-8')
+        .sendFile('index.html', { cacheControl: false });
+}
+
+/**
+ * @internal Serves the built client at `/`, or nothing at all.
+ *
+ * Returns the resolved directory, or null when there is nothing to serve - which is the
+ * normal state in tests and in development, and a deliberate one behind an nginx that holds
+ * the files itself.
+ *
+ * A MISSING DIRECTORY IS A WARNING, NEVER A CRASH. The API is the half that moves money; a
+ * shop that has taken a payment must not fail to settle it because somebody forgot to run
+ * `npm run build`. The warning is loud, and `/api` keeps working.
+ */
+function mountClient(
+    app: FastifyInstance,
+    clientDir: string | undefined,
+    log?: FastifyBaseLogger
+): string | null {
+    if (clientDir === undefined || clientDir === '') {
+        return null;
+    }
+
+    // Relative to the process's working directory, which the systemd unit sets to `server/`.
+    const root = isAbsolute(clientDir) ? clientDir : resolve(process.cwd(), clientDir);
+    if (!existsSync(join(root, 'index.html'))) {
+        log?.warn(
+            { clientDir: root },
+            'no built client to serve - run npm run build, or point nginx at the files instead'
+        );
+        return null;
+    }
+
+    app.register(fastifyStatic, {
+        root,
+
+        // The hashed bundles under /assets are immutable by construction: a change of content
+        // is a change of filename. index.html is NOT, and it is served by the not-found
+        // handler above, which sets its own no-store.
+        maxAge: '1y',
+        immutable: true,
+
+        // `/` would otherwise be answered by this plugin with index.html and a year of cache
+        // headers. It goes through the not-found handler instead, which is the one place the
+        // single-page fallback and its caching rules are decided.
+        index: false,
+
+        // Dotfiles are configuration and secrets, never content.
+        serveDotFiles: false
+    });
+
+    log?.info({ clientDir: root }, 'serving the built client');
+    return root;
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
@@ -150,9 +246,36 @@ export function buildApp(options: AppOptions): FastifyInstance {
         });
     });
 
-    app.setNotFoundHandler((request, reply) =>
-        reply.code(404).send({ error: { code: 'not-found', message: 'این آدرس وجود ندارد' } })
-    );
+    // Mounted BEFORE the not-found handler is replaced, because that handler is what serves
+    // the single-page fallback and it needs to know whether there is anything to fall back to.
+    const clientRoot = mountClient(app, options.clientDir, log);
+
+    // THE ROOT NEEDS ITS OWN ROUTE. @fastify/static is mounted with `index: false` - so that
+    // the document is served from one place with one set of headers - and that makes a
+    // request for `/` a request for a directory, which it answers 403 without ever reaching
+    // the not-found handler below.
+    if (clientRoot !== null) {
+        app.get('/', (_request, reply) => sendDocument(reply));
+    }
+
+    /**
+     * Nothing matched. What that MEANS depends on who asked.
+     *
+     * A request under /api is a call to a route that does not exist, and it gets the JSON
+     * refusal every other failure here gets. Anything else is a PAGE, and the client is a
+     * single-page app - `/admin/orders` is a route its router knows and not a file on disk -
+     * so the document is handed back and the browser decides. That is the `try_files
+     * $uri $uri/ /index.html` an nginx config would otherwise have to get right.
+     */
+    app.setNotFoundHandler((request, reply) => {
+        const wantsPage = clientRoot !== null && !request.url.startsWith('/api');
+        if (wantsPage && (request.method === 'GET' || request.method === 'HEAD')) {
+            return sendDocument(reply);
+        }
+        return reply
+            .code(404)
+            .send({ error: { code: 'not-found', message: 'این آدرس وجود ندارد' } });
+    });
 
     // The orchestrator probe: cheap, dependency-free, always 200 when the process lives. It
     // stays imperative because nothing calls it with types - see features/ for the rest.

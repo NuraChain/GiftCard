@@ -217,6 +217,7 @@ const app = buildApp({
         secureCookie: config.cookieSecure
     }),
     trustProxyHops: config.trustProxyHops,
+    clientDir: config.clientDir,
     log
 });
 

@@ -1,7 +1,8 @@
 // The environment, read ONCE into a typed object - one boot error names every problem.
 //
 // WHAT IS AND IS NOT HERE. This file holds only what the DATABASE CANNOT hold: where the
-// process listens, where its file is, and how it is fronted. Four values.
+// process listens, where its file is, where the built pages are, and how it is fronted.
+// Five values.
 //
 // EVERYTHING ELSE MOVED TO THE CONSOLE, including the two that used to be here. The public
 // origin is a field beside the merchant id now, because it is the same kind of fact and
@@ -13,10 +14,18 @@
 // appears to do nothing. Nobody can run this shop without opening the console regardless -
 // gift codes only enter through it - so a second way to configure any of it bought nothing.
 //
-// WHAT LEFT WHEN NGINX ARRIVED. `CLIENT_DIR` and `SSR_ENTRY` are gone: this process serves
-// JSON and nothing else. nginx serves the built client and terminates TLS. What arrived in
-// their place is the two settings that a reverse proxy makes the app's business -
-// `TRUST_PROXY_HOPS` and `COOKIE_SECURE` - and both are explained where they are declared.
+// `CLIENT_DIR` IS BACK, AND `SSR_ENTRY` IS NOT. The difference matters: this process still
+// renders nothing and runs no client code. It hands back the files `vite build` produced,
+// which is the cheapest possible way to make one origin serve both halves - so a reverse
+// proxy can forward everything to one port and be done, instead of needing a `root`, a
+// `try_files` and a second location block that must agree with this app's `/api` prefix.
+//
+// nginx serving those files directly is still FASTER and still supported: point its `root` at
+// the same directory and this route simply never gets asked. What changed is that getting the
+// proxy config wrong now degrades performance instead of taking the whole site down.
+//
+// `TRUST_PROXY_HOPS` and `COOKIE_SECURE` are the settings a reverse proxy makes the app's
+// business, and both are explained where they are declared.
 import { bool, loadConfig, num, oneOf, str } from './platform/env.ts';
 
 try {
@@ -53,7 +62,21 @@ export const config = loadConfig({
      * The gift codes, the order ledger, the catalogue and the settings. One SQLite file;
      * back it up like money, because unsold codes in it ARE money.
      */
-    databaseFile: str('DATABASE_FILE', { default: 'data/guardian-service.db' })
+    databaseFile: str('DATABASE_FILE', { default: 'data/guardian-service.db' }),
+
+    // --- The built client ---
+
+    /**
+     * The directory `npm run build` writes, served at `/`.
+     *
+     * The default is relative to the SERVER directory because that is the working directory
+     * the systemd unit sets (scripts/service-install.sh), and it points at the sibling
+     * workspace - so a checkout that has been built needs no configuration at all.
+     *
+     * Set it to an empty string to serve nothing and answer JSON on every path, which is
+     * what a deployment with nginx holding the files wants.
+     */
+    clientDir: str('CLIENT_DIR', { default: '../application/dist' })
 });
 
 export const isProduction = config.env === 'production';
