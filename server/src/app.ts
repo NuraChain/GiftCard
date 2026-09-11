@@ -158,11 +158,31 @@ function mountClient(
     app.register(fastifyStatic, {
         root,
 
-        // The hashed bundles under /assets are immutable by construction: a change of content
-        // is a change of filename. index.html is NOT, and it is served by the not-found
-        // handler above, which sets its own no-store.
-        maxAge: '1y',
-        immutable: true,
+        // CACHING IS DECIDED PER FILE, because this directory holds two kinds of thing and
+        // one rule for both is wrong either way.
+        //
+        // Everything under /assets carries a content hash in its NAME, so a year of immutable
+        // is not just safe, it is the whole point of the hash: different content can never
+        // reuse a URL. The favicons do not - `favicon-32.png` is `favicon-32.png` forever, so
+        // caching one for a year means a new logo reaches nobody who has already visited
+        // until 2027. They get a day, which is long enough to cost nothing and short enough
+        // that a change lands.
+        cacheControl: false,
+        setHeaders: (reply, filePath) => {
+            const served = filePath.replace(/\\/g, '/');
+
+            // index.html is NOT this callback's business: `sendDocument` already set
+            // `no-store` on it, and this runs afterwards - so without the exit below it
+            // would hand a day of caching to the one file that must never have any.
+            if (served.endsWith('/index.html')) {
+                return;
+            }
+            const hashed = served.includes('/assets/');
+            reply.header(
+                'cache-control',
+                hashed ? 'public, max-age=31536000, immutable' : 'public, max-age=86400'
+            );
+        },
 
         // `/` would otherwise be answered by this plugin with index.html and a year of cache
         // headers. It goes through the not-found handler instead, which is the one place the

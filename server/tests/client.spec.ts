@@ -114,6 +114,23 @@ describe('serving the built client', () => {
         await app.close();
     });
 
+    it('caches a hashed bundle for a year and an unhashed icon for a day', async () => {
+        // TWO KINDS OF FILE, two rules. `/assets/index-abc123.js` carries its content hash in
+        // its name, so a year of immutable is what the hash is FOR. `favicon-32.png` keeps
+        // its name forever - cache that for a year and a new logo reaches nobody who has
+        // already visited the site.
+        build();
+        writeFileSync(join(dist, 'favicon-32.png'), 'not really a png');
+        const app = buildApp({ ...stubs(store), clientDir: dist });
+
+        const bundle = await app.inject({ method: 'GET', url: '/assets/index-abc123.js' });
+        const icon = await app.inject({ method: 'GET', url: '/favicon-32.png' });
+
+        expect(bundle.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+        expect(icon.headers['cache-control']).toBe('public, max-age=86400');
+        await app.close();
+    });
+
     it('STILL REFUSES AN UNKNOWN /api PATH IN JSON', async () => {
         // The line this whole file is about. A client call to a route that does not exist
         // must not be answered with an HTML document - the caller parses JSON, and a page
