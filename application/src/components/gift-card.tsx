@@ -46,7 +46,6 @@ import TextInput from '../ui/text-input.tsx';
 
 export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
     const catalog = useCatalog();
-    const liveRate = catalog.rate ?? null;
     const [step, setStep] = useState<'email' | 'confirm'>('email');
     const [paying, setPaying] = useState(false);
     const [failure, setFailure] = useState('');
@@ -229,16 +228,6 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                                     {price === null ? '—' : `${toman(price)} تومان`}
                                 </dd>
                             </div>
-                            {/* The working, shown to the buyer. A price derived from a rate
-                                they can see is a price they can check. */}
-                            {liveRate !== null && (
-                                <div className="flex justify-between gap-2 text-caption text-muted">
-                                    <dt className="shrink-0">بر اساس نرخ تتر</dt>
-                                    <dd className="min-w-0 text-end">
-                                        {toman(liveRate.toman)} تومان
-                                    </dd>
-                                </div>
-                            )}
                         </dl>
 
                         {repriced && (
@@ -248,8 +237,8 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                                     aria-hidden="true"
                                 />
                                 <span>
-                                    نرخ تتر تغییر کرد و مبلغ به‌روز شد. پولی از حساب شما کم نشده است.
-                                    اگر مبلغ تازه را قبول دارید دوباره پرداخت را بزنید.
+                                    قیمت این کارت به‌روز شد. پولی از حساب شما کم نشده است. اگر مبلغ
+                                    تازه را قبول دارید دوباره پرداخت را بزنید.
                                 </span>
                             </p>
                         )}

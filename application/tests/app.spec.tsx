@@ -5,27 +5,23 @@
 // is not running. What each test asserts is what the page does with an answer - or, in the
 // first one, what it does while there is not one yet.
 //
-// PRICES COME DOWN WITH THE RATE THEY WERE COMPUTED FROM, so the fixture carries both. The
-// tests that matter most here are the ones where it carries NEITHER: a shop that cannot price
-// has to say so and refuse to be bought, and that is a state no amount of retrying reaches on
-// a live server.
+// PRICES COME DOWN WITHOUT THE RATE BEHIND THEM. The shop used to publish the tether rate it
+// priced from; that rate is set by hand in the console now, so it is an internal setting and
+// the storefront no longer shows it. The tests that matter most here are the ones where a
+// price is MISSING: a shop that cannot price has to refuse to be bought rather than offer a
+// figure, and that is a state no amount of retrying reaches on a live server.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 import App from '../src/App.tsx';
 import { FAQS, ASSURANCES } from '../src/lib/content.ts';
 
-const RATE = { toman: 100_000, at: new Date().toISOString(), stale: false };
-
 /** 10 x 100,000 + 6% = 1,060,000 - the same sum the server does, written out for the reader. */
 const TEN_DOLLAR_TOMAN = 1_060_000;
 
-function catalogBody(
-    overrides: { rate?: unknown; toman?: number | null } = {}
-): Record<string, unknown> {
+function catalogBody(overrides: { toman?: number | null } = {}): Record<string, unknown> {
     return {
         appName: 'گاردین سرویس',
-        rate: 'rate' in overrides ? overrides.rate : RATE,
         tiers: [
             {
                 amount: 10,
@@ -275,27 +271,29 @@ describe('buying from a card', () => {
 
         // A moved price is not a failure and must not be dressed as one: the buyer is told
         // the amount changed, told no money moved, and asked again with the new figure.
-        await screen.findByText(/نرخ تتر تغییر کرد/);
+        await screen.findByText(/قیمت این کارت به‌روز شد/);
         expect(document.body.textContent).toContain('پولی از حساب شما کم نشده');
         expect(document.body.textContent).not.toContain('شروع پرداخت ممکن نشد');
     });
 });
 
-describe('the tether ticker', () => {
-    it('shows the rate the prices were computed from', async () => {
+describe('the tether rate', () => {
+    it('is never shown to the buyer', async () => {
         render(<App url="/" />);
+        await screen.findByText(/۱٬۰۶۰٬۰۰۰/);
 
-        // The rate is the working behind every price on the page, so it is on the page.
-        await screen.findByText(/قیمت تتر/);
-        expect(document.body.textContent).toContain('۱۰۰٬۰۰۰');
+        // The price is on the page; the number it was computed from is not. It is a console
+        // setting now, not a market quote, and publishing it would dress one as the other.
+        expect(document.body.textContent).not.toContain('تتر');
+        expect(document.body.textContent).not.toContain('۱۰۰٬۰۰۰');
     });
 
-    it('says the price is unavailable rather than showing a stale one', async () => {
+    it('refuses to be bought rather than showing a price it does not have', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
                 if (String(input).includes('/api/pay/catalog')) {
-                    return Promise.resolve(json(catalogBody({ rate: null, toman: null })));
+                    return Promise.resolve(json(catalogBody({ toman: null })));
                 }
                 return Promise.resolve(json({}, 401));
             })
@@ -303,9 +301,8 @@ describe('the tether ticker', () => {
 
         render(<App url="/" />);
 
-        // No last-known number, no zero, no blank: the shop says it cannot price anything,
-        // and the card refuses to be bought instead of offering a figure nobody stands behind.
-        await screen.findByText(/قیمت تتر هنوز تنظیم نشده/);
+        // No last-known number, no zero, no blank: the card says it cannot be priced and the
+        // button will not open a payment for a figure nobody stands behind.
         const button = await screen.findByText('قیمت در دسترس نیست');
         expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
         expect(document.body.textContent).not.toContain('۱٬۰۶۰٬۰۰۰');

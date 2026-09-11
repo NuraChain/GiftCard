@@ -431,18 +431,21 @@ describe('the shop', () => {
         expect(await buy(10, 'buyer@example.com', PRICES[10])).toBe(409);
     });
 
-    it('closes the shop rather than pricing without an agreed rate', async () => {
+    it('closes the shop rather than pricing without a rate', async () => {
         store.addCodes(10, uuids(1));
         rate.set(null);
 
-        const body = (await (await get('/api/pay/catalog')).json()) as {
-            rate: unknown;
+        const raw = await (await get('/api/pay/catalog')).text();
+        const body = JSON.parse(raw) as {
             tiers: Array<{ amount: number; toman: number | null }>;
         };
         // No last-known price, no fallback, no zero: a null, which the cards render as
         // unbuyable. A price nobody can justify is worse than no price at all.
-        expect(body.rate).toBeNull();
         expect(body.tiers.every((tier) => tier.toman === null)).toBe(true);
+
+        // And the rate itself never reaches the shop, priced or not - it is a console setting,
+        // not something a buyer is shown.
+        expect(raw).not.toContain('"rate"');
 
         // And the purchase route refuses too - a page left open must not be able to buy.
         expect(await buy(10)).toBe(503);

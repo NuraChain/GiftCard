@@ -11,7 +11,6 @@ import { z } from 'zod';
 import { get, post } from '../../platform/contract.ts';
 import { emailField } from '../../domain/email.ts';
 import { amountField } from '../../contract/shared.ts';
-import { tetherRate } from '../rate/contract.ts';
 
 /**
  * What starts a purchase. The SAME schema validates three times from this one declaration:
@@ -62,15 +61,11 @@ export const catalog = z.object({
     /** What the shop calls itself. Public: it is the page title and the brand on every page. */
     appName: z.string(),
 
-    /**
-     * The tether rate every price below was computed from, or NULL when none has been set
-     * and the shop cannot price anything.
-     *
-     * It ships WITH the prices rather than on its own route so the page can never show a rate
-     * from one moment beside a price from another - the reader can do that multiplication in
-     * their head, and being caught out by it is not a good look for a shop.
-     */
-    rate: tetherRate.nullable(),
+    // NO RATE HERE, DELIBERATELY. The shop used to publish the tether rate it priced from,
+    // back when that rate was read live off two exchanges and the number was a fact the buyer
+    // could check. It is set by hand now, so showing it would be publishing an internal
+    // setting dressed as a market quote. What a buyer needs is the price, and `toman` below is
+    // the price - a null there still means "cannot be bought", exactly as it did.
 
     tiers: z.array(
         z.object({

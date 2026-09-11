@@ -5,7 +5,7 @@
 // must not ask three times - and because a card has to know it is sold out at the moment the
 // buyer presses pay, not at the moment the page loaded.
 //
-// IT POLLS NOW, and that is not a nicety. Prices are derived from a tether rate that moves,
+// IT POLLS NOW, and that is not a nicety. Prices are derived from a rate the console moves,
 // and a page left open for twenty minutes would otherwise show a number the server has
 // already stopped honouring - the buyer presses pay, the server refuses on the price
 // agreement, and they get an error where they should have got a card. Re-reading once a
@@ -27,12 +27,12 @@ import {
 } from 'react';
 
 import { client } from './api.ts';
-import type { Catalog, TetherRateView } from '../../../server/src/contract/index.ts';
+import type { Catalog } from '../../../server/src/contract/index.ts';
 
 /** One card, exactly as the server describes it. */
 export type CatalogTier = Catalog['tiers'][number];
 
-/** How often the shop re-reads prices. The server refreshes the rate on the same cadence. */
+/** How often the shop re-reads prices, so a rate set in the console reaches an open tab. */
 const POLL_MS = 60_000;
 
 /** What a shop with no answer yet calls itself. Replaced the moment the catalogue lands. */
@@ -50,9 +50,9 @@ const FALLBACK_NAME = 'گاردین سرویس';
  * Wrapped because storage throws outright in some privacy modes, and a brand name is not
  * worth a blank page.
  *
- * THE RATE IS NOT REMEMBERED THIS WAY, deliberately. A brand name from last week is still
- * the brand name; a price from last week is a lie, and the whole point of the server
- * refusing a stale rate would be undone by a client that cached one.
+ * PRICES ARE NOT REMEMBERED THIS WAY, deliberately. A brand name from last week is still
+ * the brand name; a price from last week is a lie, and a cached one would survive exactly the
+ * rate change it most needs to notice.
  */
 function rememberedName(): string {
     try {
@@ -65,9 +65,6 @@ function rememberedName(): string {
 export interface CatalogStore {
     tiers: CatalogTier[];
     appName: string;
-
-    /** The tether rate the prices came from, or null when the shop cannot price. */
-    rate: TetherRateView | null;
 
     loading: boolean;
     error: string;
@@ -85,7 +82,6 @@ const CatalogContext = createContext<CatalogStore | null>(null);
 export function CatalogProvider({ children }: { children: ReactNode }): ReactNode {
     const [tiers, setTiers] = useState<CatalogTier[]>([]);
     const [appName, setAppName] = useState(rememberedName);
-    const [rate, setRate] = useState<TetherRateView | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [loaded, setLoaded] = useState(false);
@@ -99,7 +95,6 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
             const result = await client.pay.catalog();
             setTiers(result.tiers);
             setAppName(result.appName);
-            setRate(result.rate);
             setLoaded(true);
             setError('');
 
@@ -158,8 +153,8 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
     }, []);
 
     const store = useMemo(
-        () => ({ tiers, appName, rate, loading, error, loaded, load, refresh }),
-        [tiers, appName, rate, loading, error, loaded, load, refresh]
+        () => ({ tiers, appName, loading, error, loaded, load, refresh }),
+        [tiers, appName, loading, error, loaded, load, refresh]
     );
 
     return <CatalogContext value={store}>{children}</CatalogContext>;

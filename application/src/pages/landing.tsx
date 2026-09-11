@@ -15,7 +15,6 @@ import { STEPS, FAQS, ASSURANCES } from '../lib/content.ts';
 import Async from '../ui/async.tsx';
 import CodeCapsule from '../components/code-capsule.tsx';
 import GiftCard from '../components/gift-card.tsx';
-import RateTicker from '../components/rate-ticker.tsx';
 import FaqItem from '../components/faq-item.tsx';
 import PurchaseResult from '../components/purchase-result.tsx';
 
@@ -41,11 +40,6 @@ export default function Landing(): ReactNode {
 
     return (
         <div>
-            {/* Above everything, full-bleed, attached to the header: the rate is the input to
-                every price below it, so it reads as a property of the shop rather than as a
-                widget parked in one section. */}
-            <RateTicker />
-
             <PurchaseResult />
 
             <section className="mx-auto grid max-w-6xl items-center gap-stack px-4 pt-section pb-stack sm:px-5 lg:grid-cols-[1.05fr_1fr]">

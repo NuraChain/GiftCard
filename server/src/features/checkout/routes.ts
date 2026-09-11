@@ -106,7 +106,6 @@ export function payHandlers(options: PayOptions): PayHandlers {
 
             return {
                 appName: settings.current().appName,
-                rate: live,
                 tiers: store
                     .tiers()
                     .filter((tier) => tier.active)
