@@ -11,9 +11,13 @@ import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
 import { emailField } from '../../domain/email.ts';
+import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
 export const settingsView = z.object({
     appName: z.string(),
+
+    /** The public origin the buyer reaches the shop on. The gateway returns them here. */
+    publicBaseUrl: z.string(),
 
     /** The gateway host in use, and whether it is the sandbox one. */
     zarinpalBase: z.string(),
@@ -32,9 +36,11 @@ export const settingsView = z.object({
     smtpPasswordSet: z.boolean(),
     smtpFrom: z.string(),
 
-    /** The two exchanges the tether rate is cross-checked between. */
-    nobitexBase: z.string(),
-    wallexBase: z.string(),
+    /** What one USDT costs in Toman, as the console last set it. Zero means never set. */
+    tetherToman: z.number(),
+
+    /** When that number was last changed, ISO. Empty when it never has been. */
+    tetherSetAt: z.string(),
 
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
@@ -42,7 +48,11 @@ export const settingsView = z.object({
     /** Delivery only runs when both a host and a From address are present. */
     mailReady: z.boolean(),
 
-    /** Read-only, from the environment: where the gateway returns the buyer. */
+    /**
+     * Where the gateway returns the buyer, derived from `publicBaseUrl` and echoed back so the
+     * console can show the exact URL to paste into Zarinpal's panel. Read-only: it is computed,
+     * never stored, so there is no second copy to drift.
+     */
     callbackUrl: z.string(),
 
     /** True once the admin key has been rotated into the database. */
@@ -55,6 +65,7 @@ export const settingsView = z.object({
  */
 export const settingsInput = z.object({
     appName: z.string().trim().max(60).optional(),
+    publicBaseUrl: z.string().trim().max(200).optional(),
     zarinpalBase: z.string().trim().max(200).optional(),
     merchantId: z.string().trim().max(100).optional(),
     smtpHost: z.string().trim().max(200).optional(),
@@ -68,8 +79,16 @@ export const settingsInput = z.object({
     telegramBotToken: z.string().trim().max(200).optional(),
     telegramChatId: z.string().trim().max(64).optional(),
     telegramBase: z.string().trim().max(200).optional(),
-    nobitexBase: z.string().trim().max(200).optional(),
-    wallexBase: z.string().trim().max(200).optional(),
+    /**
+     * The tether rate, in Toman. ZERO OR A PLAUSIBLE RATE, nothing between: zero is the
+     * operator deliberately pulling the shop off sale, and the band is the fat-finger guard
+     * from domain/pricing.ts. A number below the band is far more likely to be a rate missing
+     * a digit than an intention, so it is refused at the boundary rather than stored and
+     * multiplied across every card.
+     */
+    tetherToman: z
+        .union([z.literal(0), z.number().int().min(MIN_TETHER_TOMAN).max(MAX_TETHER_TOMAN)])
+        .optional(),
 
     /**
      * The one number here that is money. Bounded at the boundary rather than trusted: the

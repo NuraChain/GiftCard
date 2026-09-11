@@ -51,9 +51,9 @@ export interface AppOptions {
     settings: Settings;
 
     /**
-     * The live tether rate, cross-checked between two exchanges. Every price the shop shows
-     * and every sum it charges comes from this; when it has nothing to give, the cards go
-     * unbuyable rather than falling back to a stored number.
+     * The tether rate, as the console set it. Every price the shop shows and every sum it
+     * charges comes from this; when it has nothing to give, the cards go unbuyable rather
+     * than falling back to a number nobody chose.
      */
     rate: TetherRate;
 
@@ -61,9 +61,6 @@ export interface AppOptions {
     telegram: Telegram;
     notifier: SaleNotifier;
     backup: BackupJob;
-
-    /** The absolute URL the gateway returns the buyer to. */
-    callbackUrl: string;
 
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath?: string;
@@ -78,9 +75,19 @@ export interface AppOptions {
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
-    const { store, payment, mailer, admin, settings, rate, callbackUrl, log } = options;
+    const { store, payment, mailer, admin, settings, rate, log } = options;
     const { telegram, notifier, backup } = options;
     const resultPath = options.resultPath ?? '/';
+
+    /**
+     * Where Zarinpal returns the buyer, built from the public origin in the console.
+     *
+     * A FUNCTION, not a string, and read at the moment a payment starts: the origin is a
+     * setting now, so an operator correcting it must not have to restart the process to
+     * un-strand the next buyer. The path is the app's own business and lives here rather than
+     * in settings, so there is one spelling of it and no second copy to drift.
+     */
+    const callbackUrl = (): string => `${settings.current().publicBaseUrl}/api/pay/callback`;
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
     // proxy-addr - the library actually behind it - also documents a NUMBER, meaning "trust

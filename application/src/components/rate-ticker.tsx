@@ -1,15 +1,15 @@
-// The live tether price, and the shop's honesty about how live it is.
+// The tether price the shop is selling on, and its honesty about how current that is.
 //
 // Every card's price is a dollar figure multiplied by this number, so putting it on the page
 // is not decoration - it is the working. A reader who can see the rate can check the card
 // price themselves, and a shop that shows the rate it is pricing off is making a claim it can
 // be held to. Hiding it would leave "چرا این کارت انقدر شد؟" with no answer.
 //
-// THE AGE IS PART OF THE PRICE. A rate with no timestamp is a number of unknown vintage, and
-// the reader has no way to tell a figure from ten seconds ago from one from this morning. So
-// the age is shown always, it re-renders on its own clock rather than waiting for the next
-// poll, and when the server marks the reading stale the strip says so rather than dressing
-// an old number as a current one.
+// THE AGE IS PART OF THE PRICE, and it matters more now than it used to. The rate is set by
+// hand in the console rather than read off an exchange, so nothing refreshes it and only the
+// shop's own operator can notice it has drifted. The age is therefore shown always, it
+// re-renders on its own clock rather than waiting for the next poll, and when the server marks
+// the rate stale the strip says so rather than dressing an old number as a current one.
 //
 // THREE STATES, and the third is the one that matters. No rate at all is not "loading" and it
 // is not a blank - it is the shop telling you it cannot price anything right now, in the same
@@ -57,8 +57,8 @@ export default function RateTicker(): ReactNode {
                 <p className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2.5 text-caption sm:px-5">
                     <TriangleAlert className="size-4 shrink-0 text-gold" aria-hidden="true" />
                     <span>
-                        قیمت لحظه‌ای تتر در دسترس نیست، برای همین خرید موقتاً ممکن نیست. چند دقیقه
-                        دیگر دوباره سر بزنید.
+                        قیمت تتر هنوز تنظیم نشده، برای همین خرید موقتاً ممکن نیست. کمی بعد دوباره سر
+                        بزنید.
                     </span>
                 </p>
             </div>
@@ -81,7 +81,7 @@ export default function RateTicker(): ReactNode {
                     ) : (
                         <TrendingUp className="size-4 shrink-0 text-firouze" aria-hidden="true" />
                     )}
-                    قیمت لحظه‌ای تتر
+                    قیمت تتر
                 </span>
 
                 <span className="font-bold">{toman(rate.toman)} تومان</span>
@@ -93,7 +93,7 @@ export default function RateTicker(): ReactNode {
 
                 {stale && (
                     <span className="text-gold">
-                        این نرخ تازه به‌روز نشده است. قیمت کارت‌ها ممکن است تغییر کند.
+                        این نرخ مدتی است به‌روز نشده است. قیمت کارت‌ها ممکن است تغییر کند.
                     </span>
                 )}
 

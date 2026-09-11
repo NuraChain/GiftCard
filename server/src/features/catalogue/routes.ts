@@ -4,8 +4,8 @@
 //
 // The price on the way out is COMPUTED, never stored: same rate, same margin, same function
 // as the shop uses (domain/pricing.ts), so what the console previews is what a buyer is
-// charged. A null price here means the same thing it means on the storefront - no two
-// exchanges agree, so nothing can be priced.
+// charged. A null price here means the same thing it means on the storefront - no tether rate
+// has been set, so nothing can be priced.
 import type { Logger } from '../../platform/logging.ts';
 
 import type { Handlers } from '../../platform/api.ts';
@@ -32,7 +32,8 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers 
     const { store, rate, settings, log } = options;
 
     /**
-     * Every tier with today's price against it. Read fresh per call - the rate moves.
+     * Every tier with today's price against it. Read fresh per call - the console can
+     * change the rate or the margin between two of them.
      *
      * The row is written out field by field rather than spread: this is a WIRE shape, and a
      * spread would silently publish whatever column the tier table grows next.

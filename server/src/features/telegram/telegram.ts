@@ -32,6 +32,20 @@ export interface TelegramSettings {
 
 export type TelegramResult = { ok: true } | { ok: false; reason: string };
 
+/** One message the bot was sent, reduced to the three things a command needs. */
+export interface TelegramUpdate {
+    /** Telegram's own sequence number. The next poll asks for everything after it. */
+    updateId: number;
+
+    /** The chat it arrived in, as a string. Compared against the configured one - see below. */
+    chatId: string;
+
+    /** `@name` of the chat, when it has one. A channel is configured by name, not by id. */
+    chatUsername: string;
+
+    text: string;
+}
+
 /** What the app depends on - two methods, so a test can hand it a spy. */
 export interface Telegram {
     /** True when a token and a chat are configured. Nothing is attempted otherwise. */
@@ -40,6 +54,18 @@ export interface Telegram {
     sendMessage(text: string): Promise<TelegramResult>;
 
     sendDocument(filename: string, bytes: Uint8Array, caption: string): Promise<TelegramResult>;
+
+    /**
+     * LONG-POLLS for messages sent TO the bot, for however many seconds are asked for.
+     *
+     * Returns an empty list for every failure - not configured, unreachable, a body that will
+     * not parse - because the only caller is a loop that must keep going regardless.
+     *
+     * ONE CONSUMER PER BOT, and Telegram enforces it: a second poller, or a webhook registered
+     * against the same token, makes this fail with a 409 and the two steal each other's
+     * messages. Run one of these.
+     */
+    receive(offset: number, seconds: number): Promise<TelegramUpdate[]>;
 }
 
 export interface TelegramOptions {
@@ -49,6 +75,15 @@ export interface TelegramOptions {
     /** A backup upload is slower than a message, so the two get different budgets. */
     timeoutMs?: number;
     uploadTimeoutMs?: number;
+}
+
+/** @internal What Telegram puts on the wire, as much of it as `receive` reads. */
+interface RawUpdate {
+    update_id?: unknown;
+    message?: {
+        text?: unknown;
+        chat?: { id?: unknown; username?: unknown };
+    };
 }
 
 function ready(live: TelegramSettings): boolean {
@@ -126,6 +161,65 @@ export function createTelegram(options: TelegramOptions): Telegram {
             // No content-type header: fetch sets it, WITH the multipart boundary. Setting it
             // by hand omits the boundary and the upload is rejected as malformed.
             return send('sendDocument', form, {}, uploadTimeoutMs);
+        },
+
+        async receive(offset, seconds): Promise<TelegramUpdate[]> {
+            const live = options.settings();
+            if (!ready(live)) {
+                return [];
+            }
+            try {
+                const response = await call(`${live.baseUrl}/bot${live.botToken}/getUpdates`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        offset,
+                        timeout: seconds,
+                        // Only messages. Without this the bot is also handed edits, reactions
+                        // and join events, every one of which would have to be skipped here.
+                        allowed_updates: ['message']
+                    }),
+                    // The HTTP request is held open for the whole poll, so the budget has to
+                    // outlast it. A timeout equal to the poll would abort every quiet cycle.
+                    signal: AbortSignal.timeout(seconds * 1000 + timeoutMs)
+                });
+                const answer = (await response.json()) as { ok?: boolean; result?: unknown };
+                if (answer.ok !== true || !Array.isArray(answer.result)) {
+                    return [];
+                }
+                return (answer.result as RawUpdate[]).flatMap(readUpdate);
+            } catch {
+                // A timeout, a dropped connection, a body that is not JSON: all the same thing
+                // to the loop upstairs - nothing arrived this cycle.
+                return [];
+            }
         }
     };
+}
+
+/**
+ * @internal One update, if it is a text message. Everything here is UNTRUSTED: it is written by
+ * whoever messaged the bot, which is anybody who can find it. Nothing is assumed to be present
+ * or to be the type it should be, and an update that is not a plain text message is dropped
+ * rather than half-read.
+ */
+function readUpdate(raw: RawUpdate): TelegramUpdate[] {
+    const id = raw.update_id;
+    const text = raw.message?.text;
+    const chatId = raw.message?.chat?.id;
+    if (typeof id !== 'number' || typeof text !== 'string') {
+        return [];
+    }
+    if (typeof chatId !== 'number' && typeof chatId !== 'string') {
+        return [];
+    }
+    const username = raw.message?.chat?.username;
+    return [
+        {
+            updateId: id,
+            chatId: String(chatId),
+            chatUsername: typeof username === 'string' ? `@${username}` : '',
+            text
+        }
+    ];
 }

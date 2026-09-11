@@ -55,7 +55,7 @@ export const payStartOutput = z.object({ payUrl: z.string() });
 
 /**
  * The live shop. Two things here cannot be baked into a built page: the Toman price (the
- * operator moves it with the exchange rate) and the availability (it is whatever is left in
+ * operator moves it with the tether rate) and the availability (it is whatever is left in
  * the code inventory this second).
  */
 export const catalog = z.object({
@@ -63,8 +63,8 @@ export const catalog = z.object({
     appName: z.string(),
 
     /**
-     * The live tether rate every price below was computed from, or NULL when no two exchanges
-     * agree and the shop cannot price anything.
+     * The tether rate every price below was computed from, or NULL when none has been set
+     * and the shop cannot price anything.
      *
      * It ships WITH the prices rather than on its own route so the page can never show a rate
      * from one moment beside a price from another - the reader can do that multiplication in

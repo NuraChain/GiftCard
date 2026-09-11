@@ -34,11 +34,11 @@ export function moment(iso: string): string {
  * How long ago something happened, in words: «همین حالا», «۳ دقیقه پیش».
  *
  * Used by the tether ticker, where the AGE of the number is as much of the message as the
- * number itself - a rate is only worth reading if you know it is current, and «۱۴:۰۲» makes
- * the reader do that subtraction themselves.
+ * number itself - a rate is only worth reading if you know how current it is, and «۱۴:۰۲»
+ * makes the reader do that subtraction themselves.
  *
- * The buckets stop at days because nothing this is used for survives that long: a rate older
- * than fifteen minutes has already stopped being sellable (server: features/rate/rate.ts).
+ * The hour and day buckets earn their place: the rate is set by hand now, so an age of «۲ روز
+ * پیش» is a real thing a reader can meet (server: features/rate/rate.ts).
  */
 export function ago(iso: string): string {
     const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);

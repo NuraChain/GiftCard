@@ -19,6 +19,18 @@
 export const PRICE_STEP_TOMAN = 1_000;
 
 /**
+ * The band a hand-typed tether rate has to land in.
+ *
+ * It is a FAT-FINGER GUARD, not a valuation. One tether has cost between roughly five
+ * thousand and two hundred thousand Toman across this shop's lifetime, and the band below is
+ * wide enough to survive a decade of that without an edit - it exists to catch the extra
+ * zero, the missing one, and the empty box, because the rate multiplies every card at once
+ * and there is no second source left to disagree with it.
+ */
+export const MIN_TETHER_TOMAN = 1_000;
+export const MAX_TETHER_TOMAN = 100_000_000;
+
+/**
  * What one card sells for, in Toman.
  *
  * Rounds UP, always. The alternatives both have a bad day: rounding down means every sale

@@ -1,6 +1,6 @@
 // The catalogue editor: what the shop sells. NOT at what price.
 //
-// THERE IS NO PRICE FIELD HERE ANY MORE. A card costs its dollar figure times the live tether
+// THERE IS NO PRICE FIELD HERE ANY MORE. A card costs its dollar figure times the tether
 // rate times one shop-wide margin, so the only two things an operator sets are the
 // denomination (below) and the margin (the pricing panel underneath this one). The Toman
 // figure beside each card is a PREVIEW of that arithmetic, computed by the server on the way
@@ -126,8 +126,8 @@ export default function TierSettings(): ReactNode {
                 </Button>
             </div>
             <p className="mt-2 text-small text-muted">
-                مبلغ دلاری نام کارت است؛ قیمت تومانی از نرخ لحظه‌ای تتر حساب می‌شود و اینجا فقط نمایش
-                داده می‌شود. کارتی که غیرفعال شود از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
+                مبلغ دلاری نام کارت است؛ قیمت تومانی از نرخ تتر حساب می‌شود و اینجا فقط نمایش داده
+                می‌شود. کارتی که غیرفعال شود از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
             </p>
 
             <div className="mt-4">
@@ -220,7 +220,7 @@ export default function TierSettings(): ReactNode {
                         label="مبلغ دلاری"
                         htmlFor="tier-amount"
                         className="mt-4"
-                        hint="قیمت تومانی از این عدد و نرخ لحظه‌ای تتر حساب می‌شود."
+                        hint="قیمت تومانی از این عدد و نرخ تتر حساب می‌شود."
                     >
                         <TextInput
                             id="tier-amount"

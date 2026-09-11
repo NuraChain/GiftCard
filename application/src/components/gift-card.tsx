@@ -14,14 +14,14 @@
 // operator a round trip to catch the same mistake.
 //
 // THE PRICE IS NOW A MOVING TARGET, and this file is where that is made safe for the buyer.
-// Card prices are derived from the live tether rate, so the figure on screen has a shelf
+// Card prices are derived from the tether rate the console set, so the figure on screen has a shelf
 // life. Pressing «ادامه» PINS the number the buyer agreed to, and that pinned number is sent
 // with the purchase. The server recomputes the price from its own rate and refuses if the two
 // disagree - so a rate that moves mid-purchase produces a re-quote the buyer has to accept,
 // never a silent charge for a different sum. The pinned figure is a promise about what was
 // displayed; it is never the amount, and the server treats it as an assertion to check.
 //
-// A CARD WITH NO PRICE IS NOT A CARD WITH A ZERO. When no two exchanges agree the server
+// A CARD WITH NO PRICE IS NOT A CARD WITH A ZERO. When no tether rate is set the server
 // sends a null and this refuses to be bought, in the same words the ticker uses. Inventing a
 // last-known price here would defeat the entire point of the server refusing a stale one.
 //
@@ -133,7 +133,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
             </p>
 
             <p className="mt-1 min-h-5 text-small text-muted">
-                {price === null ? 'قیمت لحظه‌ای در دسترس نیست' : `${toman(price)} تومان`}
+                {price === null ? 'فعلاً در دسترس نیست' : `${toman(price)} تومان`}
             </p>
 
             <p className="mt-3 text-small text-muted">{tier.blurb}</p>

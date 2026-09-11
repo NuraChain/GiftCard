@@ -8,6 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inflateRawSync } from 'node:zlib';
 
 import { createStore } from '../src/db/index.ts';
 import { createBackupJob, createSaleNotifier, type Sale } from '../src/features/telegram/notify.ts';
@@ -50,6 +51,7 @@ function spyBot(): Telegram & { sent: string[] } {
     return {
         sent,
         configured: () => true,
+        receive: () => Promise.resolve([]),
         sendMessage: (text) => {
             sent.push(text);
             return Promise.resolve({ ok: true });
@@ -164,16 +166,19 @@ describe('the sale notification', () => {
 });
 
 describe('the hourly backup', () => {
-    it('sends a snapshot that is a restorable database, then deletes it', async () => {
+    it('sends a ZIP whose contents are a restorable database, then deletes it', async () => {
         const dir = await scratch();
         const store = createStore(':memory:');
         store.addCodes(10, [crypto.randomUUID()]);
 
         let uploaded: Uint8Array | null = null;
+        let uploadedName = '';
         const bot: Telegram = {
             configured: () => true,
+            receive: () => Promise.resolve([]),
             sendMessage: () => Promise.resolve({ ok: true }),
-            sendDocument: (_name, bytes) => {
+            sendDocument: (name, bytes) => {
+                uploadedName = name;
                 uploaded = bytes;
                 return Promise.resolve({ ok: true });
             }
@@ -189,10 +194,24 @@ describe('the hourly backup', () => {
         expect(result).toEqual({ ok: true });
         expect(uploaded).not.toBeNull();
 
-        // THE CLAIM WORTH MAKING: what was uploaded opens as a database and has the row in
-        // it. A backup that cannot be restored is not a backup.
+        // The chat shows a .zip; the file an operator extracts from it is a .db, so SQLite
+        // opens it by its own extension without anybody renaming anything.
+        expect(uploadedName).toMatch(/^guardian-service-.+\.zip$/);
+
+        // THE CLAIM WORTH MAKING: what was uploaded UNZIPS to a database with the row in it.
+        // A backup that cannot be restored is not a backup, and now there is a container
+        // between the upload and the database that could get that wrong.
+        const archive = Buffer.from(uploaded as unknown as Uint8Array);
+        const nameLength = archive.readUInt16LE(26);
+        const entryName = archive.subarray(30, 30 + nameLength).toString('utf8');
+        expect(entryName).toMatch(/^guardian-service-.+\.db$/);
+
+        const start = 30 + nameLength + archive.readUInt16LE(28);
+        const payload = archive.subarray(start, start + archive.readUInt32LE(18));
+        const snapshot = archive.readUInt16LE(8) === 8 ? inflateRawSync(payload) : payload;
+
         const restoredPath = join(dir, 'restored.db');
-        await writeFile(restoredPath, uploaded as unknown as Uint8Array);
+        await writeFile(restoredPath, snapshot);
         const restored = new DatabaseSync(restoredPath);
         const count = restored.prepare('SELECT COUNT(*) AS n FROM codes').get() as { n: number };
         expect(count.n).toBe(1);
@@ -211,6 +230,7 @@ describe('the hourly backup', () => {
         const store = createStore(':memory:');
         const bot: Telegram = {
             configured: () => false,
+            receive: () => Promise.resolve([]),
             sendMessage: () => Promise.resolve({ ok: true }),
             sendDocument: () => Promise.resolve({ ok: true })
         };

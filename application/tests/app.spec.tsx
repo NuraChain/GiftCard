@@ -282,11 +282,11 @@ describe('buying from a card', () => {
 });
 
 describe('the tether ticker', () => {
-    it('shows the live rate the prices were computed from', async () => {
+    it('shows the rate the prices were computed from', async () => {
         render(<App url="/" />);
 
         // The rate is the working behind every price on the page, so it is on the page.
-        await screen.findByText(/قیمت لحظه‌ای تتر/);
+        await screen.findByText(/قیمت تتر/);
         expect(document.body.textContent).toContain('۱۰۰٬۰۰۰');
     });
 
@@ -305,7 +305,7 @@ describe('the tether ticker', () => {
 
         // No last-known number, no zero, no blank: the shop says it cannot price anything,
         // and the card refuses to be bought instead of offering a figure nobody stands behind.
-        await screen.findByText(/قیمت لحظه‌ای تتر در دسترس نیست/);
+        await screen.findByText(/قیمت تتر هنوز تنظیم نشده/);
         const button = await screen.findByText('قیمت در دسترس نیست');
         expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
         expect(document.body.textContent).not.toContain('۱٬۰۶۰٬۰۰۰');

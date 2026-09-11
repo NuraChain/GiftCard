@@ -1,14 +1,17 @@
 // The environment, read ONCE into a typed object - one boot error names every problem.
 //
 // WHAT IS AND IS NOT HERE. This file holds only what the DATABASE CANNOT hold: where the
-// process listens, where its files are, how it is fronted, and the one key that unlocks
-// everything else.
+// process listens, where its file is, and how it is fronted. Four values.
 //
-// The gateway and mail credentials are NOT here. They live in the console, in one place. Two
-// places to set one value is a trap: the database wins, so changing the environment copy
-// appears to do nothing. And nobody can run this shop without opening the console regardless
-// - gift codes only enter through it - so a second way to configure the gateway bought
-// nothing.
+// EVERYTHING ELSE MOVED TO THE CONSOLE, including the two that used to be here. The public
+// origin is a field beside the merchant id now, because it is the same kind of fact and
+// because an operator who has stranded their buyers at the gateway needs to fix it at that
+// moment rather than on the next deploy. The console credential went too: there is a shipped
+// default (features/settings/settings.ts) and the database holds whatever replaces it.
+//
+// Two places to set one value is a trap: the database wins, so changing the environment copy
+// appears to do nothing. Nobody can run this shop without opening the console regardless -
+// gift codes only enter through it - so a second way to configure any of it bought nothing.
 //
 // WHAT LEFT WHEN NGINX ARRIVED. `CLIENT_DIR` and `SSR_ENTRY` are gone: this process serves
 // JSON and nothing else. nginx serves the built client and terminates TLS. What arrived in
@@ -25,13 +28,6 @@ try {
 export const config = loadConfig({
     port: num('PORT', { default: 4201 }),
     env: oneOf('NODE_ENV', ['development', 'production', 'test'], { default: 'development' }),
-
-    /**
-     * Where the BUYER'S BROWSER reaches this site - the public origin nginx answers on, not
-     * this process's own address. Zarinpal sends the buyer back here, so a wrong value
-     * silently strands every payment at the gateway.
-     */
-    publicBaseUrl: str('PUBLIC_BASE_URL', { default: 'http://localhost:4200' }),
 
     // --- Being behind a proxy ---
 
@@ -51,20 +47,13 @@ export const config = loadConfig({
      */
     cookieSecure: bool('COOKIE_SECURE', { default: process.env.NODE_ENV === 'production' }),
 
-    // --- Storage and the console ---
+    // --- Storage ---
 
     /**
      * The gift codes, the order ledger, the catalogue and the settings. One SQLite file;
      * back it up like money, because unsold codes in it ARE money.
      */
-    databaseFile: str('DATABASE_FILE', { default: 'data/guardian-service.db' }),
-
-    /**
-     * OPTIONAL override for the console credential. Leave it unset and the first boot mints
-     * one and prints it - no default is shipped, because a default in a public repository is
-     * a published credential. Set it when a deployment pipeline needs to fix the key itself.
-     */
-    adminKey: str('ADMIN_KEY', { default: '', secret: true })
+    databaseFile: str('DATABASE_FILE', { default: 'data/guardian-service.db' })
 });
 
 export const isProduction = config.env === 'production';

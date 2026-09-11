@@ -27,8 +27,8 @@ export interface PayOptions {
     settings: Settings;
 
     /**
-     * The live tether rate. Every price in this file comes from it, and a null from
-     * `current()` closes the shop - see features/rate/rate.ts for why that is the right
+     * The tether rate the console set. Every price in this file comes from it, and a null
+     * from `current()` closes the shop - see features/rate/rate.ts for why that is the right
      * outcome rather than a fallback number.
      */
     rate: TetherRate;
@@ -36,8 +36,8 @@ export interface PayOptions {
     payment: PaymentGateway;
     checkout: Checkout;
 
-    /** The absolute URL the gateway returns the buyer to. */
-    callbackUrl: string;
+    /** The absolute URL the gateway returns the buyer to. Read PER PAYMENT - see app.ts. */
+    callbackUrl: () => string;
 
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath: string;
@@ -99,8 +99,8 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // operator has withdrawn from sale.
             const stock = new Map(store.stock().map((line) => [line.amount, line.available]));
 
-            // ONE rate for the whole response. Reading it per tier would let a refresh land
-            // mid-map and price three cards off two different rates.
+            // ONE rate for the whole response. Reading it per tier would let a save from
+            // the console land mid-map and price three cards off two different rates.
             const live = rate.current();
             const margin = settings.current().marginPercent;
 
@@ -140,21 +140,21 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 throw new ConflictError('این کارت برای فروش نیست');
             }
 
-            // No agreed rate, no price, no sale. There is deliberately no fallback: the
+            // No rate, no price, no sale. There is deliberately no fallback: the
             // alternative to refusing here is charging a number nobody can justify.
             const live = rate.current();
             if (live === null) {
                 throw new HttpError(
                     503,
-                    'قیمت لحظه‌ای تتر در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.',
+                    'قیمت تتر هنوز تنظیم نشده و خرید موقتاً ممکن نیست. کمی بعد دوباره تلاش کنید.',
                     { code: 'rate-unavailable', retryAfter: 60 }
                 );
             }
 
-            // RULE 2, AND THE REASON `quotedToman` EXISTS. The price is computed here, from
-            // our rate and our margin - the request's number is never the amount. It is only
-            // compared against, so that a buyer who was shown one figure can never be charged
-            // another: if the tether moved while they were typing, this refuses and the card
+            // THE REASON `quotedToman` EXISTS. The price is computed here, from our rate
+            // and our margin - the request's number is never the amount. It is only compared
+            // against, so that a buyer who was shown one figure can never be charged another:
+            // if the console moved the rate while they were typing, this refuses and the card
             // re-quotes rather than quietly taking the difference.
             const price = tomanPrice(tier.amount, live.toman, settings.current().marginPercent);
             if (input.quotedToman !== price) {
@@ -182,7 +182,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             const opened = await payment.request({
                 tomanAmount: order.toman,
                 description: `خرید گیفت کارت ${settings.current().appName} ${input.amount} دلاری`,
-                callbackUrl,
+                callbackUrl: callbackUrl(),
                 email
             });
 

@@ -4,12 +4,19 @@
 // NEITHER MAY EVER BREAK A PURCHASE. That is the rule both halves are built around. The
 // notification is fire-and-forget - `sold()` returns void, on purpose, so no caller can
 // accidentally await it and put a chat server on the path between a buyer and their code. The
-// backup runs on its own timer and touches nothing the shop is using.
+// backup runs on its own timer, touches nothing the shop is using, and compresses off the
+// event loop (platform/zip.ts) so a checkout in flight never waits on it.
+//
+// THE BACKUP IS SENT AS A ZIP. A SQLite file is mostly page padding and repeated text, so it
+// deflates to a small fraction of itself - which pushes the 50MB ceiling Telegram puts on a
+// bot upload much further away, costs less of somebody's data allowance to pull down on a
+// phone, and arrives as one file every operating system can open without a tool.
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { Logger } from '../../platform/logging.ts';
+import { zipOne } from '../../platform/zip.ts';
 import type { Store } from '../../db/types.ts';
 import type { Telegram, TelegramResult } from './telegram.ts';
 
@@ -20,6 +27,9 @@ export const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
  * Telegram refuses a bot upload over 50MB. This shop's database is codes and orders - text -
  * so passing it would take a very long time and a great many sales, but a backup that fails
  * silently at 3am is exactly the kind of thing nobody notices until they need the backup.
+ *
+ * MEASURED AGAINST THE ZIP, not the database, because the zip is what is actually uploaded. A
+ * SQLite file that deflates ten to one reaches this ceiling ten times later than it used to.
  */
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -140,6 +150,7 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
         // still sort correctly, which is what an operator scrolling a year of these needs.
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
         const name = `guardian-service-${stamp}.db`;
+        const archive = `guardian-service-${stamp}.zip`;
         const path = join(options.scratchDir ?? tmpdir(), name);
 
         try {
@@ -149,23 +160,32 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
             options.store.backupTo(path);
 
             const bytes = await readFile(path);
-            if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+
+            // Compressed BEFORE the size is judged: the ceiling belongs to the upload, and the
+            // upload is the zip. The .db name is kept for the entry INSIDE the archive, so an
+            // operator who extracts it gets a file SQLite opens by its own extension.
+            const zipped = await zipOne(name, bytes);
+            if (zipped.byteLength > MAX_UPLOAD_BYTES) {
                 return {
                     ok: false,
-                    reason: `backup is ${bytes.byteLength} bytes, too large to send`
+                    reason: `backup is ${zipped.byteLength} bytes compressed, too large to send`
                 };
             }
 
             const caption =
                 `پشتیبان‌گیری ${options.appName()}\n` +
                 `${new Date().toISOString()}\n` +
-                `${Math.round(bytes.byteLength / 1024)} کیلوبایت`;
+                `${Math.round(zipped.byteLength / 1024)} کیلوبایت ` +
+                `(فشرده از ${Math.round(bytes.byteLength / 1024)} کیلوبایت)`;
 
-            const sent = await options.telegram.sendDocument(name, bytes, caption);
+            const sent = await options.telegram.sendDocument(archive, zipped, caption);
             if (!sent.ok) {
                 options.log?.error({ reason: sent.reason }, 'database backup not sent');
             } else {
-                options.log?.info({ bytes: bytes.byteLength }, 'database backup sent');
+                options.log?.info(
+                    { bytes: zipped.byteLength, rawBytes: bytes.byteLength },
+                    'database backup sent'
+                );
             }
             return sent;
         } catch (error) {

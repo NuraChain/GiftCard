@@ -16,7 +16,10 @@ export interface SettingsOptions {
     settings: Settings;
     admin: Admin;
     mailer: MailSender;
-    callbackUrl: string;
+
+    /** Derived from the public origin the console holds - see app.ts. */
+    callbackUrl: () => string;
+
     log?: Logger;
 }
 
@@ -31,7 +34,7 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
 
     return {
         // GET /api/admin/settings
-        settings: () => settings.view(callbackUrl),
+        settings: () => settings.view(callbackUrl()),
 
         // POST /api/admin/settings
         saveSettings: ({ input }) => {
@@ -40,7 +43,7 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             // secret input wiping a working credential.
             settings.save(input);
             log?.warn({ fields: Object.keys(input) }, 'runtime settings changed');
-            return settings.view(callbackUrl);
+            return settings.view(callbackUrl());
         },
 
         // GET /api/admin/settings/log

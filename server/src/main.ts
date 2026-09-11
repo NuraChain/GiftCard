@@ -22,12 +22,12 @@ import { buildApp } from './app.ts';
 import { config } from './config.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
-import { nobitexSource, wallexSource } from './features/rate/sources.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
 import { createBackupJob, createSaleNotifier } from './features/telegram/notify.ts';
+import { createCommandBot } from './features/telegram/commands.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
-import { createSettings } from './features/settings/settings.ts';
+import { createSettings, DEFAULT_ADMIN_KEY } from './features/settings/settings.ts';
 import { createMailer } from './features/checkout/mailer.ts';
 import { createStore } from './db/index.ts';
 
@@ -90,18 +90,19 @@ if (store.isCatalogueEmpty()) {
     log.info({ tiers: 3 }, 'catalogue seeded');
 }
 
-const settings = createSettings({ store, adminKey: config.adminKey });
+const settings = createSettings({ store });
 
-// A fresh install has no way in until a credential exists. Rather than ship a default - which
-// in a public repository is a published credential - one is MINTED here and printed once.
-// Only its hash is stored, so this is the only moment it can be read.
-const mintedKey = settings.ensureAdminKey();
-if (mintedKey !== null) {
+// THE SHIPPED DEFAULT IS A PUBLISHED CREDENTIAL. It is written down in this repository, so a
+// shop reachable from the internet that still answers to it is open to anybody who has read
+// that file. This is the loudest this process can be about it; the console says the same thing
+// on screen, and the warning stops the moment a real key is set.
+if (!settings.adminKeyRotated()) {
     process.stdout.write(
-        `\n  Console credential for this installation (shown once):\n\n      ${mintedKey}\n\n` +
-            '  Sign in at /admin, then rotate it from the settings tab.\n' +
-            '  It is stored as a hash - nobody, including this server, can print it again.\n\n'
+        `\n  This installation still uses the DEFAULT console key:\n\n      ${DEFAULT_ADMIN_KEY}\n\n` +
+            '  Sign in at /admin and change it from the settings tab before going live.\n' +
+            '  Until then, anyone who can reach this site can open the console.\n\n'
     );
+    log.warn('console is using the default admin key - change it from the settings tab');
 }
 
 const live = settings.current();
@@ -117,24 +118,22 @@ if (live.merchantId === '') {
     );
 }
 
-// The tether rate: two exchanges, cross-checked, refreshed on a timer. The hosts are read
-// PER CALL from settings so repointing one in the console takes effect without a restart.
+// The tether rate: one number from the console, read PER CALL so a rate saved in the panel
+// prices the very next request. There is nothing to refresh and no timer to stop - which is
+// the whole point of moving it out of the exchanges and into settings.
 const rate = createTetherRate({
-    sources: [
-        nobitexSource({ baseUrl: () => settings.current().nobitexBase }),
-        wallexSource({ baseUrl: () => settings.current().wallexBase })
-    ],
-    log
+    settings: () => {
+        const now = settings.current();
+        return { tetherToman: now.tetherToman, tetherSetAt: now.tetherSetAt };
+    }
 });
 
-// One reading BEFORE the port opens. Without it the first buyers of every deploy meet a shop
-// that cannot price anything for the first minute, which looks exactly like a broken site.
-await rate.refresh();
-const stopRate = rate.start();
 if (!rate.status().selling) {
-    log.error(
+    // A fresh install boots here: nothing is sellable until somebody sets a rate, which is
+    // the correct state rather than an error - it just has to be findable in the log.
+    log.warn(
         { reason: rate.status().reason },
-        'no agreed tether rate - the shop will not sell until two exchanges agree'
+        'no tether rate - the shop will not sell until one is set in the console'
     );
 }
 
@@ -165,8 +164,16 @@ const backup = createBackupJob({
 // The hourly schedule starts whether or not a token is set: a bot configured at noon should
 // start backing up at one, not at the next restart. An unconfigured run is a cheap no-op.
 const stopBackups = backup.start();
+
+// The command side: /setprice and friends, so the shop can be repriced from a phone. It polls
+// rather than taking a webhook, which means no public URL to register and nothing to undo if
+// the token changes - but it also means ONE of these per bot. See features/telegram/commands.ts.
+const stopCommands = createCommandBot({ telegram, settings, rate, store, backup, log }).start();
+
 if (!telegram.configured()) {
-    log.warn('telegram is OFF - no sale notifications and no off-machine database backups');
+    log.warn(
+        'telegram is OFF - no sale notifications, no off-machine backups, and no bot commands'
+    );
 }
 
 const app = buildApp({
@@ -200,7 +207,6 @@ const app = buildApp({
         matches: (candidate) => settings.matchesAdminKey(candidate),
         secureCookie: config.cookieSecure
     }),
-    callbackUrl: `${config.publicBaseUrl}/api/pay/callback`,
     trustProxyHops: config.trustProxyHops,
     log
 });
@@ -212,8 +218,8 @@ app.addHook('onRequest', rateLimit(200, 60_000));
 // The database closes AFTER in-flight requests drain: a settle mid-flight is money.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-        stopRate();
         stopBackups();
+        stopCommands();
         void app.close().then(() => {
             store.close();
             process.exit(0);

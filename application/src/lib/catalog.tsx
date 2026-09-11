@@ -66,7 +66,7 @@ export interface CatalogStore {
     tiers: CatalogTier[];
     appName: string;
 
-    /** The live tether rate the prices came from, or null when the shop cannot price. */
+    /** The tether rate the prices came from, or null when the shop cannot price. */
     rate: TetherRateView | null;
 
     loading: boolean;

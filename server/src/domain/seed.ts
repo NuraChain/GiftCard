@@ -12,7 +12,7 @@ import type { TierInput } from '../db/index.ts';
 /**
  * The three denominations the shop opens with, in display order.
  *
- * NO PRICES. There is nothing to seed: a card costs its dollar figure times the live tether
+ * NO PRICES. There is nothing to seed: a card costs its dollar figure times the tether
  * rate times the shop's margin, so the only price-shaped decision on a fresh install is that
  * margin, and it has its own default in the settings module. What is seeded here is the part
  * a rate cannot supply - which denominations exist and what each one says about itself.

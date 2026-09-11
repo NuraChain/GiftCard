@@ -13,7 +13,7 @@ import { amountField, amountQueryField } from '../../contract/shared.ts';
  * catalogue is editable: a denomination added this afternoon needs its own words.
  *
  * THERE IS NO PRICE FIELD, and its absence is the feature. A card's price is its dollar
- * figure times the live tether rate times one shop-wide margin (domain/pricing.ts), so a
+ * figure times the tether rate times one shop-wide margin (domain/pricing.ts), so a
  * per-card Toman figure would be a second answer to a question that already has one - and
  * the two would disagree the moment the rate moved. The margin is in the settings tab; the
  * dollar figure is right here; nothing else is a price.

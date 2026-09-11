@@ -5,7 +5,7 @@
 // explains what someone paid.
 //
 // THE `toman` COLUMN IS DEAD and this file is where it is buried. Prices are derived from the
-// live tether rate now, so no per-card Toman figure is read from or written to this table -
+// tether rate now, so no per-card Toman figure is read from or written to this table -
 // every insert parks a zero in the column. It is still in the schema because
 // `CREATE TABLE IF NOT EXISTS` cannot drop a column from a database that already exists, and
 // the shops already trading have real numbers in it. It goes when schema.ts grows a

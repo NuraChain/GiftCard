@@ -22,11 +22,16 @@ import { tomanPrice } from '../src/domain/pricing.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
 import type { BackupJob, Sale, SaleNotifier } from '../src/features/telegram/notify.ts';
 import type { Telegram } from '../src/features/telegram/telegram.ts';
-import { createSettings, type Settings } from '../src/features/settings/settings.ts';
+import {
+    createSettings,
+    DEFAULT_ADMIN_KEY,
+    type Settings
+} from '../src/features/settings/settings.ts';
 import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
 import { createStore, type Store } from '../src/db/index.ts';
 
-const ADMIN_KEY = 'ABCD-EFGH-JKLM-NPQR';
+/** The shipped default. A fresh database answers to this and nothing else. */
+const ADMIN_KEY = DEFAULT_ADMIN_KEY;
 
 /** The tether rate every price in this suite derives from. Round, so the sums stay readable. */
 const RATE_TOMAN = 100_000;
@@ -50,9 +55,9 @@ const PRICES = {
 /**
  * A tether rate under the test's control.
  *
- * The real one cross-checks two exchanges on a timer; this answers whatever was last set,
- * including NOTHING - which is how the shop-closed paths are reached without waiting out a
- * fifteen-minute grace window.
+ * The real one reads a number the console stored; this answers whatever was last set,
+ * including NOTHING - which is how the shop-closed paths are reached without going through
+ * the settings table to get there.
  */
 interface FakeRate extends TetherRate {
     set(snapshot: RateSnapshot | null): void;
@@ -73,12 +78,8 @@ function fakeRate(): FakeRate {
             rate: snapshot,
             selling: snapshot !== null,
             reason: snapshot === null ? 'no rate' : '',
-            ageSeconds: snapshot === null ? null : 0,
-            readings: [],
-            spreadPercent: null
-        }),
-        refresh: () => Promise.resolve(),
-        start: () => (): void => {}
+            ageSeconds: snapshot === null ? null : 0
+        })
     };
 }
 
@@ -102,6 +103,9 @@ interface Fakes {
 
     /** Every description the gateway was asked to show the buyer. */
     descriptions: string[];
+
+    /** Every callback URL the gateway was handed - where the buyer comes back to. */
+    callbacks: string[];
 
     opened: number;
     mailer: MailSender;
@@ -130,12 +134,14 @@ function fakes(): Fakes {
         backupsRun: 0,
         requestOverride: null,
         descriptions: [],
+        callbacks: [],
         opened: 0,
         verifyResult: { ok: true, refId: 987654, alreadyVerified: false },
         mailResult: { ok: true },
         payment: {
             request: (input) => {
                 state.descriptions.push(input.description);
+                state.callbacks.push(input.callbackUrl);
                 if (state.requestOverride !== null) {
                     return Promise.resolve(state.requestOverride);
                 }
@@ -168,6 +174,7 @@ function fakes(): Fakes {
         },
         telegram: {
             configured: () => state.telegramConfigured,
+            receive: () => Promise.resolve([]),
             sendMessage: (text) => {
                 state.telegramSent.push(text);
                 return Promise.resolve({ ok: true });
@@ -200,7 +207,7 @@ beforeEach(() => {
     for (const tier of seedTiers()) {
         store.saveTier(tier);
     }
-    settings = createSettings({ store, adminKey: ADMIN_KEY });
+    settings = createSettings({ store });
     app = buildApp({
         store,
         settings,
@@ -213,8 +220,7 @@ beforeEach(() => {
         admin: createAdmin({
             matches: (candidate) => settings.matchesAdminKey(candidate),
             secureCookie: false
-        }),
-        callbackUrl: 'http://local/api/pay/callback'
+        })
     });
 });
 
@@ -1117,29 +1123,34 @@ describe('runtime settings', () => {
         expect(log).not.toContain('aaaaaaaa-bbbb-cccc-dddd-eeee00007777');
     });
 
-    it('mints a console credential on a fresh install rather than shipping a default', () => {
-        // A default in a public repository is a published credential. A fresh database with
-        // no ADMIN_KEY set gets one minted, in the published shape, and only its hash stored.
+    it('opens a fresh install with the shipped default key and says so', () => {
         const bare = createStore(':memory:');
-        const fresh = createSettings({ store: bare, adminKey: '' });
+        const fresh = createSettings({ store: bare });
 
-        const minted = fresh.ensureAdminKey();
-        expect(minted).toMatch(
-            /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/
-        );
-        expect(fresh.matchesAdminKey(minted ?? '')).toBe(true);
-        expect(bare.getSetting('adminKeyHash') ?? '').not.toContain(minted ?? 'x');
+        expect(fresh.matchesAdminKey(DEFAULT_ADMIN_KEY)).toBe(true);
+        expect(fresh.matchesAdminKey('SOME-OTHE-RKEY-HERE')).toBe(false);
 
-        // It happens ONCE: a restart must not silently replace a working credential.
-        expect(fresh.ensureAdminKey()).toBeNull();
+        // Nothing is stored until somebody changes it, and that is what the boot warning and
+        // the console banner both read.
+        expect(fresh.adminKeyRotated()).toBe(false);
+        expect(bare.getSetting('adminKeyHash')).toBeUndefined();
         bare.close();
     });
 
-    it('does not mint over an environment key', () => {
+    it('stops answering to the default the moment a real key is set', () => {
+        // THE CLAIM: the default is a way IN, not a permanent back door. Once the database
+        // holds a key, the shipped one is dead - and it can never be rotated back to, because
+        // ADMIN_KEY_PATTERN has no 0 or 1 in its alphabet.
         const bare = createStore(':memory:');
-        const fresh = createSettings({ store: bare, adminKey: ADMIN_KEY });
-        expect(fresh.ensureAdminKey()).toBeNull();
-        expect(fresh.matchesAdminKey(ADMIN_KEY)).toBe(true);
+        const fresh = createSettings({ store: bare });
+
+        fresh.rotateAdminKey('ABCD-EFGH-JKLM-NPQR');
+
+        expect(fresh.matchesAdminKey(DEFAULT_ADMIN_KEY)).toBe(false);
+        expect(fresh.matchesAdminKey('ABCD-EFGH-JKLM-NPQR')).toBe(true);
+        expect(fresh.adminKeyRotated()).toBe(true);
+        // Stored as a hash, never as the key.
+        expect(bare.getSetting('adminKeyHash') ?? '').not.toContain('ABCD-EFGH-JKLM-NPQR');
         bare.close();
     });
 
@@ -1159,6 +1170,124 @@ describe('runtime settings', () => {
         expect((await get('/api/admin/telegram')).status).toBe(401);
         expect((await post('/api/admin/telegram/test', {})).status).toBe(401);
         expect((await post('/api/admin/telegram/backup', {})).status).toBe(401);
+    });
+});
+
+describe('the tether rate, as the console sets it', () => {
+    async function signedIn(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return (response.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+
+    /** Every stamp the audit has recorded for the rate's timestamp, oldest last. */
+    function stamps(): number {
+        return settings.log(50).filter((entry) => entry.key === 'tetherSetAt').length;
+    }
+
+    it('stores the rate and stamps when it was set', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
+
+        expect(settings.current().tetherToman).toBe(123_450);
+        expect(Number.isNaN(Date.parse(settings.current().tetherSetAt))).toBe(false);
+    });
+
+    it('does NOT re-stamp a rate that was saved again unchanged', async () => {
+        // The pricing form posts its rate box on every save, margin edits included. If that
+        // moved the stamp, a two-day-old rate would look like it was set this minute and the
+        // staleness warning - the only thing left watching this number - would never fire.
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
+        const setAt = settings.current().tetherSetAt;
+        const before = stamps();
+
+        await post('/api/admin/settings', { tetherToman: 123_450, marginPercent: 9 }, { cookie });
+
+        expect(settings.current().tetherSetAt).toBe(setAt);
+        expect(stamps()).toBe(before);
+        expect(settings.current().marginPercent).toBe(9);
+    });
+
+    it('re-stamps when the rate actually moves', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
+        const before = stamps();
+
+        // The stamp is an ISO string to the millisecond, and two injected requests land well
+        // inside one. The pause is about the CLOCK'S RESOLUTION, not about the code under
+        // test - without it both saves stamp the same instant and the second write is
+        // correctly seen as a no-op, which would prove nothing either way.
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        await post('/api/admin/settings', { tetherToman: 128_000 }, { cookie });
+
+        expect(settings.current().tetherToman).toBe(128_000);
+        expect(stamps()).toBe(before + 1);
+    });
+
+    it('refuses a rate outside the band without disturbing the working one', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
+
+        // One zero too many. With no second exchange left to disagree, the boundary is the
+        // only thing standing between a typo and ten times the money on every card.
+        const response = await post(
+            '/api/admin/settings',
+            { tetherToman: 1_234_500_000 },
+            {
+                cookie
+            }
+        );
+
+        expect(response.status).toBe(422);
+        expect(settings.current().tetherToman).toBe(123_450);
+    });
+
+    it('lets the operator pull the shop off sale with a zero', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
+        await post('/api/admin/settings', { tetherToman: 0 }, { cookie });
+
+        // Zero is the one value below the band that is allowed through, because it is an
+        // intention rather than a typo: nothing can be priced, so nothing is sold.
+        expect(settings.current().tetherToman).toBe(0);
+    });
+});
+
+describe('the public address', () => {
+    async function signedIn(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return (response.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+
+    it('sends the gateway back to the origin the console holds, without a restart', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { publicBaseUrl: 'https://shop.example' }, { cookie });
+
+        store.addCodes(5, uuids(1));
+        await post('/api/pay/start', {
+            amount: 5,
+            email: 'buyer@example.com',
+            quotedToman: PRICES[5]
+        });
+
+        // THE CLAIM: this app was built once, at the top of the file, and the origin changed
+        // afterwards. A buyer who pays now must come back to the NEW address - the old value
+        // was baked in at boot and could only be corrected by a deploy.
+        expect(fake.callbacks).toEqual(['https://shop.example/api/pay/callback']);
+    });
+
+    it('shows the console the exact URL to paste into the gateway panel', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { publicBaseUrl: 'https://shop.example' }, { cookie });
+
+        const view = (await (await get('/api/admin/settings', { cookie })).json()) as {
+            publicBaseUrl: string;
+            callbackUrl: string;
+        };
+
+        expect(view.publicBaseUrl).toBe('https://shop.example');
+        // Derived on the way out, never stored, so the two can never disagree.
+        expect(view.callbackUrl).toBe('https://shop.example/api/pay/callback');
     });
 });
 

@@ -1,90 +1,67 @@
-// The live tether rate, and the three rules that decide whether this shop is open.
+// The tether rate the shop prices with: ONE NUMBER, typed into the console by the operator.
 //
-// Every card's price is a dollar figure multiplied by a number that comes from outside this
-// building. That makes the rate the single most dangerous input the application has: it is
-// not validated by a schema, it is not signed, and the two exchanges that supply it can be
-// slow, wrong, or unreachable without telling anybody. What follows is what stands between
-// that and a card sold for a tenth of its worth.
+// Every card's price is a dollar figure multiplied by this, so the rate is still the most
+// dangerous input the application has. What changed is where it comes from. It used to be
+// read from two exchanges and cross-checked on a timer; that machinery is gone, along with
+// its failure modes - a blocked host, a halted market, a quiet unit change, a shop that shut
+// itself at 3am because an API was down. The operator now owns the number outright.
 //
-//   RULE 1 - A RATE IS ONLY A RATE IF TWO SOURCES AGREE. Both exchanges must answer, and
-//   their prices must sit within MAX_SPREAD_PERCENT of each other. One source answering is
-//   not a quorum: the reason for asking twice is that a single answer cannot be checked
-//   against anything. A disagreement is not resolved, averaged, or voted on - it is refused,
-//   because two prices that differ by more than a fraction of a percent mean one of them is
-//   broken and nothing here can tell which.
+// WHAT THAT TRADES AWAY, stated plainly: nothing here can tell whether the rate is RIGHT any
+// more. There is no second source to disagree with it, so a mistyped rate is a real price
+// until somebody notices. Two things stand in for the cross-check:
 //
-//   RULE 2 - THE LOWER OF THE TWO WINS. Having agreed, the cheaper reading is the one used.
-//   The gap is at most MAX_SPREAD_PERCENT by rule 1 and the shop's margin covers it, so the
-//   cost of this is small and known, and it always falls on the side of the buyer paying
-//   less than the market rather than more.
+//   THE BAND. A rate outside MIN_TETHER_TOMAN..MAX_TETHER_TOMAN is refused rather than
+//   stored (see domain/pricing.ts and settings.ts). That catches the extra zero and the
+//   missing one - the mistakes that cost ten times the money - and nothing finer.
 //
-//   RULE 3 - A STALE RATE HAS A DEADLINE. A failed refresh does not close the shop; the last
-//   agreed rate keeps selling for GRACE_MS. Past that it stops being a price and becomes a
-//   memory, `current()` returns null, and every card goes unbuyable until two sources agree
-//   again. THE SHOP CLOSING IS THE CORRECT OUTCOME - the alternative is trading on a number
-//   from an hour ago while the Toman moves underneath it.
+//   THE AGE. A hand-set rate has no idea the Toman moved underneath it, so `stale` is on
+//   every path out of here: the ticker says so on the storefront and the console says so in
+//   the pricing panel, both from the timestamp `save` stamps when the number changes.
 //
-// WHAT THIS DELIBERATELY DOES NOT DO: persist. A restart starts with no rate and the shop is
-// shut for one refresh. Writing the last rate to disk would survive that, and would also
-// survive a restart three days later, which is the failure this file exists to prevent. One
-// refresh of downtime is the cheaper mistake.
-import type { Logger } from '../../platform/logging.ts';
-
-import type { RateReading, RateSource } from './sources.ts';
-
-/** How often the exchanges are asked. */
-export const REFRESH_MS = 60_000;
+// A STALE RATE STILL SELLS, and that is deliberate. The old grace window existed because a
+// refresh was coming to fix things; nothing refreshes this one, so expiring it would shut the
+// shop at an hour of the clock's choosing with no way back except an operator who is asleep.
+// Selling on a rate the shop is visibly shouting about is the better failure. THE ONE THING
+// THAT CLOSES THE SHOP IS NO RATE AT ALL - a fresh install before anybody has set one.
+//
+// NOTHING IS CACHED HERE. The settings reader is called per request, so a rate saved in the
+// panel prices the very next page load - no restart, no refresh, no timer.
+import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
 /**
- * How long an agreed rate keeps selling after refreshes start failing. Fifteen minutes is
- * long enough to ride out an exchange restart or a bad few minutes of routing, and short
- * enough that no card is ever sold against a price from a different hour.
- */
-export const GRACE_MS = 15 * 60_000;
-
-/**
- * How far apart the two exchanges may be before the reading is refused, in percent.
+ * How old a rate gets before the shop starts saying so.
  *
- * Two healthy Iranian exchanges quoting the same pair sit well inside this. Anything wider is
- * one of them being wrong - a halt, a thin book, a unit change - and the shop would rather
- * shut than pick a side.
+ * Six hours is a working day's worth of drift: long enough that an operator setting the rate
+ * morning and evening never sees the warning, short enough that yesterday's number cannot sit
+ * there looking current. It marks, it does not expire - see the note above.
  */
-export const MAX_SPREAD_PERCENT = 2;
-
-/** Past this age the rate is still sellable but the shop says so. See GRACE_MS for the cliff. */
-const STALE_AFTER_MS = 3 * REFRESH_MS;
+export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** A rate good enough to price with. Only ./rate.ts can mint one. */
 export interface RateSnapshot {
-    /** One USDT in Toman. */
+    /** One USDT in Toman, as the console last set it. */
     toman: number;
 
-    /** When the two exchanges agreed on it. */
+    /** When it was set. The page turns this into «چند ساعت پیش». */
     at: string;
 
-    /** True once the reading is older than a few refresh cycles - shown, never hidden. */
+    /** Older than STALE_AFTER_MS - shown, never hidden, and still sellable. */
     stale: boolean;
 }
 
 /** Everything the console needs to answer "why is the shop shut". */
 export interface RateStatus {
-    /** The rate in force, or null when there is nothing sellable. */
+    /** The rate in force, or null when nothing has been set. */
     rate: RateSnapshot | null;
 
     /** Whether a card can be bought right now. */
     selling: boolean;
 
-    /** Empty while healthy; otherwise what the last refresh could not do. */
+    /** Empty while healthy; otherwise why there is no price. */
     reason: string;
 
-    /** Seconds since the rate was agreed, or null when there has never been one. */
+    /** Seconds since the rate was set, or null when there is none. */
     ageSeconds: number | null;
-
-    /** What each exchange said on the last attempt, in the order they were asked. */
-    readings: RateReading[];
-
-    /** How far apart the last usable pair were, in percent. Null when they could not be read. */
-    spreadPercent: number | null;
 }
 
 export interface TetherRate {
@@ -97,103 +74,45 @@ export interface TetherRate {
 
     /** The whole picture, for the console. Never null - it explains the null in `current()`. */
     status(): RateStatus;
-
-    /** One refresh, now. Overlapping calls share the one in flight. */
-    refresh(): Promise<void>;
-
-    /** Begins refreshing on a timer. Returns the stop function. */
-    start(): () => void;
 }
 
 export interface TetherRateOptions {
     /**
-     * The exchanges to cross-check. TWO OR MORE, always - one source cannot be checked
-     * against anything, and a rate that cannot be checked is the thing this module exists to
-     * refuse. Fewer than two is a wiring mistake and fails at construction.
+     * The stored rate and when it was set. Read PER CALL, the same way the gateway and the
+     * mailer take their credentials: the console can change this between two requests and the
+     * second one must be priced with the new number.
      */
-    sources: RateSource[];
+    settings: () => { tetherToman: number; tetherSetAt: string };
 
-    log?: Logger;
-
-    /** Injected for tests, which need to walk past GRACE_MS without waiting a quarter of an hour. */
+    /** Injected for tests, which need to age a rate without waiting six hours. */
     now?: () => number;
 }
 
 export function createTetherRate(options: TetherRateOptions): TetherRate {
-    const { sources, log } = options;
     const now = options.now ?? ((): number => Date.now());
 
-    if (sources.length < 2) {
-        throw new Error('createTetherRate needs at least two sources to cross-check');
-    }
-
-    let agreed: { toman: number; at: number } | null = null;
-    let readings: RateReading[] = [];
-    let spreadPercent: number | null = null;
-    let reason = 'هنوز نرخی خوانده نشده است';
-    let healthy = false;
-    let inFlight: Promise<void> | null = null;
-
-    /** @internal Records a refusal once, not once a minute, and keeps the reason for the console. */
-    function fail(why: string): void {
-        reason = why;
-        if (healthy) {
-            healthy = false;
-            log?.error({ reason: why }, 'tether rate refused - selling on the last agreed rate');
-        }
-    }
-
-    async function refreshOnce(): Promise<void> {
-        readings = await Promise.all(sources.map((source) => source.read()));
-        spreadPercent = null;
-
-        const refused = readings.filter((reading) => reading.toman === null);
-        if (refused.length > 0) {
-            // Naming the sources matters: "wallex: no answer" is something an operator can
-            // act on, "rate unavailable" is not.
-            fail(refused.map((reading) => `${reading.name}: ${reading.reason}`).join(' / '));
-            return;
-        }
-
-        const prices = readings.map((reading) => reading.toman ?? 0);
-        const low = Math.min(...prices);
-        const high = Math.max(...prices);
-        spreadPercent = ((high - low) / low) * 100;
-
-        if (spreadPercent > MAX_SPREAD_PERCENT) {
-            fail(
-                `اختلاف نرخ منابع ${spreadPercent.toFixed(1)}٪ است ` +
-                    `(بیشتر از ${MAX_SPREAD_PERCENT}٪ مجاز)`
-            );
-            return;
-        }
-
-        // Rule 2: the cheaper of two readings that already agree.
-        agreed = { toman: low, at: now() };
-        reason = '';
-        if (!healthy) {
-            healthy = true;
-            log?.info(
-                { toman: low, spread: Number(spreadPercent.toFixed(2)) },
-                'tether rate agreed'
-            );
-        }
-    }
-
     function snapshot(): RateSnapshot | null {
-        if (agreed === null) {
+        const { tetherToman, tetherSetAt } = options.settings();
+
+        // Zero is what `settings.ts` returns for unset, empty, unreadable and out-of-band, so
+        // every one of those arrives here as the same thing: no price.
+        if (tetherToman < MIN_TETHER_TOMAN || tetherToman > MAX_TETHER_TOMAN) {
             return null;
         }
-        const age = now() - agreed.at;
-        if (age > GRACE_MS) {
-            // Rule 3. It is not a price any more, so nothing is returned that could be
-            // mistaken for one.
+
+        // `save` writes the number and its timestamp together, so a rate without a readable
+        // one has been edited into the database by hand. It is refused rather than shown: a
+        // price whose vintage cannot be stated is one the ticker would have to lie about, and
+        // the whole reason `stale` exists is that the age is part of the number.
+        const setAt = Date.parse(tetherSetAt);
+        if (Number.isNaN(setAt)) {
             return null;
         }
+
         return {
-            toman: agreed.toman,
-            at: new Date(agreed.at).toISOString(),
-            stale: age > STALE_AFTER_MS
+            toman: tetherToman,
+            at: tetherSetAt,
+            stale: now() - setAt > STALE_AFTER_MS
         };
     }
 
@@ -202,34 +121,18 @@ export function createTetherRate(options: TetherRateOptions): TetherRate {
 
         status(): RateStatus {
             const rate = snapshot();
+            const { tetherToman } = options.settings();
             return {
                 rate,
                 selling: rate !== null,
                 reason:
-                    rate === null && agreed !== null && reason === ''
-                        ? 'نرخ تتر کهنه شده است'
-                        : reason,
-                ageSeconds: agreed === null ? null : Math.round((now() - agreed.at) / 1000),
-                readings,
-                spreadPercent
+                    rate !== null
+                        ? ''
+                        : tetherToman === 0
+                          ? 'نرخ تتر هنوز در پنل تنظیم نشده است'
+                          : 'نرخ تتر ذخیره‌شده معتبر نیست - دوباره ثبتش کنید',
+                ageSeconds: rate === null ? null : Math.round((now() - Date.parse(rate.at)) / 1000)
             };
-        },
-
-        refresh(): Promise<void> {
-            // A slow exchange must not let a second refresh stack on the first: the console's
-            // "refresh now" and the timer can land together.
-            inFlight ??= refreshOnce().finally(() => {
-                inFlight = null;
-            });
-            return inFlight;
-        },
-
-        start(): () => void {
-            const timer = setInterval(() => void this.refresh(), REFRESH_MS);
-            // The listening socket keeps the process alive; this timer should not be the
-            // reason a shutting-down process lingers.
-            timer.unref();
-            return (): void => clearInterval(timer);
         }
     };
 }

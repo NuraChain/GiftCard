@@ -18,11 +18,13 @@
 // more, so a stolen console session can overwrite a credential but never read one out.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
+import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
 
 /** Every key this module owns. Anything not listed is not settable from the browser. */
 export const SETTING_KEYS = [
     'appName',
+    'publicBaseUrl',
     'zarinpalBase',
     'merchantId',
     'smtpHost',
@@ -34,8 +36,8 @@ export const SETTING_KEYS = [
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
-    'nobitexBase',
-    'wallexBase',
+    'tetherToman',
+    'tetherSetAt',
     'marginPercent',
     'adminKeyHash'
 ] as const;
@@ -54,6 +56,18 @@ const SECRETS = new Set<SettingKey>([
 export interface RuntimeSettings {
     /** What the shop calls itself: the page title, the brand, the payment description. */
     appName: string;
+
+    /**
+     * Where the BUYER'S BROWSER reaches this shop - the public origin nginx answers on, not
+     * this process's own address. THE GATEWAY SENDS THE BUYER BACK HERE, so a wrong value
+     * strands every payment on Zarinpal's page with the money taken and no code delivered.
+     *
+     * It lives beside the merchant id rather than in the environment because it is the same
+     * kind of fact - part of how this shop talks to its gateway - and because getting it
+     * wrong is something an operator needs to be able to fix from the console at the moment
+     * they notice, not on the next deploy.
+     */
+    publicBaseUrl: string;
 
     zarinpalBase: string;
     merchantId: string;
@@ -80,9 +94,18 @@ export interface RuntimeSettings {
     telegramChatId: string;
     telegramBase: string;
 
-    /** The two exchanges the tether rate is cross-checked between. See features/rate/. */
-    nobitexBase: string;
-    wallexBase: string;
+    /**
+     * What one USDT costs in Toman, as the operator last typed it in the console. ZERO MEANS
+     * NOTHING IS SET - including the stored-but-unreadable cases - and a zero closes the shop
+     * rather than pricing anything. See features/rate/rate.ts.
+     */
+    tetherToman: number;
+
+    /**
+     * When `tetherToman` last changed, ISO. Stamped by `save` rather than sent by the console,
+     * so the age the ticker shows cannot be backdated by whoever set the rate.
+     */
+    tetherSetAt: string;
 
     /**
      * The shop's markup over the tether rate, in percent. THE ONLY PROFIT DIAL: every card's
@@ -105,6 +128,7 @@ export const MAX_MARGIN_PERCENT = 100;
  */
 const DEFAULTS = {
     appName: 'گاردین سرویس',
+    publicBaseUrl: 'http://localhost:4200',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
     smtpHost: '',
@@ -116,21 +140,28 @@ const DEFAULTS = {
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
-    nobitexBase: 'https://api.nobitex.ir',
-    wallexBase: 'https://api.wallex.ir',
+    tetherToman: 0,
+    tetherSetAt: '',
     marginPercent: 6
 } as const satisfies RuntimeSettings;
 
 export interface SettingsOptions {
     store: SettingsStore;
-
-    /**
-     * The bootstrap console credential, from `ADMIN_KEY`. It stays here rather than in the
-     * database because of the obvious circularity: you cannot open the console to set the
-     * key that opens the console. Once a key is rotated in, this is the break-glass path.
-     */
-    adminKey: string;
 }
+
+/**
+ * The credential a shop opens with, before anybody has set one.
+ *
+ * IT IS A PUBLISHED DEFAULT, and that is the whole trade: this key is in a public repository,
+ * so a shop reachable from the internet that has not rotated it is open to anyone who has read
+ * this line. What it buys is that there is always a way in - nothing to mint, nothing printed
+ * once and lost, no locked-out operator with a database they cannot open.
+ *
+ * TWO THINGS KEEP IT HONEST. The server warns on every boot while it is still in force and the
+ * console says so on screen; and it cannot be rotated BACK TO, because `ADMIN_KEY_PATTERN`
+ * leaves 0 and 1 out of its alphabet - so once a real key is set, this one is dead for good.
+ */
+export const DEFAULT_ADMIN_KEY = '0000-0000-0000-0000';
 
 export interface Settings {
     /** The live values, read through a cache that the writer invalidates. */
@@ -145,13 +176,6 @@ export interface Settings {
     /** True when the given key matches the stored hash, or the bootstrap key if none exists. */
     matchesAdminKey(candidate: string): boolean;
 
-    /**
-     * Ensures a console credential exists. Returns a freshly generated key the FIRST time it
-     * runs on an empty database - print it once, because only its hash is kept - or null when
-     * one is already configured.
-     */
-    ensureAdminKey(): string | null;
-
     /** Replaces the admin key with a hash of `next`. */
     rotateAdminKey(next: string): void;
 
@@ -164,6 +188,7 @@ export interface Settings {
 /** The masked shape the console receives. Mirrors `settingsView` in the contract. */
 export interface SettingsView {
     appName: string;
+    publicBaseUrl: string;
     zarinpalBase: string;
     sandbox: boolean;
     merchantIdMasked: string;
@@ -175,8 +200,8 @@ export interface SettingsView {
     smtpPasswordMasked: string;
     smtpPasswordSet: boolean;
     smtpFrom: string;
-    nobitexBase: string;
-    wallexBase: string;
+    tetherToman: number;
+    tetherSetAt: string;
     marginPercent: number;
     mailReady: boolean;
     callbackUrl: string;
@@ -189,17 +214,6 @@ function mask(value: string): string {
         return '';
     }
     return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
-}
-
-/** The published shape: four groups of four over the no-I/O/0/1 alphabet (~80 bits). */
-const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-/** @internal A console credential from the platform CSPRNG, in the published shape. */
-function mintAdminKey(): string {
-    return [...randomBytes(16)]
-        .map((byte) => KEY_ALPHABET[byte % KEY_ALPHABET.length])
-        .join('')
-        .replace(/(.{4})(?=.)/g, '$1-');
 }
 
 /** @internal `scrypt$<salt>$<hash>`. A slow KDF costs nothing here and covers a weak key. */
@@ -235,6 +249,26 @@ function marginFrom(raw: string): number {
         return DEFAULTS.marginPercent;
     }
     return parsed;
+}
+
+/**
+ * @internal A rate that cannot poison a price.
+ *
+ * The stored value is text an operator typed, so it can be empty, `'abc'`, negative, or one
+ * zero longer than they meant. EVERY ONE OF THOSE COMES BACK AS ZERO, which `rate.ts` reads
+ * as "no rate" and answers by closing the shop.
+ *
+ * That is the opposite of `marginFrom`, which falls back to the shipped default, and the
+ * difference is deliberate: a default margin is a business decision somebody already made,
+ * whereas a default RATE would be this file inventing a price. There is no safe number to
+ * substitute for a rate, so it refuses instead.
+ */
+function tetherFrom(raw: string): number {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < MIN_TETHER_TOMAN || parsed > MAX_TETHER_TOMAN) {
+        return 0;
+    }
+    return Math.round(parsed);
 }
 
 /** @internal Constant-time comparison against a stored `scrypt$salt$hash`. */
@@ -280,6 +314,7 @@ export function createSettings(options: SettingsOptions): Settings {
 
             cache = {
                 appName: pick('appName', DEFAULTS.appName),
+                publicBaseUrl: pick('publicBaseUrl', DEFAULTS.publicBaseUrl),
                 zarinpalBase: pick('zarinpalBase', DEFAULTS.zarinpalBase),
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
                 smtpHost: pick('smtpHost', DEFAULTS.smtpHost),
@@ -291,8 +326,8 @@ export function createSettings(options: SettingsOptions): Settings {
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
-                nobitexBase: pick('nobitexBase', DEFAULTS.nobitexBase),
-                wallexBase: pick('wallexBase', DEFAULTS.wallexBase),
+                tetherToman: tetherFrom(pick('tetherToman', String(DEFAULTS.tetherToman))),
+                tetherSetAt: pick('tetherSetAt', DEFAULTS.tetherSetAt),
                 marginPercent: marginFrom(pick('marginPercent', String(DEFAULTS.marginPercent)))
             };
         }
@@ -306,6 +341,7 @@ export function createSettings(options: SettingsOptions): Settings {
             const live = current();
             return {
                 appName: live.appName,
+                publicBaseUrl: live.publicBaseUrl,
                 zarinpalBase: live.zarinpalBase,
                 sandbox: live.zarinpalBase.includes('sandbox'),
                 merchantIdMasked: mask(live.merchantId),
@@ -317,8 +353,8 @@ export function createSettings(options: SettingsOptions): Settings {
                 smtpPasswordMasked: mask(live.smtpPassword),
                 smtpPasswordSet: live.smtpPassword !== '',
                 smtpFrom: live.smtpFrom,
-                nobitexBase: live.nobitexBase,
-                wallexBase: live.wallexBase,
+                tetherToman: live.tetherToman,
+                tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,
                 mailReady: live.smtpHost !== '' && live.smtpFrom !== '',
                 callbackUrl,
@@ -327,42 +363,46 @@ export function createSettings(options: SettingsOptions): Settings {
         },
 
         save(changes) {
+            // Read BEFORE the loop. The stamp below must move only when the rate actually
+            // CHANGED: the pricing form posts its rate box on every save, so stamping on
+            // presence would make a two-day-old rate look like it was set this minute and
+            // quietly disarm every staleness warning the shop has.
+            const rateBefore = read('tetherToman');
+
             for (const [name, value] of Object.entries(changes)) {
                 if (value !== undefined) {
-                    // The margin is a number and everything else is a string; the settings
-                    // table holds text either way, and `current()` converts back.
+                    // The margin and the rate are numbers and everything else is a string; the
+                    // settings table holds text either way, and `current()` converts back.
                     write(name as SettingKey, String(value));
                 }
+            }
+
+            // The rate carries its own timestamp because its AGE IS PART OF IT - there is no
+            // exchange to re-read it from, so how old it is is the only thing left that says
+            // whether it can still be trusted. Stamped from the clock here rather than taken
+            // from the request, so nobody can post a fresh-looking date with a stale number.
+            if (read('tetherToman') !== rateBefore) {
+                write('tetherSetAt', new Date().toISOString());
             }
         },
 
         matchesAdminKey(candidate) {
             const stored = read('adminKeyHash');
             if (stored === '') {
-                // Nothing rotated yet: the environment key IS the credential. It stays the
-                // break-glass path afterwards only if the stored hash is removed by hand.
-                const expected = Buffer.from(options.adminKey);
+                // Nothing rotated yet, so the SHIPPED DEFAULT is the credential. Still compared
+                // in constant time: the value is public, but the comparison sits on the same
+                // path a real key will use the moment one is set, and a timing leak introduced
+                // here would go unnoticed until it mattered.
+                const expected = Buffer.from(DEFAULT_ADMIN_KEY);
                 const actual = Buffer.from(candidate);
                 return expected.length === actual.length && timingSafeEqual(expected, actual);
             }
+            // From here on the database is the only answer - the default is dead.
             return keyMatchesHash(candidate, stored);
         },
 
         rotateAdminKey(next) {
             write('adminKeyHash', hashKey(next));
-        },
-
-        ensureAdminKey() {
-            if (options.store.getSetting('adminKeyHash') !== undefined || options.adminKey !== '') {
-                return null;
-            }
-            // A fresh install with nothing configured. The alternative - shipping a default
-            // key - would publish a credential in a public repository, which is the single
-            // most exploited class of mistake there is. So one is MINTED, its hash stored,
-            // and the key printed once at boot for the operator to take and rotate.
-            const key = mintAdminKey();
-            write('adminKeyHash', hashKey(key));
-            return key;
         },
 
         adminKeyRotated() {
