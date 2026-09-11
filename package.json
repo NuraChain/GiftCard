@@ -17,7 +17,14 @@
         "format:check": "oxfmt --check",
         "check": "npm run typecheck && npm run lint && npm run format:check",
         "build": "npm run build --workspace application",
-        "test": "npm test --workspaces --if-present"
+        "test": "npm test --workspaces --if-present",
+        "service:install": "bash scripts/service-install.sh",
+        "service:start": "bash scripts/service-start.sh",
+        "service:stop": "bash scripts/service-stop.sh",
+        "service:restart": "bash scripts/service-restart.sh",
+        "service:status": "bash scripts/service-status.sh",
+        "service:deploy": "npm run build && npm run service:restart",
+        "service:uninstall": "bash scripts/service-uninstall.sh"
     },
     "devDependencies": {
         "concurrently": "^10.0.5",
