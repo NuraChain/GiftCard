@@ -214,6 +214,12 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                 const status = rate.status();
                 const live = status.rate;
                 const total = store.stock().reduce((sum, line) => sum + line.available, 0);
+
+                // A redemption the operator was never told about is somebody waiting on a
+                // transfer that is not coming, and it happens exactly when Telegram was
+                // unreachable - so /status is the one place guaranteed to be read afterwards.
+                const owedPayouts = store.unnotifiedRedemptions();
+
                 return [
                     `فروش: ${status.selling ? 'باز' : 'بسته'}`,
                     live === null
@@ -221,7 +227,16 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                         : `نرخ تتر: ${money(live.toman)} تومان${live.stale ? ' - قدیمی شده' : ''}`,
                     `درصد سود: ${settings.current().marginPercent}٪`,
                     `موجودی: ${total} کد`,
-                    `ایمیل: ${settings.view('').mailReady ? 'آماده' : 'خاموش'}`
+                    `ایمیل: ${settings.view('').mailReady ? 'آماده' : 'خاموش'}`,
+                    // Appended rather than always shown: a zero here is the normal state, and
+                    // a status that reads `0` every day is a status nobody reads.
+                    ...(owedPayouts > 0
+                        ? [
+                              '',
+                              `هشدار: ${owedPayouts} درخواست برداشت ثبت شده که پیامش به شما نرسیده است.`,
+                              'کدها مصرف شده‌اند و انتقالشان هنوز انجام نشده است.'
+                          ]
+                        : [])
                 ].join('\n');
             }
 

@@ -42,6 +42,29 @@ CREATE INDEX IF NOT EXISTS orders_by_code ON orders (code);
 -- The owed count and the ledger's pinned ordering both ask "paid, and no code yet".
 CREATE INDEX IF NOT EXISTS orders_owed ON orders (status, code);
 
+-- WHAT MAKES A REDEEMED CODE SPENT. One row per code, and code is the PRIMARY KEY - so two
+-- requests racing on the same code are decided by the database rather than by application
+-- timing, exactly the way codes_free decides which buyer gets which code. An INSERT that
+-- changes nothing means somebody already redeemed it, and the caller must refuse.
+--
+-- IT IS A SEPARATE TABLE RATHER THAN A COLUMN ON codes for one reason: this is a PAYOUT
+-- REQUEST, not a state flag. It has to say where the money was asked to go and on which
+-- network, and it has to survive the code row it points at - a restore, a re-import, an
+-- operator clearing old stock. A boolean could not be audited against a transfer.
+CREATE TABLE IF NOT EXISTS redemptions (
+    code       TEXT    PRIMARY KEY,
+    amount     INTEGER NOT NULL,
+    wallet     TEXT    NOT NULL,
+    network    TEXT    NOT NULL,
+    email      TEXT    NOT NULL,
+    notified   INTEGER NOT NULL DEFAULT 0,
+    claimed_at TEXT    NOT NULL
+);
+
+-- "Which payouts has nobody been told about" is asked on every /status, and a redemption the
+-- operator never saw is somebody waiting on money that is not coming.
+CREATE INDEX IF NOT EXISTS redemptions_pending ON redemptions (notified);
+
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

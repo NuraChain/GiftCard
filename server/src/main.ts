@@ -23,7 +23,11 @@ import { config } from './config.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
-import { createBackupJob, createSaleNotifier } from './features/telegram/notify.ts';
+import {
+    createBackupJob,
+    createPayoutNotifier,
+    createSaleNotifier
+} from './features/telegram/notify.ts';
 import { createCommandBot } from './features/telegram/commands.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
@@ -154,6 +158,13 @@ const notifier = createSaleNotifier({
     appName: () => settings.current().appName,
     log
 });
+// The payout ask. Same chat as the sale pings, but its result is WAITED FOR: /api/redeem
+// records whether this got through, because a redemption nobody was told about is a person
+// waiting on money that is not coming.
+const payouts = createPayoutNotifier({
+    telegram,
+    appName: () => settings.current().appName
+});
 const backup = createBackupJob({
     store,
     telegram,
@@ -183,6 +194,7 @@ const app = buildApp({
     telegram,
     notifier,
     backup,
+    payouts,
     payment: createPayment({
         settings: () => {
             const now = settings.current();

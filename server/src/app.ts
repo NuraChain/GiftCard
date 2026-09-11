@@ -34,7 +34,8 @@ import { SESSION_COOKIE, type Admin } from './features/console/session.ts';
 import { inventoryHandlers } from './features/inventory/routes.ts';
 import type { TetherRate } from './features/rate/rate.ts';
 import { rateHandlers } from './features/rate/routes.ts';
-import type { BackupJob, SaleNotifier } from './features/telegram/notify.ts';
+import type { BackupJob, PayoutNotifier, SaleNotifier } from './features/telegram/notify.ts';
+import { redeemHandlers } from './features/redeem/routes.ts';
 import { telegramHandlers } from './features/telegram/routes.ts';
 import type { Telegram } from './features/telegram/telegram.ts';
 import { settingsHandlers } from './features/settings/routes.ts';
@@ -62,6 +63,12 @@ export interface AppOptions {
     notifier: SaleNotifier;
     backup: BackupJob;
 
+    /**
+     * The payout ask. Separate from `notifier` because it is AWAITED and its failure is
+     * recorded - it is the only notice a human gets that somebody is owed a transfer.
+     */
+    payouts: PayoutNotifier;
+
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath?: string;
 
@@ -76,7 +83,7 @@ export interface AppOptions {
 
 export function buildApp(options: AppOptions): FastifyInstance {
     const { store, payment, mailer, admin, settings, rate, log } = options;
-    const { telegram, notifier, backup } = options;
+    const { telegram, notifier, backup, payouts } = options;
     const resultPath = options.resultPath ?? '/';
 
     /**
@@ -165,6 +172,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
         guards: {
             // Money or credentials: one call here costs a gateway request, an email, or a guess.
             'pay.start': [guard(throttle(8, 60_000))],
+
+            // Tighter than checkout, for two reasons at once: every call is one guess at a
+            // code, and every SUCCESS makes the shop send a chat message. A code is 122 bits
+            // of random so guessing is hopeless anyway - this is about the second half.
+            'redeem.submit': [guard(throttle(6, 60_000))],
             'admin.signIn': [guard(throttle(10, 60_000))],
 
             // Everything in the console except signing in - that route IS how you get past
@@ -198,6 +210,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
         // contract, so a feature that forgets a handler fails to compile HERE.
         handlers: {
             pay: payHandlers(pay),
+            redeem: redeemHandlers({ store, payouts, log }),
             admin: {
                 ...consoleHandlers({ store, admin }),
                 ...catalogueHandlers({ store, rate, settings, log }),

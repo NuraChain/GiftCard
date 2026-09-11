@@ -6,7 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 import { shaped } from '../../platform/db.ts';
-import { UUID } from '../../db/shared.ts';
+import { UUID } from '../../domain/codes.ts';
 import type {
     Amount,
     AddCodesResult,

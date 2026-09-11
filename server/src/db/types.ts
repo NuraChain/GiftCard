@@ -122,6 +122,47 @@ export interface CodeRow {
     refId: number | null;
 }
 
+/**
+ * A payout request: one gift code, spent, and where its value was asked to go.
+ *
+ * The row IS the spend. There is no "redeemed" flag anywhere else, so this table existing is
+ * the only thing that stops a code being cashed twice - see platform/schema.ts.
+ */
+export interface Redemption {
+    /** The code that was consumed, canonical and lowercased. The row's identity. */
+    code: string;
+
+    /** The denomination, copied at redemption time so the row survives the code being gone. */
+    amount: Amount;
+
+    /** Where to send it, exactly as the holder gave it - case included. See domain/wallet.ts. */
+    wallet: string;
+
+    /** `TRC20` or `ERC20`, derived from the address shape. The chain the operator must use. */
+    network: string;
+
+    /** Who bought the code. Copied from the order, so support has a name to match against. */
+    email: string;
+
+    /**
+     * Whether the operator has actually been told. FALSE IS THE DANGEROUS STATE: the code is
+     * spent and nobody knows a transfer is owed, so the bot reports these in `/status`.
+     */
+    notified: boolean;
+
+    claimedAt: string;
+}
+
+/**
+ * What a redemption attempt did. Three outcomes, and the caller must tell them apart:
+ * `unknown` covers both "no such code" and "that code was never sold" - deliberately one
+ * answer, because distinguishing them would confirm a guess at unsold inventory.
+ */
+export type RedeemOutcome =
+    | { state: 'claimed'; redemption: Redemption }
+    | { state: 'unknown' }
+    | { state: 'spent'; at: string };
+
 /** One page of the ledger. An empty `search` means the whole ledger. */
 export interface OrderQuery {
     /** Free text: part of an email address, a code, a reference, or a receipt handle. */
@@ -243,6 +284,24 @@ export interface Store extends SettingsStore {
 
     /** Paid orders with no code, across the WHOLE table - not just the page being shown. */
     owedCount(): number;
+
+    // --- Redemptions ---
+
+    /**
+     * Spends a code against a wallet address, ONCE.
+     *
+     * The whole double-spend guard is here: the insert is against a table keyed on the code,
+     * so two simultaneous requests for one code produce one `claimed` and one `spent` no
+     * matter how they interleave. A code that was never sold is `unknown` - a free code is
+     * inventory the shop still owns, and redeeming one would be giving it away.
+     */
+    redeemCode(code: string, wallet: string, network: string): RedeemOutcome;
+
+    /** Records that the operator was actually told. See {@link Redemption.notified}. */
+    markRedemptionNotified(code: string): void;
+
+    /** How many spent codes nobody has been told about. Somebody is waiting on each of these. */
+    unnotifiedRedemptions(): number;
 
     /**
      * Writes a CONSISTENT snapshot of the whole database to `file`.

@@ -20,8 +20,14 @@ import type {
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
-import type { BackupJob, Sale, SaleNotifier } from '../src/features/telegram/notify.ts';
-import type { Telegram } from '../src/features/telegram/telegram.ts';
+import type {
+    BackupJob,
+    Payout,
+    PayoutNotifier,
+    Sale,
+    SaleNotifier
+} from '../src/features/telegram/notify.ts';
+import type { Telegram, TelegramResult } from '../src/features/telegram/telegram.ts';
 import {
     createSettings,
     DEFAULT_ADMIN_KEY,
@@ -122,6 +128,13 @@ interface Fakes {
 
     backup: BackupJob;
     backupsRun: number;
+
+    /** Every payout the operator was asked to make, in order. */
+    payouts: PayoutNotifier;
+    payoutsAsked: Payout[];
+
+    /** Flipped to make the payout ping fail, which is the path that owes somebody money. */
+    payoutResult: TelegramResult;
 }
 
 function fakes(): Fakes {
@@ -181,6 +194,14 @@ function fakes(): Fakes {
             },
             sendDocument: () => Promise.resolve({ ok: true })
         },
+        payoutsAsked: [],
+        payoutResult: { ok: true },
+        payouts: {
+            redeemed: (payout) => {
+                state.payoutsAsked.push(payout);
+                return Promise.resolve(state.payoutResult);
+            }
+        },
         backup: {
             runNow: () => {
                 state.backupsRun += 1;
@@ -217,6 +238,7 @@ beforeEach(() => {
         telegram: fake.telegram,
         notifier: fake.notifier,
         backup: fake.backup,
+        payouts: fake.payouts,
         admin: createAdmin({
             matches: (candidate) => settings.matchesAdminKey(candidate),
             secureCookie: false
@@ -1413,5 +1435,204 @@ describe('the shop name', () => {
         // stopped at the shop would leave them paying "نورا چین" for something else.
         expect(await buy(10)).toBe(200);
         expect(fake.descriptions.at(-1)).toContain('برند تازه');
+    });
+});
+// The other end of the shop: a code comes back and asks for its value in USDT.
+//
+// EVERY TEST HERE RUNS AGAINST A REAL PURCHASE. A code is only redeemable because somebody
+// paid for it, so each of these buys one through the gateway fake and settles it through the
+// callback first - which means the join these routes depend on (code -> paid order) is
+// exercised rather than assumed.
+describe('redeeming a code', () => {
+    /** Tether's own TRC20 contract address: a real one, checkable against any explorer. */
+    const WALLET = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+
+    /**
+     * Buys one card and settles it, and hands back the code the buyer received.
+     *
+     * Deliberately the LONG WAY ROUND rather than `store.addCodes` plus a hand-written row:
+     * what makes a code redeemable is that a paid order points at it, and only a real
+     * checkout produces that.
+     */
+    async function bought(amount = 10): Promise<string> {
+        store.addCodes(amount, uuids(1));
+        await buy(amount);
+        const { authority, token } = lastOrder();
+        await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
+        const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
+            code: string;
+        };
+        return receipt.code;
+    }
+
+    it('pays out a sold code once, and asks the operator to send it', async () => {
+        const code = await bought(10);
+
+        const response = await post('/api/redeem', { code, wallet: WALLET });
+
+        expect(response.status).toBe(200);
+        expect(response.json()).toMatchObject({
+            amount: 10,
+            network: 'TRC20',
+            wallet: WALLET,
+            notified: true
+        });
+
+        // The ask reached the operator with everything a transfer needs: how much, where,
+        // and on which chain. Sending USDT on the wrong network loses it.
+        expect(fake.payoutsAsked).toHaveLength(1);
+        expect(fake.payoutsAsked[0]).toMatchObject({
+            amount: 10,
+            wallet: WALLET,
+            network: 'TRC20',
+            email: 'buyer@example.com'
+        });
+    });
+
+    it('REFUSES THE SECOND ATTEMPT ON THE SAME CODE', async () => {
+        // The claim this whole feature rests on. A code is bearer value: whoever holds it can
+        // spend it, so the only thing that can stop it being spent twice is the shop.
+        const code = await bought(10);
+        expect((await post('/api/redeem', { code, wallet: WALLET })).status).toBe(200);
+
+        const second = await post('/api/redeem', { code, wallet: WALLET });
+
+        expect(second.status).toBe(409);
+        // And the operator is asked exactly once - a second ask is a second transfer.
+        expect(fake.payoutsAsked).toHaveLength(1);
+    });
+
+    it('pays out once when two requests overlap', async () => {
+        // Two requests for one code, in flight together. They genuinely interleave: the
+        // handler awaits the address checksum, so the second request starts before the first
+        // reaches the database.
+        //
+        // WHAT THIS DOES NOT PROVE. node:sqlite is synchronous, so once a request enters
+        // `redeemCode` it runs to completion uninterrupted - a naive read-then-write would
+        // survive this test. The guard against a REAL race is the primary key on
+        // `redemptions.code` and the IMMEDIATE transaction around it, which is a claim about
+        // the schema rather than about this process, and is stated where it lives.
+        const code = await bought(25);
+
+        const results = await Promise.all([
+            post('/api/redeem', { code, wallet: WALLET }),
+            post('/api/redeem', { code, wallet: WALLET })
+        ]);
+
+        expect(results.map((result) => result.status).toSorted()).toEqual([200, 409]);
+        expect(fake.payoutsAsked).toHaveLength(1);
+    });
+
+    it('reads a code back in the shape an email leaves it in', async () => {
+        // A buyer copies the code out of their mail client, which uppercases it as often as
+        // not and brings whitespace along. All of those are the same code, and the inventory
+        // holds exactly one spelling of it.
+        const code = await bought(10);
+
+        const response = await post('/api/redeem', {
+            code: `  ${code.toUpperCase()}  `,
+            wallet: WALLET
+        });
+
+        expect(response.status).toBe(200);
+    });
+
+    it('will not spend a code against an address with a typo in it', async () => {
+        // The last character is wrong. It is the right length, the right prefix and a legal
+        // alphabet, so only the checksum catches it - and it is caught BEFORE the code is
+        // consumed, because the alternative is a holder with no card and no money.
+        const code = await bought(10);
+
+        const response = await post('/api/redeem', {
+            code,
+            wallet: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u'
+        });
+
+        expect(response.status).toBe(422);
+        expect(fake.payoutsAsked).toHaveLength(0);
+
+        // Still spendable, which is the point of checking first.
+        expect((await post('/api/redeem', { code, wallet: WALLET })).status).toBe(200);
+    });
+
+    it('gives ONE answer for an unknown code and an unsold one', async () => {
+        // Telling them apart would confirm a guess at inventory the shop still owns. Both
+        // are 404 with the same message.
+        store.addCodes(10, uuids(1));
+        const unsold = store.searchCodes({
+            search: '',
+            state: 'free',
+            amount: 10,
+            limit: 1,
+            offset: 0
+        }).rows[0].code;
+
+        const stranger = await post('/api/redeem', { code: crypto.randomUUID(), wallet: WALLET });
+        const free = await post('/api/redeem', { code: unsold, wallet: WALLET });
+
+        expect(stranger.status).toBe(404);
+        expect(free.status).toBe(404);
+        expect(stranger.json()).toEqual(free.json());
+        expect(fake.payoutsAsked).toHaveLength(0);
+    });
+
+    it('will not pay out a code that is only HELD by a checkout in flight', async () => {
+        // Held is not sold: the buyer has not come back from the bank and may never. Paying
+        // out here would hand away a card nobody has bought.
+        store.addCodes(10, uuids(1));
+        await buy(10);
+        const held = store.searchCodes({
+            search: '',
+            state: 'held',
+            amount: 10,
+            limit: 1,
+            offset: 0
+        }).rows[0].code;
+
+        expect((await post('/api/redeem', { code: held, wallet: WALLET })).status).toBe(404);
+        expect(fake.payoutsAsked).toHaveLength(0);
+    });
+
+    it('still spends the code when the operator cannot be reached, and says so', async () => {
+        // THE UNCOMFORTABLE CASE, and the order is deliberate. Recording first means a failed
+        // message leaves a spent code nobody was told about - which is recoverable, because
+        // the row is in the database and the bot counts it. Notifying first would mean a
+        // crash in between leaves a LIVE code the operator has been told to pay out on.
+        const code = await bought(10);
+        fake.payoutResult = { ok: false, reason: 'telegram unreachable' };
+
+        const response = await post('/api/redeem', { code, wallet: WALLET });
+
+        expect(response.status).toBe(200);
+        // The holder is told plainly rather than left to assume a message arrived.
+        expect(response.json()).toMatchObject({ notified: false });
+        expect(store.unnotifiedRedemptions()).toBe(1);
+
+        // And it is still spent. A failed notification is not a second chance.
+        expect((await post('/api/redeem', { code, wallet: WALLET })).status).toBe(409);
+    });
+
+    it('takes an ERC20 address too, and names the chain it must be sent on', async () => {
+        const code = await bought(5);
+
+        const response = await post('/api/redeem', {
+            code,
+            wallet: '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.json()).toMatchObject({ network: 'ERC20' });
+        // Case preserved: the operator's wallet runs the EIP-55 check this server cannot.
+        expect(fake.payoutsAsked[0].wallet).toBe('0xdAC17F958D2ee523a2206206994597C13D831ec7');
+    });
+
+    it('refuses a malformed request before any of that', async () => {
+        const code = await bought(10);
+        expect((await post('/api/redeem', { code, wallet: 'nonsense' })).status).toBe(422);
+        expect((await post('/api/redeem', { code: 'not-a-uuid', wallet: WALLET })).status).toBe(
+            422
+        );
+        expect((await post('/api/redeem', { wallet: WALLET })).status).toBe(422);
+        expect(fake.payoutsAsked).toHaveLength(0);
     });
 });

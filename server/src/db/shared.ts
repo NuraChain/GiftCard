@@ -1,5 +1,5 @@
-// The order row's shape, and the UUID the inventory validates against. `shaped` lives in
-// platform/db.ts.
+// The order row's shape. `shaped` lives in platform/db.ts, and the UUID a code has to match
+// moved to domain/codes.ts when the redemption route started needing it too.
 //
 // THE PHONE-SEARCH HELPER IS GONE and is not missed. A mobile number has four spellings that
 // all mean the same number, so searching for one needed a helper that stripped the country
@@ -38,6 +38,3 @@ export function toOrder(row: OrderRow): Order {
         settledAt: row.settled_at
     };
 }
-
-/** Canonical 8-4-4-4-4 hex. Anything else is handed back to the admin, not stored. */
-export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

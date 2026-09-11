@@ -1,11 +1,17 @@
-// The two jobs Telegram does: say when something sells, and carry the database off this
-// machine once an hour.
+// The three jobs Telegram does: say when something sells, say when a code is cashed out, and
+// carry the database off this machine once an hour.
 //
 // NEITHER MAY EVER BREAK A PURCHASE. That is the rule both halves are built around. The
 // notification is fire-and-forget - `sold()` returns void, on purpose, so no caller can
 // accidentally await it and put a chat server on the path between a buyer and their code. The
 // backup runs on its own timer, touches nothing the shop is using, and compresses off the
 // event loop (platform/zip.ts) so a checkout in flight never waits on it.
+//
+// THE PAYOUT NOTIFICATION IS THE EXCEPTION, AND IT IS AWAITED. `redeemed()` returns a result
+// rather than void because this message is not an FYI - it is the ONLY thing that tells a
+// human to send somebody money. A sale that nobody is pinged about is still a sale, recorded,
+// paid for and delivered; a redemption nobody is pinged about is a person waiting forever. So
+// the caller waits for the answer and records whether it arrived.
 //
 // THE BACKUP IS SENT AS A ZIP. A SQLite file is mostly page padding and repeated text, so it
 // deflates to a small fraction of itself - which pushes the 50MB ceiling Telegram puts on a
@@ -109,6 +115,78 @@ export function createSaleNotifier(options: SaleNotifierOptions): SaleNotifier {
                 .catch(() => {
                     options.log?.warn('sale notification failed');
                 });
+        }
+    };
+}
+
+/** A code cashed out, in the terms an operator reads before making a transfer. */
+export interface Payout {
+    /** The denomination being cashed, in dollars. What to send. */
+    amount: number;
+
+    /** Where to send it, exactly as the holder gave it - case included. */
+    wallet: string;
+
+    /** Which chain: `TRC20` or `ERC20`. Sending on the wrong one loses the money. */
+    network: string;
+
+    /** Who originally bought the code. Not necessarily the person redeeming it. */
+    email: string;
+
+    /** The spent code. ONLY A PREFIX OF IT REACHES THE CHAT - see below. */
+    code: string;
+
+    claimedAt: string;
+}
+
+export interface PayoutNotifier {
+    /**
+     * Asks the operator to send a transfer, and reports whether the ask arrived.
+     *
+     * AWAITED, unlike {@link SaleNotifier.sold}. The header explains why: this message is the
+     * only notice a human gets that money is owed, so its failure has to be recorded rather
+     * than logged and forgotten.
+     */
+    redeemed(payout: Payout): Promise<TelegramResult>;
+}
+
+export interface PayoutNotifierOptions {
+    telegram: Telegram;
+    appName: () => string;
+}
+
+/**
+ * How much of the spent code the operator is shown.
+ *
+ * ./telegram.ts says no gift code goes down this pipe, and this is the narrowest possible
+ * exception to it. Eight characters is enough to find the row in the console and to match a
+ * chat message against a redemption; it is 32 bits short of enough to redeem anything, which
+ * matters because a redemption row can be lost - restored from an older backup, say - and the
+ * code would be live again with the whole of it sitting in a chat history.
+ */
+const CODE_PREFIX = 8;
+
+export function createPayoutNotifier(options: PayoutNotifierOptions): PayoutNotifier {
+    return {
+        redeemed(payout) {
+            // THE ADDRESS GETS A LINE OF ITS OWN, with nothing before or after it. An
+            // operator copies this by tapping it, and a line that also held a label or a
+            // trailing full stop is a line that copies a broken address into a wallet.
+            const lines = [
+                `درخواست برداشت - ${options.appName()}`,
+                '',
+                `مبلغ: ${payout.amount} دلار (USDT)`,
+                `شبکه: ${payout.network}`,
+                'آدرس کیف پول:',
+                payout.wallet,
+                '',
+                `خریدار کد: ${payout.email}`,
+                `کد: ${payout.code.slice(0, CODE_PREFIX)}...`,
+                `زمان: ${payout.claimedAt}`,
+                '',
+                'کد مصرف شد و دیگر قابل استفاده نیست. انتقال را دستی انجام دهید.'
+            ];
+            return options.telegram.sendMessage(lines.join('\n'));
         }
     };
 }
