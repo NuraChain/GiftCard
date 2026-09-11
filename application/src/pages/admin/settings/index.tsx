@@ -7,7 +7,7 @@
 // touch the merchant id, and neither can touch the tether rate.
 //
 // THE GATEWAY AND THE MAIL SERVER USED TO SHARE ONE FORM. They are apart now because they
-// fail apart - a broken SMTP password stops delivery, a wrong merchant id sends the takings to
+// fail apart - a broken mail key stops delivery, a wrong merchant id sends the takings to
 // a stranger - and an operator fixing one should never be editing a form that can save the
 // other. The shop NAME sits in its own card above both for the same reason: it is the tab
 // title, the mail subject AND the transaction description, so it belongs to neither.

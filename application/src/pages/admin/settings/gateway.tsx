@@ -1,7 +1,7 @@
 // Where the money goes: the Zarinpal gateway, and nothing else.
 //
 // THIS PANEL USED TO CARRY THE MAIL SERVER TOO. They are apart now because they fail apart:
-// a broken SMTP password stops delivery and a wrong merchant id sends takings to a stranger,
+// a broken mail key stops delivery and a wrong merchant id sends takings to a stranger,
 // and an operator fixing one should never be editing a form that can save the other. Each
 // panel sends ONLY its own fields, and the server treats an absent field as unchanged, so
 // saving here cannot disturb the mail settings even by accident.

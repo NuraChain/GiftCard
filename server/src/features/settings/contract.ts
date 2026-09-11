@@ -1,7 +1,7 @@
 // Runtime configuration's wire shapes and routes, and the admin key beside them.
 //
 // A secret is WRITE-ONLY across this boundary. The console may replace the merchant id or
-// the SMTP password, and may see whether one is set and its last four characters - never the
+// the Resend key, and may see whether one is set and its last four characters - never the
 // value. A stolen session must not be a way to read out the credentials it can overwrite.
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
 //
@@ -27,14 +27,11 @@ export const settingsView = z.object({
     merchantIdMasked: z.string(),
     merchantIdSet: z.boolean(),
 
-    /** Where gift-code email is handed off, and how. The password never comes back. */
-    smtpHost: z.string(),
-    smtpPort: z.number(),
-    smtpSecure: z.boolean(),
-    smtpUser: z.string(),
-    smtpPasswordMasked: z.string(),
-    smtpPasswordSet: z.boolean(),
-    smtpFrom: z.string(),
+    /** How gift-code email is sent. The API key never comes back - only its last four. */
+    resendApiKeyMasked: z.string(),
+    resendApiKeySet: z.boolean(),
+    mailFrom: z.string(),
+    resendBase: z.string(),
 
     /** What one USDT costs in Toman, as the console last set it. Zero means never set. */
     tetherToman: z.number(),
@@ -45,7 +42,7 @@ export const settingsView = z.object({
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
 
-    /** Delivery only runs when both a host and a From address are present. */
+    /** Delivery only runs when both an API key and a From address are present. */
     mailReady: z.boolean(),
 
     /**
@@ -68,12 +65,10 @@ export const settingsInput = z.object({
     publicBaseUrl: z.string().trim().max(200).optional(),
     zarinpalBase: z.string().trim().max(200).optional(),
     merchantId: z.string().trim().max(100).optional(),
-    smtpHost: z.string().trim().max(200).optional(),
-    smtpPort: z.number().int().min(1).max(65_535).optional(),
-    smtpSecure: z.boolean().optional(),
-    smtpUser: z.string().trim().max(200).optional(),
-    smtpPassword: z.string().max(200).optional(),
-    smtpFrom: z.string().trim().max(254).optional(),
+    /** The Resend key is write-only: a blank one means "keep it", never "erase it". */
+    resendApiKey: z.string().trim().max(200).optional(),
+    mailFrom: z.string().trim().max(254).optional(),
+    resendBase: z.string().trim().max(200).optional(),
 
     /** The operations bot. The token is write-only; a blank one means "keep it". */
     telegramBotToken: z.string().trim().max(200).optional(),

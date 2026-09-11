@@ -110,7 +110,7 @@ if (!settings.view('').mailReady) {
     // A shop can trade without email: the code is on screen and valid either way. It is a
     // notice rather than a refusal because the operator can now fix it from the console
     // without a deploy.
-    log.warn('email delivery is OFF - codes appear on screen only');
+    log.warn('email delivery is OFF - set a Resend key and a From address in the console');
 }
 if (live.merchantId === '') {
     log.warn(
@@ -193,12 +193,9 @@ const app = buildApp({
         settings: () => {
             const now = settings.current();
             return {
-                host: now.smtpHost,
-                port: now.smtpPort,
-                secure: now.smtpSecure,
-                user: now.smtpUser,
-                password: now.smtpPassword,
-                from: now.smtpFrom,
+                apiKey: now.resendApiKey,
+                from: now.mailFrom,
+                baseUrl: now.resendBase,
                 appName: now.appName
             };
         }

@@ -27,12 +27,9 @@ export const SETTING_KEYS = [
     'publicBaseUrl',
     'zarinpalBase',
     'merchantId',
-    'smtpHost',
-    'smtpPort',
-    'smtpSecure',
-    'smtpUser',
-    'smtpPassword',
-    'smtpFrom',
+    'resendApiKey',
+    'mailFrom',
+    'resendBase',
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
@@ -47,7 +44,7 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 /** The ones masked on the way out and in the audit. The rest are hosts and template names. */
 const SECRETS = new Set<SettingKey>([
     'merchantId',
-    'smtpPassword',
+    'resendApiKey',
     'telegramBotToken',
     'adminKeyHash'
 ]);
@@ -71,20 +68,17 @@ export interface RuntimeSettings {
 
     zarinpalBase: string;
     merchantId: string;
-    /** Where the gift-code email is handed off. Empty means delivery is off. */
-    smtpHost: string;
+    /** The Resend API key. Empty means delivery is off. See features/checkout/mailer.ts. */
+    resendApiKey: string;
 
-    /** 465 for implicit TLS, 587 for STARTTLS. Anything a relay listens on. */
-    smtpPort: number;
+    /**
+     * The From address. Resend refuses anything not on a domain verified against the account;
+     * `onboarding@resend.dev` works but only reaches the account owner's own inbox.
+     */
+    mailFrom: string;
 
-    /** True for implicit TLS on connect; false lets STARTTLS upgrade a plain connection. */
-    smtpSecure: boolean;
-
-    smtpUser: string;
-    smtpPassword: string;
-
-    /** The From address. Most relays refuse a From that is not the authenticated account. */
-    smtpFrom: string;
+    /** Resend's API host. A setting so a blocked network can be routed around without a deploy. */
+    resendBase: string;
 
     /**
      * The operations bot: a ping on every sale, and the database once an hour. Empty means
@@ -131,12 +125,9 @@ const DEFAULTS = {
     publicBaseUrl: 'http://localhost:4200',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
-    smtpHost: '',
-    smtpPort: 587,
-    smtpSecure: false,
-    smtpUser: '',
-    smtpPassword: '',
-    smtpFrom: '',
+    resendApiKey: '',
+    mailFrom: '',
+    resendBase: 'https://api.resend.com',
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
@@ -161,7 +152,7 @@ export interface SettingsOptions {
  * console says so on screen; and it cannot be rotated BACK TO, because `ADMIN_KEY_PATTERN`
  * leaves 0 and 1 out of its alphabet - so once a real key is set, this one is dead for good.
  */
-export const DEFAULT_ADMIN_KEY = '0000-0000-0000-0000';
+export const DEFAULT_ADMIN_KEY = '2222-2222-2222-2222';
 
 export interface Settings {
     /** The live values, read through a cache that the writer invalidates. */
@@ -193,13 +184,10 @@ export interface SettingsView {
     sandbox: boolean;
     merchantIdMasked: string;
     merchantIdSet: boolean;
-    smtpHost: string;
-    smtpPort: number;
-    smtpSecure: boolean;
-    smtpUser: string;
-    smtpPasswordMasked: string;
-    smtpPasswordSet: boolean;
-    smtpFrom: string;
+    resendApiKeyMasked: string;
+    resendApiKeySet: boolean;
+    mailFrom: string;
+    resendBase: string;
     tetherToman: number;
     tetherSetAt: string;
     marginPercent: number;
@@ -220,19 +208,6 @@ function mask(value: string): string {
 function hashKey(key: string): string {
     const salt = randomBytes(16);
     return `scrypt$${salt.toString('base64')}$${scryptSync(key, salt, 32).toString('base64')}`;
-}
-
-/**
- * @internal A port that cannot break the mailer. Stored settings are text an operator typed,
- * so an empty box or a stray letter must fall back to the shipped default rather than reach
- * nodemailer as a NaN and fail every send with something unreadable.
- */
-function portFrom(raw: string): number {
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
-        return DEFAULTS.smtpPort;
-    }
-    return parsed;
 }
 
 /**
@@ -317,12 +292,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 publicBaseUrl: pick('publicBaseUrl', DEFAULTS.publicBaseUrl),
                 zarinpalBase: pick('zarinpalBase', DEFAULTS.zarinpalBase),
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
-                smtpHost: pick('smtpHost', DEFAULTS.smtpHost),
-                smtpPort: portFrom(pick('smtpPort', String(DEFAULTS.smtpPort))),
-                smtpSecure: pick('smtpSecure', String(DEFAULTS.smtpSecure)) === 'true',
-                smtpUser: pick('smtpUser', DEFAULTS.smtpUser),
-                smtpPassword: pick('smtpPassword', DEFAULTS.smtpPassword),
-                smtpFrom: pick('smtpFrom', DEFAULTS.smtpFrom),
+                resendApiKey: pick('resendApiKey', DEFAULTS.resendApiKey),
+                mailFrom: pick('mailFrom', DEFAULTS.mailFrom),
+                resendBase: pick('resendBase', DEFAULTS.resendBase),
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
@@ -346,17 +318,14 @@ export function createSettings(options: SettingsOptions): Settings {
                 sandbox: live.zarinpalBase.includes('sandbox'),
                 merchantIdMasked: mask(live.merchantId),
                 merchantIdSet: live.merchantId !== '',
-                smtpHost: live.smtpHost,
-                smtpPort: live.smtpPort,
-                smtpSecure: live.smtpSecure,
-                smtpUser: live.smtpUser,
-                smtpPasswordMasked: mask(live.smtpPassword),
-                smtpPasswordSet: live.smtpPassword !== '',
-                smtpFrom: live.smtpFrom,
+                resendApiKeyMasked: mask(live.resendApiKey),
+                resendApiKeySet: live.resendApiKey !== '',
+                mailFrom: live.mailFrom,
+                resendBase: live.resendBase,
                 tetherToman: live.tetherToman,
                 tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,
-                mailReady: live.smtpHost !== '' && live.smtpFrom !== '',
+                mailReady: live.resendApiKey !== '' && live.mailFrom !== '',
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
             };

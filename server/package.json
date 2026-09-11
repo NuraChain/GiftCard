@@ -11,14 +11,12 @@
     "dependencies": {
         "@fastify/cookie": "^11.1.2",
         "fastify": "^5.12.3",
-        "nodemailer": "^10.0.3",
         "pino": "^10.3.1",
         "pino-roll": "^4.0.0",
         "zod": "^4.6.1"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",
-        "@types/nodemailer": "^8.0.1",
         "typescript": "~6.0.2",
         "vitest": "^4.0.0"
     },

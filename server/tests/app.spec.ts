@@ -1088,9 +1088,9 @@ describe('runtime settings', () => {
 
         // Saving a template name must not wipe a working credential just because its input
         // was left blank on screen.
-        await post('/api/admin/settings', { smtpHost: 'smtp.renamed.test' }, { cookie });
+        await post('/api/admin/settings', { mailFrom: 'shop@renamed.test' }, { cookie });
         expect(settings.current().merchantId).toBe('first-merchant-0000-0000-000012349999');
-        expect(settings.current().smtpHost).toBe('smtp.renamed.test');
+        expect(settings.current().mailFrom).toBe('shop@renamed.test');
 
         // An explicit empty string IS a clear, and it does not fall back to the seed.
         await post('/api/admin/settings', { merchantId: '' }, { cookie });
@@ -1308,7 +1308,7 @@ describe('the operations bot', () => {
 
         expect(view).toContain('••••9999');
         expect(view).toContain('-100123');
-        // Write-only, exactly like the merchant id and the SMTP password: a stolen session
+        // Write-only, exactly like the merchant id and the Resend key: a stolen session
         // can replace a credential and can never read one out.
         expect(view).not.toContain('SECRETTOKEN');
     });

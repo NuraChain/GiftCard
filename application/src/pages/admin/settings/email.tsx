@@ -1,16 +1,21 @@
-// How the gift code reaches the buyer: the mail server, and nothing else.
+// How the gift code reaches the buyer: Resend, and nothing else.
 //
-// THIS PANEL USED TO SHARE A FORM WITH THE GATEWAY. They are apart now because they fail
-// apart: a broken SMTP password stops delivery and a wrong merchant id sends takings to a
-// stranger, and an operator fixing one should never be editing a form that can save the
-// other. This panel sends ONLY its own fields, and the server treats an absent field as
-// unchanged, so saving here cannot disturb the payment settings even by accident.
+// THIS PANEL USED TO SHARE A FORM WITH THE GATEWAY. They are apart because they fail apart: a
+// broken mail key stops delivery and a wrong merchant id sends takings to a stranger, and an
+// operator fixing one should never be editing a form that can save the other. This panel sends
+// ONLY its own fields, and the server treats an absent field as unchanged.
 //
-// SMTP RATHER THAN AN SMS PROVIDER. Codes used to be texted through Kavenegar; they are
-// emailed now, and the settings that replaced the API key are the ones any mail account has -
-// a host, a port, a login and a From address. The From is called out in its own hint because
-// it is the field that silently breaks delivery: most relays refuse to send as an address
-// that is not the account they authenticated.
+// RESEND RATHER THAN SMTP. It used to be a host, a port, a TLS checkbox, a username and a
+// password - five boxes to get right before one message moved. It is now a key and a From
+// address. See server: features/checkout/mailer.ts.
+//
+// THE TWO THINGS THAT ACTUALLY GO WRONG, both called out in the hints rather than left for the
+// operator to discover through a buyer who paid and got nothing:
+//   - the From address must be on a domain VERIFIED in Resend. `onboarding@resend.dev` works
+//     without one, but only ever delivers to the inbox that owns the Resend account, so it
+//     proves the wiring and nothing else.
+//   - `api.resend.com` may not be reachable from where this is hosted, which is why the host
+//     is a field at all.
 //
 // THE TEST SEND IS THE POINT OF THE PANEL. Mail settings are the kind that look right and are
 // wrong, and the alternative way to find out is a buyer who paid and got nothing - so there is
@@ -36,15 +41,12 @@ export default function EmailSettings(): ReactNode {
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const [formSmtpHost, setFormSmtpHost] = useState('');
-    const [formSmtpPort, setFormSmtpPort] = useState('');
-    const [formSmtpSecure, setFormSmtpSecure] = useState(false);
-    const [formSmtpUser, setFormSmtpUser] = useState('');
-    const [formSmtpFrom, setFormSmtpFrom] = useState('');
+    const [formFrom, setFormFrom] = useState('');
+    const [formBase, setFormBase] = useState('');
 
     // The secret starts EMPTY, not pre-filled with the stored value: there is no stored value
     // to pre-fill with, because the server never sends one. Blank means "unchanged".
-    const [formSmtpPassword, setFormSmtpPassword] = useState('');
+    const [formApiKey, setFormApiKey] = useState('');
 
     const [testEmail, setTestEmail] = useState('');
     const [testing, setTesting] = useState(false);
@@ -55,11 +57,8 @@ export default function EmailSettings(): ReactNode {
         try {
             const view = await client.admin.settings();
             setSettings(view);
-            setFormSmtpHost(view.smtpHost);
-            setFormSmtpPort(String(view.smtpPort));
-            setFormSmtpSecure(view.smtpSecure);
-            setFormSmtpUser(view.smtpUser);
-            setFormSmtpFrom(view.smtpFrom);
+            setFormFrom(view.mailFrom);
+            setFormBase(view.resendBase);
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات ایمیل خوانده نشد'));
         } finally {
@@ -76,28 +75,20 @@ export default function EmailSettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
-        const port = Number(formSmtpPort);
-        if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-            notify.error('پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد');
-            return;
-        }
         setSaving(true);
         try {
-            // Absent, not empty: an untouched password input must not clear a working
-            // credential, so a blank field is simply not sent.
+            // Absent, not empty: an untouched key input must not clear a working credential,
+            // so a blank field is simply not sent.
             setSettings(
                 await client.admin.saveSettings({
                     input: {
-                        smtpHost: formSmtpHost,
-                        smtpPort: port,
-                        smtpSecure: formSmtpSecure,
-                        smtpUser: formSmtpUser,
-                        smtpFrom: formSmtpFrom,
-                        smtpPassword: formSmtpPassword === '' ? undefined : formSmtpPassword
+                        mailFrom: formFrom,
+                        resendBase: formBase,
+                        resendApiKey: formApiKey === '' ? undefined : formApiKey
                     }
                 })
             );
-            setFormSmtpPassword('');
+            setFormApiKey('');
             notify.success('تنظیمات ایمیل ذخیره شد');
         } catch (failure) {
             notify.error(failureText(failure, 'ذخیره نشد'));
@@ -130,7 +121,7 @@ export default function EmailSettings(): ReactNode {
                 ایمیل
             </h2>
             <p className="mt-2 text-small text-muted">
-                کد گیفت کارت از همین سرور برای خریدار فرستاده می‌شود. تا وقتی آدرس سرور و فرستنده
+                کد گیفت کارت با سرویس Resend برای خریدار فرستاده می‌شود. تا وقتی کلید و آدرس فرستنده
                 تنظیم نشده باشد، کد فقط روی صفحه نشان داده می‌شود.
             </p>
 
@@ -148,78 +139,52 @@ export default function EmailSettings(): ReactNode {
                         noValidate
                         onSubmit={(event) => void save(event)}
                     >
-                        <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
-                            <Field label="آدرس سرور" htmlFor="smtp-host">
-                                <TextInput
-                                    id="smtp-host"
-                                    latin
-                                    placeholder="smtp.example.com"
-                                    value={formSmtpHost}
-                                    onChange={setFormSmtpHost}
-                                />
-                            </Field>
-                            <Field label="پورت" htmlFor="smtp-port">
-                                <TextInput
-                                    id="smtp-port"
-                                    type="number"
-                                    latin
-                                    value={formSmtpPort}
-                                    onChange={setFormSmtpPort}
-                                />
-                            </Field>
-                        </div>
-
-                        <label className="mt-4 flex items-center gap-2 text-small">
-                            <input
-                                type="checkbox"
-                                checked={formSmtpSecure}
-                                onChange={(event) => setFormSmtpSecure(event.target.checked)}
+                        <Field
+                            label="کلید Resend"
+                            htmlFor="resend-api-key"
+                            hint="از بخش API Keys داشبورد Resend. بعد از ذخیره دیگر نمایش داده نمی‌شود؛ برای نگه داشتن مقدار فعلی، کادر را خالی بگذارید."
+                        >
+                            <TextInput
+                                id="resend-api-key"
+                                type="password"
+                                latin
+                                autoComplete="off"
+                                placeholder={
+                                    settings?.resendApiKeySet === true
+                                        ? `${settings.resendApiKeyMasked} (برای تغییر بنویسید)`
+                                        : 're_...'
+                                }
+                                value={formApiKey}
+                                onChange={setFormApiKey}
                             />
-                            اتصال امن مستقیم (SSL/TLS) - معمولاً برای پورت ۴۶۵
-                        </label>
-                        <p className="mt-1 text-caption text-muted">
-                            برای پورت ۵۸۷ این را خاموش بگذارید؛ اتصال با STARTTLS امن می‌شود.
-                        </p>
-
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                            <Field label="نام کاربری" htmlFor="smtp-user">
-                                <TextInput
-                                    id="smtp-user"
-                                    latin
-                                    autoComplete="off"
-                                    value={formSmtpUser}
-                                    onChange={setFormSmtpUser}
-                                />
-                            </Field>
-                            <Field label="رمز عبور" htmlFor="smtp-password">
-                                <TextInput
-                                    id="smtp-password"
-                                    type="password"
-                                    latin
-                                    autoComplete="off"
-                                    placeholder={
-                                        settings?.smtpPasswordSet === true
-                                            ? `${settings.smtpPasswordMasked} (برای تغییر بنویسید)`
-                                            : 'تنظیم نشده'
-                                    }
-                                    value={formSmtpPassword}
-                                    onChange={setFormSmtpPassword}
-                                />
-                            </Field>
-                        </div>
+                        </Field>
 
                         <Field
                             label="فرستنده"
-                            htmlFor="smtp-from"
+                            htmlFor="mail-from"
                             className="mt-4"
-                            hint="بیشتر سرورها فقط اجازه می‌دهند از آدرس همان حسابی که با آن وارد شده‌اید ایمیل بفرستید."
+                            hint="باید روی دامنه‌ای باشد که در Resend تأیید کرده‌اید. onboarding@resend.dev بدون تأیید کار می‌کند ولی فقط به ایمیل صاحب حساب Resend می‌رسد، نه به خریدارها."
                         >
                             <TextInput
-                                id="smtp-from"
+                                id="mail-from"
                                 latin
                                 placeholder="Guardian Service <no-reply@example.com>"
-                                value={formSmtpFrom}
-                                onChange={setFormSmtpFrom}
+                                value={formFrom}
+                                onChange={setFormFrom}
+                            />
+                        </Field>
+
+                        <Field
+                            label="آدرس API"
+                            htmlFor="resend-base"
+                            className="mt-4"
+                            hint="اگر api.resend.com از سرور شما در دسترس نیست، آدرس واسط را اینجا بگذارید."
+                        >
+                            <TextInput
+                                id="resend-base"
+                                latin
+                                value={formBase}
+                                onChange={setFormBase}
                             />
                         </Field>
 

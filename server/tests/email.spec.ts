@@ -6,7 +6,11 @@
 import { describe, it, expect } from 'vitest';
 
 import { displayEmail, emailField, normalizeEmail } from '../src/domain/email.ts';
-import { composeCodeMail, type MailSettings } from '../src/features/checkout/mailer.ts';
+import {
+    composeCodeMail,
+    createMailer,
+    type MailSettings
+} from '../src/features/checkout/mailer.ts';
 
 describe('an email address', () => {
     it('accepts the ordinary shapes people actually type', () => {
@@ -72,12 +76,9 @@ describe('an email address', () => {
 });
 
 const SETTINGS: MailSettings = {
-    host: 'smtp.test',
-    port: 587,
-    secure: false,
-    user: 'u',
-    password: 'p',
+    apiKey: 're_test_key',
     from: 'shop@test',
+    baseUrl: 'https://resend.test',
     appName: 'گاردین سرویس'
 };
 
@@ -111,5 +112,105 @@ describe('the gift-code email', () => {
         expect(mail.html).toContain('a&lt;b&gt;&amp;&quot;c');
         expect(mail.html).toContain('Shop &lt;b&gt;&amp;');
         expect(mail.html).not.toContain('<b>&');
+    });
+});
+
+// The Resend client. `fetch` is injected, so a 401, a rejected domain, a timeout and a happy
+// path all run here with no account and no network.
+/** Records the one request the mailer makes, and answers with whatever the test wants. */
+function spyFetch(answer: { status: number; body?: unknown }): {
+    calls: Array<{ url: string; init: RequestInit }>;
+    fetch: (url: string, init?: RequestInit) => Promise<Response>;
+} {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    return {
+        calls,
+        fetch: (url, init) => {
+            calls.push({ url, init: init ?? {} });
+            return Promise.resolve(
+                new Response(JSON.stringify(answer.body ?? {}), {
+                    status: answer.status,
+                    headers: { 'content-type': 'application/json' }
+                })
+            );
+        }
+    };
+}
+
+describe('sending through Resend', () => {
+    it('posts the composed message to the configured host with the key', async () => {
+        const spy = spyFetch({ status: 200, body: { id: 'abc-123' } });
+        const mailer = createMailer({ settings: () => SETTINGS, fetch: spy.fetch });
+
+        expect(await mailer.sendCode('ali@example.com', 'NC-1234-5678', 10)).toEqual({ ok: true });
+
+        expect(spy.calls).toHaveLength(1);
+        // The HOST comes from settings, not from a constant - that is what lets an operator
+        // behind a blocked network point this at a relay without a deploy.
+        expect(spy.calls[0].url).toBe('https://resend.test/emails');
+
+        const headers = spy.calls[0].init.headers as Record<string, string>;
+        expect(headers.authorization).toBe('Bearer re_test_key');
+
+        const body = JSON.parse(String(spy.calls[0].init.body)) as Record<string, string>;
+        expect(body.from).toBe('shop@test');
+        expect(body.to).toBe('ali@example.com');
+        // Both parts travel. The text one is what survives a client with styling off, which
+        // for a message whose entire payload is one code is the part that matters.
+        expect(body.text).toContain('NC-1234-5678');
+        expect(body.html).toContain('NC-1234-5678');
+    });
+
+    it("hands the operator Resend's own words when it refuses", async () => {
+        // The two refusals that actually happen: an unverified domain, and the sandbox sender
+        // that only reaches the account owner. Neither is guessable from a status code, so the
+        // provider's `message` is passed through rather than replaced with something tidy.
+        const spy = spyFetch({
+            status: 403,
+            body: { name: 'validation_error', message: 'The example.com domain is not verified.' }
+        });
+        const mailer = createMailer({ settings: () => SETTINGS, fetch: spy.fetch });
+
+        expect(await mailer.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+            ok: false,
+            reason: 'The example.com domain is not verified.'
+        });
+    });
+
+    it('still reports a reason when the refusal has no body', async () => {
+        const spy = spyFetch({ status: 502, body: null });
+        const mailer = createMailer({ settings: () => SETTINGS, fetch: spy.fetch });
+
+        const result = await mailer.sendCode('ali@example.com', 'NC-1', 10);
+        expect(result.ok).toBe(false);
+        expect(result.ok === false && result.reason).toContain('502');
+    });
+
+    it('refuses without calling out when nothing is configured', async () => {
+        // A code is valid whether or not the message arrives, so an unconfigured mailer
+        // degrades to exactly what an outage produces - a notice, never a failed purchase.
+        const spy = spyFetch({ status: 200 });
+        const mailer = createMailer({
+            settings: () => ({ ...SETTINGS, apiKey: '' }),
+            fetch: spy.fetch
+        });
+
+        expect(await mailer.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+            ok: false,
+            reason: 'email delivery is not configured'
+        });
+        expect(spy.calls).toHaveLength(0);
+    });
+
+    it('reports a thrown transport failure rather than escaping it', async () => {
+        const mailer = createMailer({
+            settings: () => SETTINGS,
+            fetch: () => Promise.reject(new Error('network unreachable'))
+        });
+
+        expect(await mailer.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+            ok: false,
+            reason: 'network unreachable'
+        });
     });
 });
