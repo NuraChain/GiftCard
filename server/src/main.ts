@@ -236,7 +236,22 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     });
 }
 
-// Bound to every interface: inside a container the only way in is nginx, and binding to
-// localhost there would make the service unreachable from the proxy container.
-await app.listen({ port: config.port, host: '0.0.0.0' });
-log.info({ port: config.port, env: config.env }, 'listening');
+// LOOPBACK ONLY. nginx runs on this machine (scripts/service-install.sh installs the unit
+// beside it) and proxies /api through, so nothing else has any business reaching this port.
+//
+// THIS IS WHAT MAKES `TRUST_PROXY_HOPS` TRUE RATHER THAN DECORATIVE. The app trusts the last
+// address in `X-Forwarded-For` because it believes nginx wrote it. Bound to every interface,
+// anyone who can route to this host connects DIRECTLY and writes that header themselves - and
+// every per-IP throttle, plus the console's sign-in lockout, becomes a value the attacker
+// chooses. One request per forged address, forever. Binding here is the half of that setting
+// that lives in the code; the other half is nginx overwriting the header (see
+// platform/throttle.ts), and either alone is worthless.
+//
+// It also keeps the shop off the network without TLS: this process speaks plain http, and the
+// only thing that makes the site https is the terminator in front of it.
+//
+// This used to bind 0.0.0.0 for a containerised deployment, where nginx was a separate
+// container and loopback would have been unreachable. There is no container now - if one ever
+// returns, this line changes back and the paragraph above is what it costs.
+await app.listen({ port: config.port, host: '127.0.0.1' });
+log.info({ host: '127.0.0.1', port: config.port, env: config.env }, 'listening');
