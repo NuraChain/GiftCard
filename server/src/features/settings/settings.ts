@@ -129,7 +129,7 @@ export const MAX_MARGIN_PERCENT = 100;
  */
 const DEFAULTS = {
     appName: 'گاردین سرویس',
-    publicBaseUrl: 'https://guardian-server.ir',
+    publicBaseUrl: 'https://guardian-service.ir',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
     resendApiKey: '',
