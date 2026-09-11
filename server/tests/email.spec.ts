@@ -186,19 +186,41 @@ describe('sending through Resend', () => {
         expect(result.ok === false && result.reason).toContain('502');
     });
 
-    it('refuses without calling out when nothing is configured', async () => {
-        // A code is valid whether or not the message arrives, so an unconfigured mailer
-        // degrades to exactly what an outage produces - a notice, never a failed purchase.
+    it('names the field that is missing, not just "not configured"', async () => {
+        // Two fields have to be set and an operator is usually missing exactly one. A message
+        // that does not say which sends them back to re-check the one that was already right.
         const spy = spyFetch({ status: 200 });
-        const mailer = createMailer({
+
+        const noKey = createMailer({
             settings: () => ({ ...SETTINGS, apiKey: '' }),
             fetch: spy.fetch
         });
-
-        expect(await mailer.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+        expect(await noKey.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
             ok: false,
-            reason: 'email delivery is not configured'
+            reason: 'کلید Resend تنظیم نشده است'
         });
+
+        const noFrom = createMailer({
+            settings: () => ({ ...SETTINGS, from: '' }),
+            fetch: spy.fetch
+        });
+        expect(await noFrom.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+            ok: false,
+            reason: 'آدرس فرستنده تنظیم نشده است'
+        });
+
+        const neither = createMailer({
+            settings: () => ({ ...SETTINGS, apiKey: '', from: '' }),
+            fetch: spy.fetch
+        });
+        expect(await neither.sendCode('ali@example.com', 'NC-1', 10)).toEqual({
+            ok: false,
+            reason: 'کلید Resend و آدرس فرستنده تنظیم نشده است'
+        });
+
+        // A code is valid whether or not the message arrives, so an unconfigured mailer
+        // degrades to exactly what an outage produces - a notice, never a failed purchase,
+        // and never a call to a provider that would refuse it anyway.
         expect(spy.calls).toHaveLength(0);
     });
 

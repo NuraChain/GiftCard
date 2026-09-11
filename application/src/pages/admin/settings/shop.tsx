@@ -55,6 +55,18 @@ export default function ShopSettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
+
+        // Nothing is saved before something is read - see the note in email.tsx. Posting the
+        // empty box this form starts with would rename the shop to nothing.
+        if (!loaded) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+        if (formAppName.trim() === '') {
+            notify.error('نام فروشگاه را وارد کنید');
+            return;
+        }
+
         setSaving(true);
         try {
             // ONLY this panel's field is sent. An absent field keeps its value, so a save here
@@ -80,7 +92,7 @@ export default function ShopSettings(): ReactNode {
 
             <div className="mt-4">
                 <Async
-                    loading={loading && !loaded}
+                    loading={loading || !loaded}
                     error={error}
                     onRetry={() => void load()}
                     skeleton={

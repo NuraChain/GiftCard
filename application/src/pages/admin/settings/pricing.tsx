@@ -100,6 +100,12 @@ export default function PricingSettings(): ReactNode {
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
 
+        // Nothing is saved before something is read - see the note in email.tsx.
+        if (settings === null) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+
         const margin = Number(formMargin);
         if (!Number.isFinite(margin) || margin < 0 || margin > 100) {
             notify.error('درصد سود باید عددی بین ۰ تا ۱۰۰ باشد');
@@ -175,7 +181,7 @@ export default function PricingSettings(): ReactNode {
 
             <div className="mt-4">
                 <Async
-                    loading={loading && settings === null}
+                    loading={loading || settings === null}
                     error={error}
                     onRetry={() => void load()}
                     skeleton={

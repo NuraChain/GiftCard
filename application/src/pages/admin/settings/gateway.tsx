@@ -71,6 +71,15 @@ export default function GatewaySettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
+        // NOTHING IS SAVED BEFORE SOMETHING IS READ. Every field below is posted whether or
+        // not it was touched, so submitting a form that never loaded would write the empty
+        // boxes it is showing over whatever is actually stored. `settings` is null until a
+        // read succeeds, which makes that state unreachable rather than merely unlikely.
+        if (settings === null) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+
         // Changing the merchant id changes WHERE THE MONEY GOES. It is the one field in this
         // console that deserves a second question.
         if (
@@ -110,7 +119,7 @@ export default function GatewaySettings(): ReactNode {
 
             <div className="mt-4">
                 <Async
-                    loading={loading && settings === null}
+                    loading={loading || settings === null}
                     error={error}
                     onRetry={() => void load()}
                     skeleton={

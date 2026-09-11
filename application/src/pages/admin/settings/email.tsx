@@ -75,6 +75,26 @@ export default function EmailSettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
+        // NOTHING IS SAVED BEFORE SOMETHING IS READ. Every field below is posted whether or
+        // not it was touched, so submitting a form that never loaded would write the empty
+        // boxes it is showing over whatever is actually stored. `settings` is null until a
+        // read succeeds, which makes that state unreachable rather than merely unlikely.
+        if (settings === null) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+
+        // An empty From is not a way to turn delivery off - it is an unfinished form. Saving
+        // it would clear a working address and leave the shop silently not sending.
+        if (formFrom.trim() === '') {
+            notify.error('آدرس فرستنده را وارد کنید');
+            return;
+        }
+        if (formBase.trim() === '') {
+            notify.error('آدرس API را وارد کنید');
+            return;
+        }
+
         setSaving(true);
         try {
             // Absent, not empty: an untouched key input must not clear a working credential,
@@ -127,7 +147,7 @@ export default function EmailSettings(): ReactNode {
 
             <div className="mt-4">
                 <Async
-                    loading={loading && settings === null}
+                    loading={loading || settings === null}
                     error={error}
                     onRetry={() => void load()}
                     skeleton={

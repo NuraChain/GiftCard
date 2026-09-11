@@ -190,8 +190,17 @@ export function createMailer(options: MailerOptions): MailSender {
          */
         async sendCode(email: string, code: string, amountUsd: number): Promise<MailResult> {
             const live = options.settings();
-            if (live.apiKey === '' || live.from === '') {
-                return { ok: false, reason: 'email delivery is not configured' };
+
+            // NAMED, not "not configured". Two fields have to be set and the operator is
+            // usually missing exactly one of them; a message that does not say which sends
+            // them back to re-check the field that was already right.
+            const missing = [
+                live.apiKey === '' ? 'کلید Resend' : '',
+                live.from === '' ? 'آدرس فرستنده' : ''
+            ].filter((name) => name !== '');
+
+            if (missing.length > 0) {
+                return { ok: false, reason: `${missing.join(' و ')} تنظیم نشده است` };
             }
 
             try {
