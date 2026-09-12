@@ -11,7 +11,7 @@ import { BrowserRouter, MemoryRouter, Route, Routes, Link } from 'react-router';
 
 import { CatalogProvider, useCatalog } from './lib/catalog.tsx';
 import { routes } from './routes.tsx';
-import { CONTACT } from './lib/content.ts';
+import { CONTACT, ENAMAD } from './lib/content.ts';
 import { year } from './lib/format.ts';
 import ThemeToggle from './components/theme-toggle.tsx';
 import MobileNav from './components/mobile-nav.tsx';
@@ -27,6 +27,12 @@ const NAV_LINKS = [
     { href: '/#how', label: 'روش خرید' },
     { href: '/#faq', label: 'سوال‌های پرتکرار' }
 ];
+
+// `code` is a non-standard attribute (see the seal in the footer). React renders any
+// lowercase attribute it does not recognise, but the DOM typings only describe the standard
+// ones - so it is spread from here, which says "this one is deliberate" without widening
+// what every other <img> in the app is allowed to carry.
+const SEAL_CODE: Record<string, string> = { code: ENAMAD.code };
 
 /** The chrome, and the routed page inside it. Split out so it can use the router's hooks. */
 function Chrome(): ReactNode {
@@ -111,6 +117,38 @@ function Chrome(): ReactNode {
                             فروش گیفت کارت با تحویل آنی کد. اگر کدی که خریده‌اید فعال نشود، جایگزین
                             می‌کنیم یا وجه را برمی‌گردانیم.
                         </p>
+
+                        {/* The eNamad seal. THREE THINGS IN IT LOOK LIKE NOISE AND ARE NOT:
+
+                            `referrerPolicy="origin"` on BOTH elements. enamad decides what to
+                            serve from the Referer header - the seal is licensed to one domain -
+                            so a stricter policy gets a broken image and a page saying this site
+                            is not the licensee.
+
+                            `rel="noopener"` WITHOUT the `noreferrer` that usually rides along
+                            with it, for the same reason: the new tab must not get a handle on
+                            this window, but it must still say where it came from.
+
+                            The non-standard `code` attribute, which is what enamad's own
+                            checker looks for when it verifies the seal is really on the site.
+
+                            The white plate is not decoration either. This is a fixed-colour
+                            image, and on the dark theme it would otherwise sit on navy. */}
+                        <a
+                            className="mt-5 inline-block rounded-xl bg-white p-2"
+                            href={`https://trustseal.enamad.ir/?id=${ENAMAD.id}&Code=${ENAMAD.code}`}
+                            target="_blank"
+                            rel="noopener"
+                            referrerPolicy="origin"
+                        >
+                            <img
+                                className="block h-auto w-24"
+                                src={`https://trustseal.enamad.ir/logo.aspx?id=${ENAMAD.id}&Code=${ENAMAD.code}`}
+                                alt="نماد اعتماد الکترونیکی"
+                                referrerPolicy="origin"
+                                {...SEAL_CODE}
+                            />
+                        </a>
                     </div>
 
                     <div>

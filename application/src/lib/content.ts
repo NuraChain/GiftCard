@@ -130,3 +130,20 @@ export const CONTACT = {
     hours: 'هر روز، ۹ صبح تا ۹ شب به وقت تهران',
     operator: 'شرکت داده‌پردازی اشبرینگر'
 };
+
+/**
+ * The eNamad trust seal.
+ *
+ * THE HEADER OF THIS FILE FORBIDS INVENTED BADGES, AND THIS IS NOT ONE. Everything in a
+ * self-made trust signal is written by the site making the claim; none of this is. The id and
+ * the code are issued by enamad.ir to a registered business, the image is served by enamad's
+ * own server, and the seal links back to enamad's page where the licence can be read by
+ * anybody who doubts it. A reader can check this claim, which is the whole difference.
+ *
+ * BOTH VALUES ARE LICENSED TO ONE DOMAIN. They belong to the address in `publicBaseUrl` and
+ * mean nothing served from another host - see the note on the link in App.tsx.
+ */
+export const ENAMAD = {
+    id: '716988',
+    code: '0ucbntRpzbfCHytc3RznQyd6qwqANIja'
+};

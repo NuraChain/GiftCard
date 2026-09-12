@@ -14,7 +14,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 import App from '../src/App.tsx';
-import { FAQS, ASSURANCES } from '../src/lib/content.ts';
+import { FAQS, ASSURANCES, ENAMAD } from '../src/lib/content.ts';
 
 /** 10 x 100,000 + 6% = 1,060,000 - the same sum the server does, written out for the reader. */
 const TEN_DOLLAR_TOMAN = 1_060_000;
@@ -163,6 +163,25 @@ describe('landing page', () => {
             (node) => !node.classList.contains('latin')
         );
         expect(tracked.map((node) => node.className)).toEqual([]);
+    });
+
+    it('carries the eNamad seal with the referrer its licence check depends on', () => {
+        const { container } = render(<App url="/" />);
+        const image = container.querySelector<HTMLImageElement>('img[src*="trustseal.enamad.ir"]');
+        const link = image?.closest('a');
+
+        // enamad serves a valid seal only to the domain it licensed, and it decides that from
+        // the Referer header. Both halves have to send it - and the outbound link must NOT
+        // pick up the `noreferrer` that usually accompanies target="_blank", or a click lands
+        // at enamad with nothing to check. This is the kind of attribute a later tidy-up
+        // deletes as boilerplate, so it is pinned here.
+        expect(image?.getAttribute('referrerpolicy')).toBe('origin');
+        expect(link?.getAttribute('referrerpolicy')).toBe('origin');
+        expect(link?.getAttribute('rel')).toBe('noopener');
+        expect(link?.getAttribute('href')).toContain(ENAMAD.code);
+
+        // Non-standard, and what enamad's own checker looks for on the page.
+        expect(image?.getAttribute('code')).toBe(ENAMAD.code);
     });
 });
 
