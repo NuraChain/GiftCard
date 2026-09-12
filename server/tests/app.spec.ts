@@ -33,6 +33,7 @@ import {
     DEFAULT_ADMIN_KEY,
     type Settings
 } from '../src/features/settings/settings.ts';
+import { DEFAULT_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from '../src/features/settings/contract.ts';
 import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
 import { createStore, type Store } from '../src/db/index.ts';
 
@@ -1346,7 +1347,7 @@ describe('the operations bot', () => {
         expect(fake.telegramSent[0]).toContain('اشبرینگر');
     });
 
-    it('runs a backup on demand rather than making the operator wait an hour', async () => {
+    it('runs a backup on demand rather than making the operator wait out the interval', async () => {
         const cookie = await signedIn();
         const result = (await (
             await post('/api/admin/telegram/backup', {}, { cookie })
@@ -1354,6 +1355,54 @@ describe('the operations bot', () => {
 
         expect(result.ok).toBe(true);
         expect(fake.backupsRun).toBe(1);
+    });
+
+    it('reports the shipped interval until somebody chooses one', async () => {
+        const cookie = await signedIn();
+        const view = (await (await get('/api/admin/telegram', { cookie })).json()) as {
+            backupEveryMinutes: number;
+        };
+
+        expect(view.backupEveryMinutes).toBe(DEFAULT_BACKUP_MINUTES);
+    });
+
+    it('saves a new backup interval and reports it back', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { backupEveryMinutes: 15 }, { cookie });
+
+        const view = (await (await get('/api/admin/telegram', { cookie })).json()) as {
+            backupEveryMinutes: number;
+        };
+
+        // Both halves matter: the schedule reads `settings.current()` on every tick, and the
+        // console reads this view - a saved interval that only one of them can see is a shop
+        // whose panel disagrees with what it is actually doing.
+        expect(view.backupEveryMinutes).toBe(15);
+        expect(settings.current().backupEveryMinutes).toBe(15);
+    });
+
+    it('refuses an interval short enough for two backups to overlap', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { backupEveryMinutes: 30 }, { cookie });
+
+        const response = await post(
+            '/api/admin/settings',
+            { backupEveryMinutes: MIN_BACKUP_MINUTES - 1 },
+            { cookie }
+        );
+
+        // Refused at the boundary, and the working interval is untouched by the attempt.
+        expect(response.status).toBe(422);
+        expect(settings.current().backupEveryMinutes).toBe(30);
+    });
+
+    it('falls back to the shipped interval rather than stopping when the stored value is junk', () => {
+        // Not reachable through the API - the boundary above refuses it - but reachable
+        // through a hand-edited database, and a schedule that reads `NaN` is a schedule that
+        // never fires again. Silence is the one failure a backup must not have.
+        store.putSetting('backupEveryMinutes', 'nonsense');
+
+        expect(settings.current().backupEveryMinutes).toBe(DEFAULT_BACKUP_MINUTES);
     });
 });
 

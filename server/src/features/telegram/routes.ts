@@ -1,13 +1,12 @@
 // Telegram's handlers: what is configured, and the two ways to prove it works.
 //
 // The test message and the manual backup are the only ways an operator can find out whether a
-// bot token is right without waiting for a sale or waiting an hour - and finding out at 3am,
-// from the absence of a message, is not finding out.
+// bot token is right without waiting for a sale or waiting out the backup interval - and
+// finding out at 3am, from the absence of a message, is not finding out.
 import type { Handlers } from '../../platform/api.ts';
 import type { contract } from '../../contract/index.ts';
 import type { Settings } from '../settings/settings.ts';
 import type { BackupJob } from './notify.ts';
-import { BACKUP_INTERVAL_MS } from './notify.ts';
 import type { Telegram } from './telegram.ts';
 
 export interface TelegramOptions {
@@ -45,7 +44,7 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
                 botTokenSet: live.telegramBotToken !== '',
                 chatId: live.telegramChatId,
                 baseUrl: live.telegramBase,
-                backupEveryMinutes: Math.round(BACKUP_INTERVAL_MS / 60_000)
+                backupEveryMinutes: live.backupEveryMinutes
             };
         },
 

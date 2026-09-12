@@ -3,7 +3,7 @@
 // The backup half is tested against a REAL SQLite database rather than a stub, because the
 // thing most worth proving is that the snapshot it produces is a database somebody could
 // actually restore - and a fake store would prove nothing about that at all.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,7 @@ import { inflateRawSync } from 'node:zlib';
 import { createStore } from '../src/db/index.ts';
 import { createBackupJob, createSaleNotifier, type Sale } from '../src/features/telegram/notify.ts';
 import { createTelegram, type Telegram } from '../src/features/telegram/telegram.ts';
+import { DEFAULT_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from '../src/features/settings/contract.ts';
 
 const SETTINGS = {
     botToken: '1234:TOKEN',
@@ -165,7 +166,7 @@ describe('the sale notification', () => {
     });
 });
 
-describe('the hourly backup', () => {
+describe('the scheduled backup', () => {
     it('sends a ZIP whose contents are a restorable database, then deletes it', async () => {
         const dir = await scratch();
         const store = createStore(':memory:');
@@ -188,6 +189,7 @@ describe('the hourly backup', () => {
             store,
             telegram: bot,
             appName: () => 'اشبرینگر',
+            everyMinutes: () => DEFAULT_BACKUP_MINUTES,
             scratchDir: dir
         }).runNow();
 
@@ -240,6 +242,7 @@ describe('the hourly backup', () => {
                 store,
                 telegram: bot,
                 appName: () => 'x',
+                everyMinutes: () => DEFAULT_BACKUP_MINUTES,
                 scratchDir: dir
             }).runNow()
         ).toEqual({ ok: false, reason: 'telegram is not configured' });
@@ -249,5 +252,127 @@ describe('the hourly backup', () => {
 
         store.close();
         await rm(dir, { recursive: true, force: true });
+    });
+});
+
+/**
+ * A bot that is switched off, and counts how often it was asked.
+ *
+ * THE QUESTION IS THE MEASUREMENT. `configured()` is the first thing a backup does and the only
+ * part of it that is synchronous; an unconfigured bot turns the whole job into a no-op that
+ * reads no file and compresses nothing, so a fake clock can drive a day of ticks through it and
+ * count the decisions exactly. What a CONFIGURED backup actually produces is proved against a
+ * real database and a real clock in `the scheduled backup` - these are about WHEN it runs, and
+ * a fake clock cannot advance the threadpool the real one uses.
+ */
+function askCounter(): Telegram & { asked: number } {
+    const bot: Telegram & { asked: number } = {
+        asked: 0,
+        configured: () => {
+            bot.asked += 1;
+            return false;
+        },
+        receive: () => Promise.resolve([]),
+        sendMessage: () => Promise.resolve({ ok: true }),
+        sendDocument: () => Promise.resolve({ ok: true })
+    };
+    return bot;
+}
+
+/** A started schedule over a throwaway database. The returned function stops and closes both. */
+function scheduled(bot: Telegram, everyMinutes: () => number): () => void {
+    const store = createStore(':memory:');
+    const stop = createBackupJob({
+        store,
+        telegram: bot,
+        appName: () => 'x',
+        everyMinutes
+    }).start();
+    return (): void => {
+        stop();
+        store.close();
+    };
+}
+
+describe('the backup schedule', () => {
+    it('waits out the configured gap before the first backup, and not longer', async () => {
+        vi.useFakeTimers();
+        const bot = askCounter();
+        const stop = scheduled(bot, () => 10);
+
+        try {
+            // Nothing on boot. A process that restarts often would otherwise copy the whole
+            // database on every restart, which is the opposite of a safeguard.
+            await vi.advanceTimersByTimeAsync(9 * 60_000);
+            expect(bot.asked).toBe(0);
+
+            await vi.advanceTimersByTimeAsync(60_000);
+            expect(bot.asked).toBe(1);
+
+            // And again on the same cadence, rather than once and then never.
+            await vi.advanceTimersByTimeAsync(10 * 60_000);
+            expect(bot.asked).toBe(2);
+        } finally {
+            stop();
+            vi.useRealTimers();
+        }
+    });
+
+    it('honours an interval shortened in the console without waiting out the old one', async () => {
+        vi.useFakeTimers();
+        const bot = askCounter();
+
+        // THE REGRESSION THIS TEST EXISTS TO CATCH. `setInterval(backup, gap)` fixes the gap at
+        // the moment it is armed, so an operator who cut a daily backup to a ten-minute one
+        // after a scare would get the first short gap A DAY LATER - on the one day it mattered.
+        let minutes = 24 * 60;
+        const stop = scheduled(bot, () => minutes);
+
+        try {
+            await vi.advanceTimersByTimeAsync(30 * 60_000);
+            expect(bot.asked).toBe(0);
+
+            // Half an hour is already past the new gap, so the next tick is due at once.
+            minutes = 10;
+            await vi.advanceTimersByTimeAsync(60_000);
+            expect(bot.asked).toBe(1);
+        } finally {
+            stop();
+            vi.useRealTimers();
+        }
+    });
+
+    it('lengthening the interval pushes the next backup out rather than firing one', async () => {
+        vi.useFakeTimers();
+        const bot = askCounter();
+        let minutes = 10;
+        const stop = scheduled(bot, () => minutes);
+
+        try {
+            await vi.advanceTimersByTimeAsync(9 * 60_000);
+            minutes = 24 * 60;
+
+            // The gap it was nearly through is not the gap any more, so the tick that would
+            // have fired now waits with everything else.
+            await vi.advanceTimersByTimeAsync(60 * 60_000);
+            expect(bot.asked).toBe(0);
+        } finally {
+            stop();
+            vi.useRealTimers();
+        }
+    });
+
+    it('stops when told to', async () => {
+        vi.useFakeTimers();
+        const bot = askCounter();
+        const stop = scheduled(bot, () => MIN_BACKUP_MINUTES);
+        stop();
+
+        try {
+            await vi.advanceTimersByTimeAsync(60 * 60_000);
+            expect(bot.asked).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

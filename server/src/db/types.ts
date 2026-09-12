@@ -308,7 +308,7 @@ export interface Store extends SettingsStore {
      *
      * Through SQLite itself, not a file copy: copying the file while the shop is trading
      * captures a half-written page and a WAL that does not match it, which restores to
-     * nothing. This is what the hourly Telegram backup sends.
+     * nothing. This is what the scheduled Telegram backup sends.
      */
     backupTo(file: string): void;
 

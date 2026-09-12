@@ -169,11 +169,14 @@ const backup = createBackupJob({
     store,
     telegram,
     appName: () => settings.current().appName,
+    // Read per tick, like the credentials above: an interval changed in the console takes
+    // effect on the next tick rather than on the next deploy.
+    everyMinutes: () => settings.current().backupEveryMinutes,
     log
 });
 
-// The hourly schedule starts whether or not a token is set: a bot configured at noon should
-// start backing up at one, not at the next restart. An unconfigured run is a cheap no-op.
+// The schedule starts whether or not a token is set: a bot configured at noon should start
+// backing up an interval later, not at the next restart. An unconfigured run is a cheap no-op.
 const stopBackups = backup.start();
 
 // The command side: /setprice and friends, so the shop can be repriced from a phone. It polls

@@ -1,4 +1,5 @@
-// The operations bot: a ping when something sells, and the database once an hour.
+// The operations bot: a ping when something sells, and the database on a schedule this page
+// sets.
 //
 // TWO BUTTONS, AND THEY ARE THE POINT. A bot token that is subtly wrong fails silently -
 // there is no sale to notice it on until there is a sale, and no backup to miss until the day
@@ -13,7 +14,12 @@ import { AlertTriangle, DatabaseBackup, Save, Send, Radio } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 import { client, failureText } from '../../../lib/api.ts';
-import type { TelegramStatusView } from '../../../../../server/src/contract/index.ts';
+import {
+    DEFAULT_BACKUP_MINUTES,
+    MAX_BACKUP_MINUTES,
+    MIN_BACKUP_MINUTES,
+    type TelegramStatusView
+} from '../../../../../server/src/contract/index.ts';
 import { count } from '../../../lib/format.ts';
 import { useToasts } from '../../../ui/toast.tsx';
 import Async from '../../../ui/async.tsx';
@@ -38,6 +44,7 @@ export default function TelegramSettings(): ReactNode {
     const [formToken, setFormToken] = useState('');
     const [formChatId, setFormChatId] = useState('');
     const [formBase, setFormBase] = useState('');
+    const [formMinutes, setFormMinutes] = useState('');
 
     const load = useCallback(async (): Promise<void> => {
         setLoading(true);
@@ -47,6 +54,7 @@ export default function TelegramSettings(): ReactNode {
             setStatus(view);
             setFormChatId(view.chatId);
             setFormBase(view.baseUrl);
+            setFormMinutes(String(view.backupEveryMinutes));
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات ربات خوانده نشد'));
         } finally {
@@ -63,12 +71,29 @@ export default function TelegramSettings(): ReactNode {
 
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
+
+        // The same band the server enforces, checked here first so the operator gets a
+        // sentence rather than a rejected request.
+        const minutes = Number(formMinutes);
+        if (
+            !Number.isInteger(minutes) ||
+            minutes < MIN_BACKUP_MINUTES ||
+            minutes > MAX_BACKUP_MINUTES
+        ) {
+            notify.error(
+                `فاصلهٔ پشتیبان‌گیری باید عددی صحیح بین ${count(MIN_BACKUP_MINUTES)} و ` +
+                    `${count(MAX_BACKUP_MINUTES)} دقیقه باشد`
+            );
+            return;
+        }
+
         setSaving(true);
         try {
             await client.admin.saveSettings({
                 input: {
                     telegramChatId: formChatId,
                     telegramBase: formBase,
+                    backupEveryMinutes: minutes,
                     // Absent, not empty: a blank token box must not switch the bot off.
                     telegramBotToken: formToken === '' ? undefined : formToken
                 }
@@ -131,9 +156,9 @@ export default function TelegramSettings(): ReactNode {
                 ربات تلگرام
             </h2>
             <p className="mt-2 text-small text-muted">
-                با هر فروش یک پیام به این چت می‌رسد، و هر {count(status?.backupEveryMinutes ?? 60)}{' '}
-                دقیقه یک نسخهٔ پشتیبان از دیتابیس فرستاده می‌شود. کد گیفت کارت هیچ‌وقت در پیام فروش
-                نمی‌آید.
+                با هر فروش یک پیام به این چت می‌رسد، و هر{' '}
+                {count(status?.backupEveryMinutes ?? DEFAULT_BACKUP_MINUTES)} دقیقه یک نسخهٔ پشتیبان
+                از دیتابیس فرستاده می‌شود. کد گیفت کارت هیچ‌وقت در پیام فروش نمی‌آید.
             </p>
 
             <div className="mt-4">
@@ -194,6 +219,22 @@ export default function TelegramSettings(): ReactNode {
                             </Field>
                         </div>
 
+                        <div className="mt-4">
+                            <Field
+                                label="فاصلهٔ پشتیبان‌گیری (دقیقه)"
+                                htmlFor="backup-minutes"
+                                hint={`هر چند دقیقه یک نسخهٔ کامل از دیتابیس به این چت فرستاده شود. بین ${count(MIN_BACKUP_MINUTES)} دقیقه و ${count(MAX_BACKUP_MINUTES)} دقیقه (یک هفته). تغییر آن تا یک دقیقه بعد اعمال می‌شود و نیازی به راه‌اندازی دوباره نیست.`}
+                            >
+                                <TextInput
+                                    id="backup-minutes"
+                                    type="number"
+                                    latin
+                                    value={formMinutes}
+                                    onChange={setFormMinutes}
+                                />
+                            </Field>
+                        </div>
+
                         <dl className="mt-5 grid gap-2 border-t border-line pt-4 text-caption text-muted">
                             <div className="flex justify-between gap-2">
                                 <dt>وضعیت ربات</dt>
@@ -207,7 +248,10 @@ export default function TelegramSettings(): ReactNode {
                             </div>
                             <div className="flex justify-between gap-2">
                                 <dt>فاصلهٔ پشتیبان‌گیری</dt>
-                                <dd>{count(status?.backupEveryMinutes ?? 60)} دقیقه</dd>
+                                <dd>
+                                    {count(status?.backupEveryMinutes ?? DEFAULT_BACKUP_MINUTES)}{' '}
+                                    دقیقه
+                                </dd>
                             </div>
                         </dl>
 

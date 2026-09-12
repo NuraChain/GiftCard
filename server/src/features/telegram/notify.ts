@@ -1,10 +1,10 @@
 // The three jobs Telegram does: say when something sells, say when a code is cashed out, and
-// carry the database off this machine once an hour.
+// carry the database off this machine on a timer.
 //
 // NEITHER MAY EVER BREAK A PURCHASE. That is the rule both halves are built around. The
 // notification is fire-and-forget - `sold()` returns void, on purpose, so no caller can
 // accidentally await it and put a chat server on the path between a buyer and their code. The
-// backup runs on its own timer, touches nothing the shop is using, and compresses off the
+// backup runs on its own schedule, touches nothing the shop is using, and compresses off the
 // event loop (platform/zip.ts) so a checkout in flight never waits on it.
 //
 // THE PAYOUT NOTIFICATION IS THE EXCEPTION, AND IT IS AWAITED. `redeemed()` returns a result
@@ -26,8 +26,12 @@ import { zipOne } from '../../platform/zip.ts';
 import type { Store } from '../../db/types.ts';
 import type { Telegram, TelegramResult } from './telegram.ts';
 
-/** How often the database is sent. */
-export const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
+/**
+ * How often the schedule looks at the clock. NOT how often a backup is taken - that is
+ * `everyMinutes`, a setting, and this is only the resolution at which a change to it is
+ * noticed. See `start`.
+ */
+const TICK_MS = 60 * 1000;
 
 /**
  * Telegram refuses a bot upload over 50MB. This shop's database is codes and orders - text -
@@ -195,7 +199,7 @@ export interface BackupJob {
     /** Takes a backup and sends it, now. The console's button and the timer share this. */
     runNow(): Promise<TelegramResult>;
 
-    /** Begins the hourly schedule. Returns the stop function. */
+    /** Begins the schedule. Returns the stop function. */
     start(): () => void;
 }
 
@@ -203,6 +207,16 @@ export interface BackupJobOptions {
     store: Store;
     telegram: Telegram;
     appName: () => string;
+
+    /**
+     * The gap between automatic backups, in minutes.
+     *
+     * A FUNCTION, read on every tick, exactly like `appName` - it is a console setting now,
+     * and an operator who shortens it after a scare must not have to restart the process for
+     * the shorter gap to mean anything.
+     */
+    everyMinutes: () => number;
+
     log?: Logger;
 
     /** Overridden by tests so a backup does not land in the real temp directory. */
@@ -284,7 +298,29 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
         runNow: backup,
 
         start(): () => void {
-            const timer = setInterval(() => void backup(), BACKUP_INTERVAL_MS);
+            // A CLOCK, NOT A PERIOD. `setInterval(backup, gap)` freezes the gap at the moment
+            // it is armed: an operator who cut the interval from a day to ten minutes would
+            // get the first short gap a day later, which is the one day it mattered. So this
+            // ticks at a fixed resolution and asks each time how long it has actually been -
+            // a change in the console is honoured within a tick, in both directions.
+            //
+            // The first backup lands one whole interval after boot, the way it always has. A
+            // process that restarts often would otherwise upload the entire database on every
+            // restart, which is the opposite of a safeguard.
+            let lastRunAt = Date.now();
+
+            const timer = setInterval(() => {
+                const now = Date.now();
+                if (now - lastRunAt < options.everyMinutes() * 60_000) {
+                    return;
+                }
+                // Stamped BEFORE the run, so the gap is measured start-to-start and a slow
+                // upload does not push every later backup further out. Overlap is refused by
+                // `running` above rather than by the arithmetic here.
+                lastRunAt = now;
+                void backup();
+            }, TICK_MS);
+
             // The listening socket keeps the process alive; this timer should not be the
             // reason a shutting-down process lingers.
             timer.unref();

@@ -21,7 +21,11 @@ export const telegramStatus = z.object({
     chatId: z.string(),
     baseUrl: z.string(),
 
-    /** How often the database is sent, in minutes. Read-only - it is a constant in the code. */
+    /**
+     * How often the database is sent, in minutes. Echoed back rather than written here: it is
+     * a setting, saved through `POST /admin/settings` like every other one, and this view is
+     * where the console reads the live value to show and to pre-fill its box with.
+     */
     backupEveryMinutes: z.number().int()
 });
 

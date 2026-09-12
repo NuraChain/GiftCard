@@ -20,6 +20,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
+import { DEFAULT_BACKUP_MINUTES, MAX_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from './contract.ts';
 
 /** Every key this module owns. Anything not listed is not settable from the browser. */
 export const SETTING_KEYS = [
@@ -33,6 +34,7 @@ export const SETTING_KEYS = [
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
+    'backupEveryMinutes',
     'tetherToman',
     'tetherSetAt',
     'marginPercent',
@@ -81,12 +83,24 @@ export interface RuntimeSettings {
     resendBase: string;
 
     /**
-     * The operations bot: a ping on every sale, and the database once an hour. Empty means
+     * The operations bot: a ping on every sale, and the database on a timer. Empty means
      * off - see features/telegram/ for what is and is not sent down it.
      */
     telegramBotToken: string;
     telegramChatId: string;
     telegramBase: string;
+
+    /**
+     * How many minutes between automatic database backups.
+     *
+     * A SETTING RATHER THAN A CONSTANT because the right answer is a property of the shop, not
+     * of the code: a quiet week wants one a day, and the week a price list is being rewritten
+     * wants one every ten minutes. The schedule re-reads this on every tick (see
+     * features/telegram/notify.ts), so a change takes effect without a restart - which is the
+     * whole point, since the moment an operator shortens this is usually the moment after
+     * something went wrong.
+     */
+    backupEveryMinutes: number;
 
     /**
      * What one USDT costs in Toman, as the operator last typed it in the console. ZERO MEANS
@@ -138,6 +152,7 @@ const DEFAULTS = {
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
+    backupEveryMinutes: DEFAULT_BACKUP_MINUTES,
     tetherToman: 0,
     tetherSetAt: '',
     marginPercent: 6
@@ -234,6 +249,23 @@ function marginFrom(raw: string): number {
 }
 
 /**
+ * @internal A backup interval that cannot stop the backups.
+ *
+ * Falls back to the shipped default like `marginFrom`, and for the same reason: an unreadable
+ * number here is somebody's typo, and the honest answer to a typo is the cadence the shop ran
+ * on before anybody touched it. THE OTHER DIRECTION IS THE DANGEROUS ONE - a zero or a NaN
+ * taken literally is a schedule that never fires, and a backup that silently stopped is only
+ * ever discovered on the day it was needed.
+ */
+function backupMinutesFrom(raw: string): number {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < MIN_BACKUP_MINUTES || parsed > MAX_BACKUP_MINUTES) {
+        return DEFAULTS.backupEveryMinutes;
+    }
+    return parsed;
+}
+
+/**
  * @internal A rate that cannot poison a price.
  *
  * The stored value is text an operator typed, so it can be empty, `'abc'`, negative, or one
@@ -305,6 +337,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
+                backupEveryMinutes: backupMinutesFrom(
+                    pick('backupEveryMinutes', String(DEFAULTS.backupEveryMinutes))
+                ),
                 tetherToman: tetherFrom(pick('tetherToman', String(DEFAULTS.tetherToman))),
                 tetherSetAt: pick('tetherSetAt', DEFAULTS.tetherSetAt),
                 marginPercent: marginFrom(pick('marginPercent', String(DEFAULTS.marginPercent)))

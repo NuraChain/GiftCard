@@ -74,7 +74,7 @@ export interface AppOptions {
      */
     rate: TetherRate;
 
-    /** The operations bot: a ping per sale, and the hourly database backup. */
+    /** The operations bot: a ping per sale, and the scheduled database backup. */
     telegram: Telegram;
     notifier: SaleNotifier;
     backup: BackupJob;

@@ -13,6 +13,24 @@ import { get, post } from '../../platform/contract.ts';
 import { emailField } from '../../domain/email.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
+/**
+ * The band the automatic backup interval has to land in, in minutes.
+ *
+ * THE FLOOR IS NOT ARBITRARY. Every backup is a VACUUM of the whole database, a compression
+ * pass and a full upload to a chat server, so a gap short enough for two of them to overlap
+ * turns one mistyped number into a machine that spends its day copying itself. The ceiling is
+ * a week, past which "automatic" has stopped meaning anything - an operator who wants backups
+ * rarer than that wants them off, and clearing the chat id is how that is said.
+ *
+ * It lives here, beside the field it guards, rather than in `domain/`: a backup cadence is an
+ * operational choice about this deployment, not a rule about what a gift card is.
+ */
+export const MIN_BACKUP_MINUTES = 5;
+export const MAX_BACKUP_MINUTES = 7 * 24 * 60;
+
+/** The gap until somebody chooses one. Hourly is what this shop ran on before it was settable. */
+export const DEFAULT_BACKUP_MINUTES = 60;
+
 export const settingsView = z.object({
     appName: z.string(),
 
@@ -74,6 +92,14 @@ export const settingsInput = z.object({
     telegramBotToken: z.string().trim().max(200).optional(),
     telegramChatId: z.string().trim().max(64).optional(),
     telegramBase: z.string().trim().max(200).optional(),
+
+    /**
+     * How many minutes between automatic database backups. Bounded at the boundary for the
+     * same reason the margin is: the console sits behind a session, but a session is not a
+     * reason to accept a one-minute interval that uploads the entire shop all day long.
+     */
+    backupEveryMinutes: z.number().int().min(MIN_BACKUP_MINUTES).max(MAX_BACKUP_MINUTES).optional(),
+
     /**
      * The tether rate, in Toman. ZERO OR A PLAUSIBLE RATE, nothing between: zero is the
      * operator deliberately pulling the shop off sale, and the band is the fat-finger guard
