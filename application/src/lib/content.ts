@@ -128,5 +128,5 @@ export const CONTACT = {
     telegram: 'https://t.me/awesomext',
     phone: '+98 912 2636 180',
     hours: 'هر روز، ۹ صبح تا ۹ شب به وقت تهران',
-    operator: 'شرکت داده‌پردازی گاردین سرویس'
+    operator: 'شرکت داده‌پردازی اشبرینگر'
 };

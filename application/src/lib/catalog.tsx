@@ -36,7 +36,7 @@ export type CatalogTier = Catalog['tiers'][number];
 const POLL_MS = 60_000;
 
 /** What a shop with no answer yet calls itself. Replaced the moment the catalogue lands. */
-const FALLBACK_NAME = 'گاردین سرویس';
+const FALLBACK_NAME = 'اشبرینگر';
 
 /**
  * Where the first paint's name comes from.
@@ -56,7 +56,7 @@ const FALLBACK_NAME = 'گاردین سرویس';
  */
 function rememberedName(): string {
     try {
-        return localStorage.getItem('guardian-app-name') ?? FALLBACK_NAME;
+        return localStorage.getItem('ashbringer-app-name') ?? FALLBACK_NAME;
     } catch {
         return FALLBACK_NAME;
     }
@@ -102,7 +102,7 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
             // here is what makes the name in the console the name in the browser tab.
             document.title = `${result.appName} - خرید گیفت کارت`;
             try {
-                localStorage.setItem('guardian-app-name', result.appName);
+                localStorage.setItem('ashbringer-app-name', result.appName);
             } catch {
                 // No storage: the name is still right for this visit.
             }

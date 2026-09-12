@@ -188,7 +188,7 @@ export default function EmailSettings(): ReactNode {
                             <TextInput
                                 id="mail-from"
                                 latin
-                                placeholder="Guardian Service <no-reply@example.com>"
+                                placeholder="AshBringer <no-reply@example.com>"
                                 value={formFrom}
                                 onChange={setFormFrom}
                             />

@@ -227,8 +227,8 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
         // becomes both a path here and a filename in a chat. Dashes work everywhere and
         // still sort correctly, which is what an operator scrolling a year of these needs.
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-        const name = `guardian-service-${stamp}.db`;
-        const archive = `guardian-service-${stamp}.zip`;
+        const name = `ashbringer-${stamp}.db`;
+        const archive = `ashbringer-${stamp}.zip`;
         const path = join(options.scratchDir ?? tmpdir(), name);
 
         try {

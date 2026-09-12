@@ -174,7 +174,7 @@ export default function TelegramSettings(): ReactNode {
                             <Field
                                 label="شناسهٔ چت"
                                 htmlFor="telegram-chat"
-                                hint="شناسهٔ عددی کاربر یا گروه، یا نام کانال مثل ‎@guardianops"
+                                hint="شناسهٔ عددی کاربر یا گروه، یا نام کانال مثل ‎@ashbringerops"
                             >
                                 <TextInput
                                     id="telegram-chat"

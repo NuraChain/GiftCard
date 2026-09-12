@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/vazirmatn';
 
-/* Guardian Service design tokens.
+/* AshBringer design tokens.
    Palette grounded in Persian pigment rather than generic SaaS blue: firouze is Isfahan
    tilework turquoise, and gold is a warm accent spent ONLY on a verified/delivered or
    needs-attention state - never as decoration, so its appearance always means something. */

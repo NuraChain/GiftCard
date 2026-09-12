@@ -79,7 +79,7 @@ const SETTINGS: MailSettings = {
     apiKey: 're_test_key',
     from: 'shop@test',
     baseUrl: 'https://resend.test',
-    appName: 'گاردین سرویس'
+    appName: 'اشبرینگر'
 };
 
 describe('the gift-code email', () => {
@@ -91,7 +91,7 @@ describe('the gift-code email', () => {
         expect(mail.text.split('\n')).toContain('NC-1234-5678');
         expect(mail.to).toBe('ali@example.com');
         expect(mail.subject).toContain('10');
-        expect(mail.subject).toContain('گاردین سرویس');
+        expect(mail.subject).toContain('اشبرینگر');
     });
 
     it('is a complete document with a declared charset', () => {

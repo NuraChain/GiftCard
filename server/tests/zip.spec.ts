@@ -51,9 +51,9 @@ function readEntry(archive: Buffer): {
 describe('the backup archive', () => {
     it('round-trips a file byte for byte', async () => {
         const body = Buffer.from('CREATE TABLE codes (id INTEGER, code TEXT);\n'.repeat(500));
-        const entry = readEntry(await zipOne('guardian-service.db', body));
+        const entry = readEntry(await zipOne('ashbringer.db', body));
 
-        expect(entry.name).toBe('guardian-service.db');
+        expect(entry.name).toBe('ashbringer.db');
         expect(entry.bytes.equals(body)).toBe(true);
     });
 

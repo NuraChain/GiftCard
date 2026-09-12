@@ -42,7 +42,7 @@ export default function ThemeToggle(): ReactNode {
 
     useEffect(() => {
         try {
-            const stored = localStorage.getItem('guardian-theme');
+            const stored = localStorage.getItem('ashbringer-theme');
             setChoice(stored === 'light' || stored === 'dark' ? stored : 'system');
         } catch {
             setChoice('system');
@@ -60,11 +60,11 @@ export default function ThemeToggle(): ReactNode {
         try {
             if (value === 'system') {
                 root.removeAttribute('data-theme');
-                localStorage.removeItem('guardian-theme');
+                localStorage.removeItem('ashbringer-theme');
                 return;
             }
             root.setAttribute('data-theme', value);
-            localStorage.setItem('guardian-theme', value);
+            localStorage.setItem('ashbringer-theme', value);
         } catch {
             // Storage unavailable: the attribute still applies for this session.
         }

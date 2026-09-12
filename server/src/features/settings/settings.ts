@@ -128,7 +128,7 @@ export const MAX_MARGIN_PERCENT = 100;
  * every payer back to a host that does not exist, AFTER taking their money.
  */
 const DEFAULTS = {
-    appName: 'گاردین سرویس',
+    appName: 'اشبرینگر',
     publicBaseUrl: 'https://guardian-service.ir',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',

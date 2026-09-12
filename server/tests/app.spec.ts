@@ -1343,7 +1343,7 @@ describe('the operations bot', () => {
 
         expect(result.ok).toBe(true);
         expect(fake.telegramSent).toHaveLength(1);
-        expect(fake.telegramSent[0]).toContain('گاردین سرویس');
+        expect(fake.telegramSent[0]).toContain('اشبرینگر');
     });
 
     it('runs a backup on demand rather than making the operator wait an hour', async () => {

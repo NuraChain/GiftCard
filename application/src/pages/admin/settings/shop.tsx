@@ -111,7 +111,7 @@ export default function ShopSettings(): ReactNode {
                         >
                             <TextInput
                                 id="app-name"
-                                placeholder="گاردین سرویس"
+                                placeholder="اشبرینگر"
                                 value={formAppName}
                                 onChange={setFormAppName}
                             />

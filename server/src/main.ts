@@ -39,7 +39,7 @@ import { createStore } from './db/index.ts';
 // future log line can leak a credential. `code` is here too: a gift code is bearer value,
 // and a log file is not where it should be readable.
 const log = pino({
-    base: { service: 'guardian-service-server' },
+    base: { service: 'ashbringer-server' },
     redact: {
         paths: [
             'merchantId',

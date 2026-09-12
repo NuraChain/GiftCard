@@ -58,7 +58,7 @@ let dist: string;
 
 beforeEach(() => {
     store = createStore(':memory:');
-    dist = mkdtempSync(join(tmpdir(), 'guardian-dist-'));
+    dist = mkdtempSync(join(tmpdir(), 'ashbringer-dist-'));
 });
 
 afterEach(() => {
@@ -186,19 +186,19 @@ describe('serving the built client', () => {
         // A traversal out of the served root reaches the database, the logs and server/.env.
         // @fastify/static refuses it; this is here so that stays true if it is ever replaced.
         build();
-        writeFileSync(join(dist, '..', 'guardian-secret.txt'), 'the merchant id');
+        writeFileSync(join(dist, '..', 'ashbringer-secret.txt'), 'the merchant id');
         const app = buildApp({ ...stubs(store), clientDir: dist });
 
         for (const url of [
-            '/../guardian-secret.txt',
-            '/..%2fguardian-secret.txt',
-            '/assets/../../guardian-secret.txt'
+            '/../ashbringer-secret.txt',
+            '/..%2fashbringer-secret.txt',
+            '/assets/../../ashbringer-secret.txt'
         ]) {
             const response = await app.inject({ method: 'GET', url });
             expect(response.body).not.toContain('the merchant id');
         }
 
-        rmSync(join(dist, '..', 'guardian-secret.txt'), { force: true });
+        rmSync(join(dist, '..', 'ashbringer-secret.txt'), { force: true });
         await app.close();
     });
 });

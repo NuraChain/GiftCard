@@ -23,7 +23,7 @@ export interface TelegramSettings {
     /** From @BotFather. Empty means Telegram is off, and everything here becomes a no-op. */
     botToken: string;
 
-    /** Where messages go. A user id, a group id, or a channel like `@guardianops`. */
+    /** Where messages go. A user id, a group id, or a channel like `@ashbringerops`. */
     chatId: string;
 
     /** The API host. A setting because a shop behind a filtered network may need a relay. */

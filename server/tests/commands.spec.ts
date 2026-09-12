@@ -175,7 +175,7 @@ describe('the bot commands', () => {
 
     it('strips the @botname Telegram adds in a group', async () => {
         const h = harness();
-        await h.bot.handle('/setprice@guardian_ops_bot 245000');
+        await h.bot.handle('/setprice@ashbringer_ops_bot 245000');
         expect(h.settings.current().tetherToman).toBe(245_000);
         h.store.close();
     });

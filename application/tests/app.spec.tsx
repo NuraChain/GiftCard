@@ -21,7 +21,7 @@ const TEN_DOLLAR_TOMAN = 1_060_000;
 
 function catalogBody(overrides: { toman?: number | null } = {}): Record<string, unknown> {
     return {
-        appName: 'گاردین سرویس',
+        appName: 'اشبرینگر',
         tiers: [
             {
                 amount: 10,

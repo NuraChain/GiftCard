@@ -61,7 +61,7 @@ function spyBot(): Telegram & { sent: string[] } {
 }
 
 function scratch(): Promise<string> {
-    return mkdtemp(join(tmpdir(), 'guardian-backup-test-'));
+    return mkdtemp(join(tmpdir(), 'ashbringer-backup-test-'));
 }
 
 describe('the telegram client', () => {
@@ -136,7 +136,7 @@ describe('the telegram client', () => {
 describe('the sale notification', () => {
     it('says what sold, for how much, and to whom', () => {
         const bot = spyBot();
-        createSaleNotifier({ telegram: bot, appName: () => 'گاردین سرویس' }).sold(SALE);
+        createSaleNotifier({ telegram: bot, appName: () => 'اشبرینگر' }).sold(SALE);
 
         expect(bot.sent).toHaveLength(1);
         expect(bot.sent[0]).toContain('10');
@@ -187,7 +187,7 @@ describe('the hourly backup', () => {
         const result = await createBackupJob({
             store,
             telegram: bot,
-            appName: () => 'گاردین سرویس',
+            appName: () => 'اشبرینگر',
             scratchDir: dir
         }).runNow();
 
@@ -196,7 +196,7 @@ describe('the hourly backup', () => {
 
         // The chat shows a .zip; the file an operator extracts from it is a .db, so SQLite
         // opens it by its own extension without anybody renaming anything.
-        expect(uploadedName).toMatch(/^guardian-service-.+\.zip$/);
+        expect(uploadedName).toMatch(/^ashbringer-.+\.zip$/);
 
         // THE CLAIM WORTH MAKING: what was uploaded UNZIPS to a database with the row in it.
         // A backup that cannot be restored is not a backup, and now there is a container
@@ -204,7 +204,7 @@ describe('the hourly backup', () => {
         const archive = Buffer.from(uploaded as unknown as Uint8Array);
         const nameLength = archive.readUInt16LE(26);
         const entryName = archive.subarray(30, 30 + nameLength).toString('utf8');
-        expect(entryName).toMatch(/^guardian-service-.+\.db$/);
+        expect(entryName).toMatch(/^ashbringer-.+\.db$/);
 
         const start = 30 + nameLength + archive.readUInt16LE(28);
         const payload = archive.subarray(start, start + archive.readUInt32LE(18));

@@ -25,7 +25,7 @@ export const ADMIN_KEY_PATTERN =
     /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
 
 /** The cookie the browser carries. Read by the admin guard, written by the two session routes. */
-export const SESSION_COOKIE = 'guardian_session';
+export const SESSION_COOKIE = 'ashbringer_session';
 
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const ATTEMPT_LIMIT = 5;
