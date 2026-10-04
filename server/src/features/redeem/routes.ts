@@ -4,6 +4,10 @@
 //
 //   1. normalise, 2. CHECKSUM THE ADDRESS, 3. spend the code, 4. notify.
 //
+// WHO CALLS THIS: Nura Wallet, with `{ code, wallet_address }` - the holder types the code
+// into the wallet and the wallet supplies its own address. Nothing in this file trusts that:
+// the route is public, so every rule below holds for any caller that can reach it.
+//
 // The checksum comes BEFORE the spend because a code consumed against a mistyped address is
 // the worst outcome this file can produce - the holder has lost their card and the money has
 // nowhere to go. Every cheap refusal is made while the code is still worth something.
@@ -50,13 +54,40 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
             // email arrives uppercased as often as not, and the inventory holds exactly one
             // spelling - so this is where the holder's typing becomes that spelling.
             const code = normalizeGiftCode(input.code);
-            const wallet = readWallet(input.wallet);
+
+            // ONE DESTINATION, UNDER EITHER NAME. `wallet_address` is what Nura Wallet sends
+            // and `wallet` is what this route first took; a caller uses one. A refusal is
+            // reported under the name the caller used, so its form can put the message
+            // beside the right box.
+            const field = input.wallet_address === undefined ? 'wallet' : 'wallet_address';
+            const [named, alsoNamed] = [input.wallet_address, input.wallet].filter(
+                (value) => value !== undefined
+            );
+            if (named === undefined) {
+                throw new ValidationError(
+                    { wallet_address: 'آدرس کیف پول را وارد کنید' },
+                    'آدرس کیف پول وارد نشده است'
+                );
+            }
+
+            const wallet = readWallet(named);
+
+            // BOTH NAMES, TWO ADDRESSES. Nothing here can know which one was meant, and the
+            // only thing worse than refusing is choosing: the code would be spent and the
+            // money asked for at an address the holder may not have intended.
+            if (alsoNamed !== undefined && readWallet(alsoNamed)?.address !== wallet?.address) {
+                throw new ValidationError(
+                    { wallet_address: 'دو آدرس متفاوت فرستاده شده است. فقط یکی را بفرستید.' },
+                    'آدرس کیف پول مشخص نیست'
+                );
+            }
+
             if (code === null || wallet === null) {
                 // Unreachable through the contract, which ran both rules already. It is here
                 // because this handler must not depend on that for its correctness.
                 throw new ValidationError({
                     code: code === null ? 'کد معتبر نیست' : '',
-                    wallet: wallet === null ? 'آدرس کیف پول معتبر نیست' : ''
+                    [field]: wallet === null ? 'آدرس کیف پول معتبر نیست' : ''
                 });
             }
 
@@ -64,7 +95,7 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
             // everything that can be refused for nothing is refused above it.
             if (!(await checksumOk(wallet))) {
                 throw new ValidationError(
-                    { wallet: 'این آدرس درست نیست. دوباره از کیف پول خودتان کپی کنید.' },
+                    { [field]: 'این آدرس درست نیست. دوباره از کیف پول خودتان کپی کنید.' },
                     'آدرس کیف پول درست نیست'
                 );
             }

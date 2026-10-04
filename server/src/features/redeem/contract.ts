@@ -6,6 +6,10 @@
 // moves money by itself - the transfer is made by a human, off this machine, which is why the
 // whole route amounts to "prove the code, spend it exactly once, and tell the operator".
 //
+// THE CALLER IS A WALLET APP, NOT THIS SHOP'S OWN PAGES. Nura Wallet posts `code` and
+// `wallet_address` here on behalf of whoever is holding the card, which is why the address has
+// that name on the wire while everything inside the shop still calls it a wallet.
+//
 // IT IS DELIBERATELY ANONYMOUS. No session, no email, no receipt handle - whoever holds the
 // code may redeem it, because a gift card is bearer value and asking the holder to prove they
 // were the buyer would break the one thing a gift is for. What replaces authentication is
@@ -42,11 +46,22 @@ export const redeemInput = z.object({
         }),
 
     /**
-     * The destination. Its SHAPE is checked here so a mistyped address is caught in the form;
-     * its CHECKSUM is checked in the handler, before the code is spent, because verifying one
-     * needs SHA-256 and that is asynchronous. See domain/wallet.ts for why both exist.
+     * The destination, under the name Nura Wallet sends it by. Its SHAPE is checked here so a
+     * mistyped address is caught before anything else; its CHECKSUM is checked in the handler,
+     * before the code is spent, because verifying one needs SHA-256 and that is asynchronous.
+     * See domain/wallet.ts for why both exist.
      */
-    wallet: walletField
+    wallet_address: walletField.optional(),
+
+    /**
+     * The same destination under the name this route was first written to take.
+     *
+     * BOTH ARE OPTIONAL HERE AND ONE IS REQUIRED IN THE HANDLER. A schema cannot say "exactly
+     * one of these two" without becoming a refinement on the whole object, and the handler
+     * re-checks everything this schema proves anyway - so the rule lives there, next to the
+     * other refusals that have to happen before a code is spent.
+     */
+    wallet: walletField.optional()
 });
 
 /**

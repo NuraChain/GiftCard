@@ -1838,4 +1838,68 @@ describe('redeeming a code', () => {
         expect((await post('/api/redeem', { wallet: WALLET })).status).toBe(422);
         expect(fake.payoutsAsked).toHaveLength(0);
     });
+
+    /** An EVM address, which is what Nura Wallet holds. Mixed case: it carries an EIP-55 checksum. */
+    const NURA_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+
+    it('takes the call Nura Wallet makes: a code and a wallet_address', async () => {
+        const code = await bought(10);
+
+        const response = await post('/api/redeem', { code, wallet_address: NURA_ADDRESS });
+
+        expect(response.status).toBe(200);
+        expect(response.json()).toMatchObject({ amount: 10, wallet: NURA_ADDRESS, notified: true });
+        // The admin is told WHICH address redeemed, and for how much.
+        expect(fake.payoutsAsked).toHaveLength(1);
+        expect(fake.payoutsAsked[0]).toMatchObject({ amount: 10, wallet: NURA_ADDRESS });
+
+        // And the code is dead: the same call again is refused and nobody is asked twice.
+        expect((await post('/api/redeem', { code, wallet_address: NURA_ADDRESS })).status).toBe(
+            409
+        );
+        expect((await post('/api/redeem', { code, wallet_address: WALLET })).status).toBe(409);
+        expect(fake.payoutsAsked).toHaveLength(1);
+    });
+
+    it('reports a bad wallet_address under the name the caller used', async () => {
+        const code = await bought(10);
+
+        const typo = await post('/api/redeem', {
+            code,
+            wallet_address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u'
+        });
+
+        expect(typo.status).toBe(422);
+        const refusal = typo.json<{ error: { details: { fields: Record<string, string> } } }>();
+        expect(Object.keys(refusal.error.details.fields)).toEqual(['wallet_address']);
+        // Still spendable: the refusal came before the code was touched.
+        expect((await post('/api/redeem', { code, wallet_address: WALLET })).status).toBe(200);
+    });
+
+    it('refuses a request that names no address at all', async () => {
+        const code = await bought(10);
+        expect((await post('/api/redeem', { code })).status).toBe(422);
+        expect(fake.payoutsAsked).toHaveLength(0);
+        expect((await post('/api/redeem', { code, wallet_address: WALLET })).status).toBe(200);
+    });
+
+    it('will not choose between two different addresses', async () => {
+        // Both names, two destinations. Picking one would spend the code and ask for money at
+        // an address the holder may never have meant.
+        const code = await bought(10);
+
+        const torn = await post('/api/redeem', {
+            code,
+            wallet_address: NURA_ADDRESS,
+            wallet: WALLET
+        });
+
+        expect(torn.status).toBe(422);
+        expect(fake.payoutsAsked).toHaveLength(0);
+
+        // The same address under both names is not a conflict, and the code was not spent above.
+        const agreed = await post('/api/redeem', { code, wallet_address: WALLET, wallet: WALLET });
+        expect(agreed.status).toBe(200);
+        expect(fake.payoutsAsked).toHaveLength(1);
+    });
 });
