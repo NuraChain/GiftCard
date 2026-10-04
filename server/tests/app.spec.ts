@@ -728,6 +728,82 @@ describe('the callback', () => {
         expect(receipt.outcome).toBe('cancelled');
     });
 
+    /**
+     * An order opened on Zibal. The fake gateway stands where the SWITCH stands in production,
+     * so it answers with the handle in its stored form - `zibal:<trackId>` - exactly as the
+     * switch would.
+     */
+    async function pendingOnZibal(trackId: string): Promise<{ authority: string; token: string }> {
+        store.addCodes(10, uuids(1));
+        fake.requestOverride = {
+            ok: true,
+            authority: `zibal:${trackId}`,
+            payUrl: `https://zibal.test/start/${trackId}`
+        };
+        await buy(10);
+        return lastOrder();
+    }
+
+    it("settles a payment that comes back in Zibal's spelling", async () => {
+        const { authority, token } = await pendingOnZibal('15966442233311');
+        await get('/api/pay/callback?trackId=15966442233311&success=1&status=2');
+
+        // Same URL, same rules: the handle the order was stored under, and OUR amount.
+        expect(fake.verifyCalls).toEqual([{ authority, toman: PRICES[10] }]);
+        const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
+            outcome: string;
+            code: string | null;
+        };
+        expect(receipt.outcome).toBe('paid');
+        expect(receipt.code).not.toBeNull();
+    });
+
+    it('believes success=0 no more than it believes Status=NOK', async () => {
+        const { token } = await pendingOnZibal('4242');
+        // A forged `success=0` on a payment that DID go through must not cancel it.
+        await get('/api/pay/callback?trackId=4242&success=0&status=3');
+
+        const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
+            outcome: string;
+        };
+        expect(receipt.outcome).toBe('paid');
+    });
+
+    it('cannot be made to check a payment against the wrong gateway', async () => {
+        const zarinpal = await pending();
+
+        // A Zarinpal authority dressed in Zibal's parameter names. If the SHAPE of the return
+        // picked the verifier, this would be checked against a gateway that never issued it,
+        // fail, and hand a stranger's reserved code back to the shelf.
+        const response = await get(`/api/pay/callback?trackId=${zarinpal.authority}&success=0`);
+
+        expect(response.headers.get('location')).toBe('/?pay=unknown');
+        expect(fake.verifyCalls).toHaveLength(0);
+        expect(store.orderById(zarinpal.token)?.status).toBe('pending');
+    });
+
+    it("cannot cancel a Zibal payment by dressing it in Zarinpal's spelling", async () => {
+        const { token } = await pendingOnZibal('4242');
+
+        // The other direction, and the reason a Zibal handle is stored with its marker: the
+        // bare track id is public - it is in the buyer's address bar - and offering it under
+        // Zarinpal's parameter names must not reach Zarinpal's verifier, which would refuse
+        // it and release the code of somebody who is still paying.
+        const response = await get('/api/pay/callback?Authority=4242&Status=NOK');
+
+        expect(response.headers.get('location')).toBe('/?pay=unknown');
+        expect(fake.verifyCalls).toHaveLength(0);
+        expect(store.orderById(token)?.status).toBe('pending');
+    });
+
+    it('turns away a return that names the same payment twice', async () => {
+        await pendingOnZibal('4242');
+        const response = await get('/api/pay/callback?trackId=4242&trackId=4243&success=1');
+        expect(response.status).toBe(303);
+        expect(response.headers.get('location')).toBe('/?pay=unknown');
+        expect(fake.verifyCalls).toHaveLength(0);
+    });
+
     it('keeps the code when the email does not go out', async () => {
         const { authority, token } = await pending();
         fake.mailResult = { ok: false, reason: 'mailbox unavailable' };
@@ -1147,6 +1223,84 @@ describe('runtime settings', () => {
         expect(log).toContain('••••7777');
         // The audit is not a way around write-only.
         expect(log).not.toContain('aaaaaaaa-bbbb-cccc-dddd-eeee00007777');
+    });
+
+    it('starts on Zarinpal, so a deploy moves nobody to a gateway they did not choose', async () => {
+        const cookie = await signedIn();
+        const view = (await (await get('/api/admin/settings', { cookie })).json()) as {
+            paymentGateway: string;
+            zibalBase: string;
+            zibalMerchantSet: boolean;
+        };
+        expect(view.paymentGateway).toBe('zarinpal');
+        expect(view.zibalBase).toBe('https://gateway.zibal.ir');
+        expect(view.zibalMerchantSet).toBe(false);
+    });
+
+    it("keeps Zibal's merchant as write-only as Zarinpal's", async () => {
+        const cookie = await signedIn();
+        await post(
+            '/api/admin/settings',
+            { zibalMerchant: 'zibal-live-merchant-4321' },
+            { cookie }
+        );
+
+        const raw = await (await get('/api/admin/settings', { cookie })).text();
+        expect(raw).toContain('••••4321');
+        expect(raw).not.toContain('zibal-live-merchant-4321');
+        expect(settings.current().zibalMerchant).toBe('zibal-live-merchant-4321');
+
+        const log = await (await get('/api/admin/settings/log', { cookie })).text();
+        expect(log).toContain('zibalMerchant');
+        expect(log).not.toContain('zibal-live-merchant-4321');
+
+        // Saving the other gateway's fields must not disturb it.
+        await post(
+            '/api/admin/settings',
+            { zarinpalBase: 'https://payment.zarinpal.com' },
+            { cookie }
+        );
+        expect(settings.current().zibalMerchant).toBe('zibal-live-merchant-4321');
+    });
+
+    it('switches the active gateway, and reports test mode for THAT gateway', async () => {
+        const cookie = await signedIn();
+        const saved = (await (
+            await post(
+                '/api/admin/settings',
+                { paymentGateway: 'zibal', zibalMerchant: 'zibal' },
+                { cookie }
+            )
+        ).json()) as { paymentGateway: string; sandbox: boolean };
+
+        expect(saved.paymentGateway).toBe('zibal');
+        expect(settings.current().paymentGateway).toBe('zibal');
+        // `zibal` is the merchant Zibal publishes for testing: nobody's money moves.
+        expect(saved.sandbox).toBe(true);
+
+        // A real merchant on Zibal is live, whatever host Zarinpal is left pointing at.
+        await post(
+            '/api/admin/settings',
+            { zibalMerchant: 'real-merchant-0001', zarinpalBase: 'https://sandbox.zarinpal.com' },
+            { cookie }
+        );
+        const live = (await (await get('/api/admin/settings', { cookie })).json()) as {
+            sandbox: boolean;
+        };
+        expect(live.sandbox).toBe(false);
+    });
+
+    it('refuses a gateway it has never heard of', async () => {
+        const cookie = await signedIn();
+        const refused = await post('/api/admin/settings', { paymentGateway: 'paypal' }, { cookie });
+        expect(refused.status).toBeGreaterThanOrEqual(400);
+        expect(settings.current().paymentGateway).toBe('zarinpal');
+    });
+
+    it('reads an unrecognisable stored gateway as Zarinpal rather than as a decision', () => {
+        // Only reachable by a row written by hand. It must not be read as "move the money".
+        store.putSetting('paymentGateway', 'Zibal ');
+        expect(createSettings({ store }).current().paymentGateway).toBe('zarinpal');
     });
 
     it('opens a fresh install with the shipped default key and says so', () => {

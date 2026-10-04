@@ -1,4 +1,8 @@
-// Zarinpal, the only place money is spoken about.
+// Zarinpal, and the shape every gateway here has to fit.
+//
+// It was the only gateway for long enough that the shared types - `PaymentGateway`, `Fetch`,
+// the two result unions - were written in this file and are still imported from it. ./zibal.ts
+// is the second client, and ./gateway.ts decides which of the two a payment goes to.
 //
 // The framework ships no outbound-HTTP helper, so this is global fetch with an explicit
 // timeout - the same shape the sibling Euphoria server uses for its one third-party call.

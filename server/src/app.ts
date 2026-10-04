@@ -203,7 +203,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
     const resultPath = options.resultPath ?? '/';
 
     /**
-     * Where Zarinpal returns the buyer, built from the public origin in the console.
+     * Where the gateway returns the buyer, built from the public origin in the console.
      *
      * A FUNCTION, not a string, and read at the moment a payment starts: the origin is a
      * setting now, so an operator correcting it must not have to restart the process to

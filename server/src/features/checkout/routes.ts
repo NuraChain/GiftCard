@@ -12,6 +12,7 @@ import { displayEmail, normalizeEmail } from '../../domain/email.ts';
 import { tomanPrice } from '../../domain/pricing.ts';
 import type { TetherRate } from '../rate/rate.ts';
 import type { PaymentGateway } from './zarinpal.ts';
+import { readReturn } from './gateway.ts';
 import type { Checkout } from './checkout.ts';
 import type { Settings } from '../settings/settings.ts';
 
@@ -51,8 +52,10 @@ type PayHandlers = Handlers<typeof contract>['pay'];
 /**
  * The gateway's return. Deliberately NOT a contract route: no client calls it, it answers
  * with a redirect rather than a body, and its query string is written by a third party - so
- * it reads its two parameters by hand and defensively. Throttled because each hit can cost
- * one verify call to the gateway.
+ * it is read by hand and defensively, by `readReturn`, which knows both gateways' spellings.
+ * ONE URL FOR BOTH: the gateway that opened an order is recorded on the order, so nothing has
+ * to be inferred from which address the buyer came back to. Throttled because each hit can
+ * cost one verify call to the gateway.
  *
  * The redirect is RELATIVE, and stays correct now that nginx serves the pages: the browser
  * resolves it against the public origin it asked on, which is the one place the shop lives.
@@ -69,16 +72,16 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
             }
         },
         async (request, reply) => {
-            const params = request.query as Record<string, string | undefined>;
-            const authority = params.Authority ?? '';
-            const order = authority === '' ? undefined : store.orderByAuthority(authority);
-            if (order === undefined) {
+            const returned = readReturn(request.query as Record<string, unknown>);
+            const order =
+                returned === null ? undefined : store.orderByAuthority(returned.authority);
+            if (returned === null || order === undefined) {
                 // A forged callback, or one for an order that no longer exists. The two are
                 // indistinguishable from here and neither is told anything specific.
                 return reply.redirect(`${resultPath}?pay=unknown`, 303);
             }
 
-            await checkout.settle(order, params.Status === 'OK');
+            await checkout.settle(order, returned.saidOk);
             return reply.redirect(`${resultPath}?receipt=${order.id}#purchase`, 303);
         }
     );

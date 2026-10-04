@@ -43,7 +43,10 @@ export interface Order {
     /** The public receipt handle: 32 random characters, and the row's primary key. */
     id: string;
 
-    /** Zarinpal's handle, set once the gateway has accepted the request. */
+    /**
+     * The gateway's handle, set once the gateway has accepted the request. It also records
+     * WHICH gateway: a Zibal one is stored as `zibal:<trackId>` - see features/checkout/gateway.ts.
+     */
     authority: string | null;
 
     amount: Amount;
@@ -63,7 +66,7 @@ export interface Order {
      */
     code: string | null;
 
-    /** Zarinpal's transaction reference, quoted in support. */
+    /** The gateway's transaction reference, quoted in support. */
     refId: number | null;
 
     /** Whether the code reached the buyer by email. False never invalidates the code. */

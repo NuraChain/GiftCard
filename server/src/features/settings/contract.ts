@@ -1,6 +1,6 @@
 // Runtime configuration's wire shapes and routes, and the admin key beside them.
 //
-// A secret is WRITE-ONLY across this boundary. The console may replace the merchant id or
+// A secret is WRITE-ONLY across this boundary. The console may replace a merchant id or
 // the Resend key, and may see whether one is set and its last four characters - never the
 // value. A stolen session must not be a way to read out the credentials it can overwrite.
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
@@ -31,19 +31,44 @@ export const MAX_BACKUP_MINUTES = 7 * 24 * 60;
 /** The gap until somebody chooses one. Hourly is what this shop ran on before it was settable. */
 export const DEFAULT_BACKUP_MINUTES = 60;
 
+/**
+ * The gateways this shop can be paid through. ONE takes new payments at a time; the console
+ * picks which.
+ *
+ * It lives here rather than beside the gateway clients because the console needs the list to
+ * draw its picker, and a contract file is the only server file the browser may import.
+ */
+export const GATEWAYS = ['zarinpal', 'zibal'] as const;
+
+export type GatewayName = (typeof GATEWAYS)[number];
+
 export const settingsView = z.object({
     appName: z.string(),
 
     /** The public origin the buyer reaches the shop on. The gateway returns them here. */
     publicBaseUrl: z.string(),
 
-    /** The gateway host in use, and whether it is the sandbox one. */
-    zarinpalBase: z.string(),
+    /** Which gateway the NEXT payment is sent to. */
+    paymentGateway: z.enum(GATEWAYS),
+
+    /**
+     * Whether that gateway is in its test mode. The two say so differently - Zarinpal by its
+     * host, Zibal by its merchant - which is why this is computed on the server rather than
+     * guessed at by the page.
+     */
     sandbox: z.boolean(),
 
-    /** `••••5555`, or an empty string when nothing is configured. */
+    /** Zarinpal's host. */
+    zarinpalBase: z.string(),
+
+    /** `••••5555`, or an empty string when nothing is configured. Zarinpal's. */
     merchantIdMasked: z.string(),
     merchantIdSet: z.boolean(),
+
+    /** Zibal's host and merchant, masked exactly as Zarinpal's is. */
+    zibalBase: z.string(),
+    zibalMerchantMasked: z.string(),
+    zibalMerchantSet: z.boolean(),
 
     /** How gift-code email is sent. The API key never comes back - only its last four. */
     resendApiKeyMasked: z.string(),
@@ -65,8 +90,8 @@ export const settingsView = z.object({
 
     /**
      * Where the gateway returns the buyer, derived from `publicBaseUrl` and echoed back so the
-     * console can show the exact URL to paste into Zarinpal's panel. Read-only: it is computed,
-     * never stored, so there is no second copy to drift.
+     * console can show the exact URL to paste into the gateway's panel. Read-only: it is
+     * computed, never stored, so there is no second copy to drift.
      */
     callbackUrl: z.string(),
 
@@ -81,8 +106,19 @@ export const settingsView = z.object({
 export const settingsInput = z.object({
     appName: z.string().trim().max(60).optional(),
     publicBaseUrl: z.string().trim().max(200).optional(),
+
+    /**
+     * One of the names above and nothing else. Refused at the boundary rather than stored and
+     * interpreted later: a typo here would otherwise be a shop quietly taking payments through
+     * a gateway nobody chose.
+     */
+    paymentGateway: z.enum(GATEWAYS).optional(),
+
     zarinpalBase: z.string().trim().max(200).optional(),
     merchantId: z.string().trim().max(100).optional(),
+    zibalBase: z.string().trim().max(200).optional(),
+    /** Zibal's merchant is write-only too: a blank one means "keep it", never "erase it". */
+    zibalMerchant: z.string().trim().max(100).optional(),
     /** The Resend key is write-only: a blank one means "keep it", never "erase it". */
     resendApiKey: z.string().trim().max(200).optional(),
     mailFrom: z.string().trim().max(254).optional(),

@@ -259,8 +259,8 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                         </Button>
 
                         <p className="mt-3 text-caption text-muted">
-                            پرداخت روی درگاه زرین‌پال انجام می‌شود. اطلاعات کارت بانکی شما به سرور ما
-                            نمی‌رسد.
+                            پرداخت روی درگاه پرداخت اینترنتی انجام می‌شود. اطلاعات کارت بانکی شما به
+                            سرور ما نمی‌رسد.
                         </p>
                     </div>
                 )}

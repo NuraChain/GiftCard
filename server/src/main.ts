@@ -20,7 +20,9 @@ import { pino } from 'pino';
 import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
 import { config } from './config.ts';
+import { createGatewaySwitch } from './features/checkout/gateway.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
+import { createZibal } from './features/checkout/zibal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
 import {
@@ -43,23 +45,29 @@ const log = pino({
     redact: {
         paths: [
             'merchantId',
+            'merchant',
+            'zibalMerchant',
             'apiKey',
             'adminKey',
             'key',
             'currentKey',
             'newKey',
             'authority',
+            'trackId',
             'code',
             'email',
             'botToken',
             'telegramBotToken',
             '*.merchantId',
+            '*.merchant',
+            '*.zibalMerchant',
             '*.apiKey',
             '*.adminKey',
             '*.key',
             '*.currentKey',
             '*.newKey',
             '*.authority',
+            '*.trackId',
             '*.code',
             '*.email',
             '*.botToken',
@@ -116,9 +124,14 @@ if (!settings.view('').mailReady) {
     // without a deploy.
     log.warn('email delivery is OFF - set a Resend key and a From address in the console');
 }
-if (live.merchantId === '') {
+// Only the ACTIVE gateway's credential matters here: the other one being unset is the normal
+// state of a shop that uses one gateway, not something to wake anybody up about.
+const merchantSet =
+    live.paymentGateway === 'zibal' ? live.zibalMerchant !== '' : live.merchantId !== '';
+if (!merchantSet) {
     log.warn(
-        'no Zarinpal merchant id - checkout will refuse to start until one is set in the console'
+        { gateway: live.paymentGateway },
+        'no merchant id for the active gateway - checkout will refuse to start until one is set in the console'
     );
 }
 
@@ -198,11 +211,23 @@ const app = buildApp({
     notifier,
     backup,
     payouts,
-    payment: createPayment({
-        settings: () => {
-            const now = settings.current();
-            return { merchantId: now.merchantId, baseUrl: now.zarinpalBase };
-        }
+    // Both gateways are built, always. Which one OPENS a payment is asked per payment, and
+    // which one VERIFIES it is read off the order - so switching in the console needs no
+    // restart and strands nobody who is already on the other gateway's page.
+    payment: createGatewaySwitch({
+        active: () => settings.current().paymentGateway,
+        zarinpal: createPayment({
+            settings: () => {
+                const now = settings.current();
+                return { merchantId: now.merchantId, baseUrl: now.zarinpalBase };
+            }
+        }),
+        zibal: createZibal({
+            settings: () => {
+                const now = settings.current();
+                return { merchant: now.zibalMerchant, baseUrl: now.zibalBase };
+            }
+        })
     }),
     mailer: createMailer({
         settings: () => {

@@ -20,14 +20,22 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
-import { DEFAULT_BACKUP_MINUTES, MAX_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from './contract.ts';
+import {
+    DEFAULT_BACKUP_MINUTES,
+    MAX_BACKUP_MINUTES,
+    MIN_BACKUP_MINUTES,
+    type GatewayName
+} from './contract.ts';
 
 /** Every key this module owns. Anything not listed is not settable from the browser. */
 export const SETTING_KEYS = [
     'appName',
     'publicBaseUrl',
+    'paymentGateway',
     'zarinpalBase',
     'merchantId',
+    'zibalBase',
+    'zibalMerchant',
     'resendApiKey',
     'mailFrom',
     'resendBase',
@@ -46,6 +54,7 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 /** The ones masked on the way out and in the audit. The rest are hosts and template names. */
 const SECRETS = new Set<SettingKey>([
     'merchantId',
+    'zibalMerchant',
     'resendApiKey',
     'telegramBotToken',
     'adminKeyHash'
@@ -59,7 +68,7 @@ export interface RuntimeSettings {
     /**
      * Where the BUYER'S BROWSER reaches this shop - the public origin nginx answers on, not
      * this process's own address. THE GATEWAY SENDS THE BUYER BACK HERE, so a wrong value
-     * strands every payment on Zarinpal's page with the money taken and no code delivered.
+     * strands every payment on the gateway's page with the money taken and no code delivered.
      *
      * It lives beside the merchant id rather than in the environment because it is the same
      * kind of fact - part of how this shop talks to its gateway - and because getting it
@@ -68,8 +77,21 @@ export interface RuntimeSettings {
      */
     publicBaseUrl: string;
 
+    /**
+     * Which gateway the NEXT payment is sent to. It says nothing about payments already in
+     * flight: those are verified by whichever gateway opened them - see
+     * features/checkout/gateway.ts - so changing this strands nobody.
+     */
+    paymentGateway: GatewayName;
+
     zarinpalBase: string;
+    /** Zarinpal's merchant id. The name predates there being a second gateway. */
     merchantId: string;
+
+    zibalBase: string;
+    /** Zibal's merchant. The literal `zibal` is their published test account. */
+    zibalMerchant: string;
+
     /** The Resend API key. Empty means delivery is off. See features/checkout/mailer.ts. */
     resendApiKey: string;
 
@@ -137,15 +159,22 @@ export const MAX_MARGIN_PERCENT = 100;
  * `publicBaseUrl` IS THE ONE EXCEPTION TO "a fact about the provider". It is this shop's own
  * address, and there is one of this shop - so the fallback is the real domain rather than a
  * development one. It used to be `http://localhost:4200`, which is correct on exactly one
- * machine and silently wrong everywhere the shop actually runs: it builds the URL Zarinpal
+ * machine and silently wrong everywhere the shop actually runs: it builds the URL the gateway
  * returns the buyer to, so a production boot that had never opened the settings panel sent
  * every payer back to a host that does not exist, AFTER taking their money.
+ *
+ * `paymentGateway` STARTS ON ZARINPAL because that is what every shop running this code was
+ * already using. A second gateway arriving in a deploy must not move anybody's takings; only
+ * somebody choosing it in the console does that.
  */
 const DEFAULTS = {
     appName: 'اشبرینگر',
     publicBaseUrl: 'https://guardian-service.ir',
+    paymentGateway: 'zarinpal',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
+    zibalBase: 'https://gateway.zibal.ir',
+    zibalMerchant: '',
     resendApiKey: '',
     mailFrom: '',
     resendBase: 'https://api.resend.com',
@@ -202,10 +231,14 @@ export interface Settings {
 export interface SettingsView {
     appName: string;
     publicBaseUrl: string;
-    zarinpalBase: string;
+    paymentGateway: GatewayName;
     sandbox: boolean;
+    zarinpalBase: string;
     merchantIdMasked: string;
     merchantIdSet: boolean;
+    zibalBase: string;
+    zibalMerchantMasked: string;
+    zibalMerchantSet: boolean;
     resendApiKeyMasked: string;
     resendApiKeySet: boolean;
     mailFrom: string;
@@ -247,6 +280,23 @@ function marginFrom(raw: string): number {
     }
     return parsed;
 }
+
+/**
+ * @internal A gateway name that is always one of the two.
+ *
+ * The contract refuses anything else on the way in, so the only way to reach the fallback is a
+ * row written by hand or restored from somewhere odd. It lands on Zarinpal for the reason the
+ * default does: an unreadable choice must not be read as a decision to move the money.
+ */
+function gatewayFrom(raw: string): GatewayName {
+    return raw === 'zibal' ? 'zibal' : 'zarinpal';
+}
+
+/**
+ * @internal The literal merchant Zibal publishes for testing. Payments made against it are
+ * simulated, so a shop still set to it is taking nobody's money - which the console says.
+ */
+const ZIBAL_TEST_MERCHANT = 'zibal';
 
 /**
  * @internal A backup interval that cannot stop the backups.
@@ -329,8 +379,11 @@ export function createSettings(options: SettingsOptions): Settings {
             cache = {
                 appName: pick('appName', DEFAULTS.appName),
                 publicBaseUrl: pick('publicBaseUrl', DEFAULTS.publicBaseUrl),
+                paymentGateway: gatewayFrom(pick('paymentGateway', DEFAULTS.paymentGateway)),
                 zarinpalBase: pick('zarinpalBase', DEFAULTS.zarinpalBase),
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
+                zibalBase: pick('zibalBase', DEFAULTS.zibalBase),
+                zibalMerchant: pick('zibalMerchant', DEFAULTS.zibalMerchant),
                 resendApiKey: pick('resendApiKey', DEFAULTS.resendApiKey),
                 mailFrom: pick('mailFrom', DEFAULTS.mailFrom),
                 resendBase: pick('resendBase', DEFAULTS.resendBase),
@@ -356,10 +409,19 @@ export function createSettings(options: SettingsOptions): Settings {
             return {
                 appName: live.appName,
                 publicBaseUrl: live.publicBaseUrl,
+                paymentGateway: live.paymentGateway,
+                // About the ACTIVE gateway only: the other one's test mode moves nobody's
+                // money and is nobody's concern until it is switched to.
+                sandbox:
+                    live.paymentGateway === 'zibal'
+                        ? live.zibalMerchant === ZIBAL_TEST_MERCHANT
+                        : live.zarinpalBase.includes('sandbox'),
                 zarinpalBase: live.zarinpalBase,
-                sandbox: live.zarinpalBase.includes('sandbox'),
                 merchantIdMasked: mask(live.merchantId),
                 merchantIdSet: live.merchantId !== '',
+                zibalBase: live.zibalBase,
+                zibalMerchantMasked: mask(live.zibalMerchant),
+                zibalMerchantSet: live.zibalMerchant !== '',
                 resendApiKeyMasked: mask(live.resendApiKey),
                 resendApiKeySet: live.resendApiKey !== '',
                 mailFrom: live.mailFrom,

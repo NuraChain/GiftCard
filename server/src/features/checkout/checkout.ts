@@ -9,14 +9,15 @@
 //   1. The browser's return from the gateway proves NOTHING. `?Status=OK` is a string anyone
 //      can type into an address bar, and so is `Status=NOK` - which would otherwise be a free
 //      way to cancel a stranger's order and release their code. Status decides only the
-//      WORDING when verification fails; verification decides everything else.
-//   2. The amount sent to verify comes from OUR stored row. Taking it from the request is how
-//      a five-dollar payment becomes a twenty-five-dollar card.
-//   3. Settling is idempotent on `paid` only. Zarinpal answers 101 on every repeat verify -
-//      exactly what a browser refresh produces - so a replay returns the same code and takes
-//      nothing further from stock. Every other state re-verifies, because a `cancelled` order
-//      was settled on the strength of an answer that could have been about a payment the
-//      buyer went on to complete.
+//      WORDING when verification fails; verification decides everything else. (Zibal spells
+//      the same thing `success=1`, and it is worth exactly as much.)
+//   2. The amount a payment is verified AGAINST comes from OUR stored row. Taking it from the
+//      request is how a five-dollar payment becomes a twenty-five-dollar card.
+//   3. Settling is idempotent on `paid` only. A gateway answers "already verified" on every
+//      repeat verify - Zarinpal's 101, Zibal's 201, exactly what a browser refresh produces -
+//      so a replay returns the same code and takes nothing further from stock. Every other
+//      state re-verifies, because a `cancelled` order was settled on the strength of an answer
+//      that could have been about a payment the buyer went on to complete.
 //   4. A DELIVERY failure is a NOTICE, never a failed purchase. The code is already minted,
 //      stored, and on the buyer's screen. This held when delivery was an SMS and it holds now
 //      that it is an email: the message is a convenience, the screen is the delivery.
