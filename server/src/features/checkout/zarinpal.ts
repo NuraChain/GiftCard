@@ -2,7 +2,8 @@
 //
 // It was the only gateway for long enough that the shared types - `PaymentGateway`, `Fetch`,
 // the two result unions - were written in this file and are still imported from it. ./zibal.ts
-// is the second client, and ./gateway.ts decides which of the two a payment goes to.
+// is the second client, ./gateway.ts decides which of the two a payment goes to, and ./wire.ts
+// is the one POST both of them make.
 //
 // The framework ships no outbound-HTTP helper, so this is global fetch with an explicit
 // timeout - the same shape the sibling Euphoria server uses for its one third-party call.
@@ -14,6 +15,8 @@
 // nothing. `?Status=OK` is a string anyone can type into the address bar. A payment is real
 // only when THIS server posts to verify.json with its own merchant id and its own stored
 // amount and gets a 100 or 101 back.
+import type { Answer } from './wire.ts';
+import { postJson, refusal } from './wire.ts';
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -59,29 +62,57 @@ export interface PaymentGateway {
 
 interface ZarinpalBody {
     data?: { code?: number; authority?: string; ref_id?: number; message?: string };
+
+    /**
+     * An empty array on a success. On a REFUSAL it is an object, and the only place the code
+     * and the reason are - `data` comes back empty. See `why` below.
+     */
     errors?: unknown;
+}
+
+/** What `errors` holds when Zarinpal refuses. Every field unproven: it is somebody else's JSON. */
+interface ZarinpalErrors {
+    code?: unknown;
+    message?: unknown;
+
+    /** One entry per rejected field on a -9, each naming the field and what is wrong with it. */
+    validations?: unknown;
+}
+
+/**
+ * @internal Why Zarinpal said no: the code and message out of `errors`, with the per-field
+ * list a validation refusal carries, or - when no answer was read at all - what the wire did.
+ *
+ * THIS READS `errors.code`, AND NOTHING THAT DECIDES A PAYMENT DOES. Whether money moved is
+ * `data.code` alone, in `request` and `verify` below; this only words a refusal for the log.
+ */
+function why(answer: Answer<ZarinpalBody>): string {
+    const raw = answer.body?.errors;
+    const errors: ZarinpalErrors =
+        typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {};
+    const said = [errors.message ?? answer.body?.data?.message].filter(
+        (part) => typeof part === 'string'
+    );
+    if (Array.isArray(errors.validations) && errors.validations.length > 0) {
+        said.push(JSON.stringify(errors.validations));
+    }
+    return refusal(answer, answer.body?.data?.code ?? errors.code, said.join(' '));
 }
 
 export function createPayment(options: PaymentOptions): PaymentGateway {
     const call = options.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
     const timeoutMs = options.timeoutMs ?? 15_000;
 
-    async function post(path: string, body: Record<string, unknown>): Promise<ZarinpalBody | null> {
-        try {
-            const response = await call(`${options.settings().baseUrl}/pg/v4/payment/${path}`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json', accept: 'application/json' },
-                body: JSON.stringify(body),
-                signal: AbortSignal.timeout(timeoutMs)
-            });
-            // Zarinpal answers 4xx with a populated errors array, so the body is worth
-            // reading even when the status is not ok.
-            return (await response.json()) as ZarinpalBody;
-        } catch {
-            // Network failure, timeout, or unparseable body: indistinguishable from here,
-            // and all mean the same thing to the caller - no answer.
-            return null;
-        }
+    // Zarinpal answers a refusal with a 4xx AND a populated `errors` object, so the body is
+    // worth reading even when the status is not ok - see ./wire.ts, which also keeps what
+    // went wrong when there was no body to read.
+    function post(path: string, body: Record<string, unknown>): Promise<Answer<ZarinpalBody>> {
+        return postJson<ZarinpalBody>(
+            call,
+            `${options.settings().baseUrl}/pg/v4/payment/${path}`,
+            body,
+            timeoutMs
+        );
     }
 
     return {
@@ -91,7 +122,7 @@ export function createPayment(options: PaymentOptions): PaymentGateway {
          * the default is a setting someone can change without touching this code.
          */
         async request(input: PaymentRequest): Promise<RequestResult> {
-            const body = await post('request.json', {
+            const answer = await post('request.json', {
                 merchant_id: options.settings().merchantId,
                 amount: input.tomanAmount,
                 currency: 'IRT',
@@ -100,10 +131,14 @@ export function createPayment(options: PaymentOptions): PaymentGateway {
                 metadata: { email: input.email }
             });
 
-            const code = body?.data?.code;
-            const authority = body?.data?.authority;
-            if (code !== 100 || typeof authority !== 'string' || authority === '') {
-                return { ok: false, reason: `request failed (code ${code ?? 'none'})` };
+            if (answer.body?.data?.code !== 100) {
+                return { ok: false, reason: `zarinpal: request failed (${why(answer)})` };
+            }
+            const { authority } = answer.body.data;
+            if (typeof authority !== 'string' || authority === '') {
+                // Said apart from a refusal: Zarinpal answered 100 here, and "failed (code
+                // 100)" would send whoever reads the log looking for a problem that is not there.
+                return { ok: false, reason: 'zarinpal: request succeeded without an authority' };
             }
             return {
                 ok: true,
@@ -122,17 +157,21 @@ export function createPayment(options: PaymentOptions): PaymentGateway {
          * only the first may mint a code.
          */
         async verify(authority: string, tomanAmount: number): Promise<VerifyResult> {
-            const body = await post('verify.json', {
+            const answer = await post('verify.json', {
                 merchant_id: options.settings().merchantId,
                 amount: tomanAmount,
                 authority
             });
 
-            const code = body?.data?.code;
+            const code = answer.body?.data?.code;
             if (code !== 100 && code !== 101) {
-                return { ok: false, reason: `verify failed (code ${code ?? 'none'})` };
+                return { ok: false, reason: `zarinpal: verify failed (${why(answer)})` };
             }
-            return { ok: true, refId: body?.data?.ref_id ?? 0, alreadyVerified: code === 101 };
+            return {
+                ok: true,
+                refId: answer.body?.data?.ref_id ?? 0,
+                alreadyVerified: code === 101
+            };
         }
     };
 }

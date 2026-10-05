@@ -31,6 +31,8 @@ import type {
     RequestResult,
     VerifyResult
 } from './zarinpal.ts';
+import type { Answer } from './wire.ts';
+import { postJson, quote, refusal } from './wire.ts';
 
 export interface ZibalOptions {
     /** Read PER CALL, for the reason given on the same field in ./zarinpal.ts. */
@@ -45,6 +47,9 @@ export interface ZibalOptions {
 /** Every field this file reads, across `request`, `verify` and `inquiry`. All optional: it is somebody else's JSON. */
 interface ZibalBody {
     result?: number;
+
+    /** Zibal's own words for `result`. Read only to be repeated in a log - nothing decides on it. */
+    message?: string;
     trackId?: number | string;
 
     /** 1 is "paid and verified" - the only status that means the money is ours. */
@@ -98,26 +103,38 @@ function paidInFull(body: ZibalBody | null, tomanAmount: number): boolean {
     return body?.status === 1 && body.amount === tomanAmount * RIAL_PER_TOMAN;
 }
 
+/**
+ * @internal Why Zibal said no: its `result` and the `message` it sends beside it, or - when no
+ * answer was read at all - what the wire did instead.
+ */
+function why(answer: Answer<ZibalBody>): string {
+    return refusal(answer, answer.body?.result, answer.body?.message);
+}
+
+/**
+ * @internal What an answer claims was paid, set beside what we are owed. Only ever written
+ * when `paidInFull` has refused it, so the log shows WHICH of the two facts was wrong.
+ */
+function charged(body: ZibalBody | null, tomanAmount: number): string {
+    return quote(
+        `status ${String(body?.status)}, amount ${String(body?.amount)} Rial against our ${tomanAmount * RIAL_PER_TOMAN}`
+    );
+}
+
 export function createZibal(options: ZibalOptions): PaymentGateway {
     const call = options.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
     const timeoutMs = options.timeoutMs ?? 15_000;
 
-    async function post(path: string, body: Record<string, unknown>): Promise<ZibalBody | null> {
-        try {
-            const response = await call(`${options.settings().baseUrl}/v1/${path}`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json', accept: 'application/json' },
-                body: JSON.stringify(body),
-                signal: AbortSignal.timeout(timeoutMs)
-            });
-            // Zibal reports a refusal in `result` rather than in the status line, so the body
-            // is read whatever the status was.
-            return (await response.json()) as ZibalBody | null;
-        } catch {
-            // Network failure, timeout, or unparseable body: indistinguishable from here,
-            // and all mean the same thing to the caller - no answer.
-            return null;
-        }
+    // Zibal reports a refusal in `result` rather than in the status line, so the body is read
+    // whatever the status was - see ./wire.ts, which also keeps what went wrong when there
+    // was no body to read.
+    function post(path: string, body: Record<string, unknown>): Promise<Answer<ZibalBody>> {
+        return postJson<ZibalBody>(
+            call,
+            `${options.settings().baseUrl}/v1/${path}`,
+            body,
+            timeoutMs
+        );
     }
 
     return {
@@ -126,16 +143,21 @@ export function createZibal(options: ZibalOptions): PaymentGateway {
          * the buyer is sent to `/start/<trackId>`, and returns carrying the same number.
          */
         async request(input: PaymentRequest): Promise<RequestResult> {
-            const body = await post('request', {
+            const answer = await post('request', {
                 merchant: options.settings().merchant,
                 amount: input.tomanAmount * RIAL_PER_TOMAN,
                 callbackUrl: input.callbackUrl,
                 description: input.description
             });
 
-            const trackId = trackIdFrom(body?.trackId);
-            if (body?.result !== 100 || trackId === null) {
-                return { ok: false, reason: `request failed (code ${body?.result ?? 'none'})` };
+            if (answer.body?.result !== 100) {
+                return { ok: false, reason: `zibal: request failed (${why(answer)})` };
+            }
+            const trackId = trackIdFrom(answer.body.trackId);
+            if (trackId === null) {
+                // Said apart from a refusal: Zibal answered 100 here, and "failed (code 100)"
+                // would send whoever reads the log looking for a problem with the merchant.
+                return { ok: false, reason: 'zibal: request succeeded without a usable track id' };
             }
             return {
                 ok: true,
@@ -156,16 +178,20 @@ export function createZibal(options: ZibalOptions): PaymentGateway {
         async verify(authority: string, tomanAmount: number): Promise<VerifyResult> {
             const trackId = trackIdFrom(authority);
             if (trackId === null) {
-                return { ok: false, reason: 'verify failed (unreadable track id)' };
+                return { ok: false, reason: 'zibal: verify failed (unreadable track id)' };
             }
 
             const merchant = options.settings().merchant;
-            const body = await post('verify', { merchant, trackId });
+            const answer = await post('verify', { merchant, trackId });
+            const { body } = answer;
             const result = body?.result;
 
             if (result === 100) {
                 if (!paidInFull(body, tomanAmount)) {
-                    return { ok: false, reason: 'verify answered for a different payment' };
+                    return {
+                        ok: false,
+                        reason: `zibal: verify answered for a different payment (${charged(body, tomanAmount)})`
+                    };
                 }
                 return {
                     ok: true,
@@ -175,11 +201,16 @@ export function createZibal(options: ZibalOptions): PaymentGateway {
             }
 
             if (result === 201) {
-                const report = await post('inquiry', { merchant, trackId });
+                const asked = await post('inquiry', { merchant, trackId });
+                const report = asked.body;
                 if (report?.result !== 100 || !paidInFull(report, tomanAmount)) {
+                    // Two ways to land here, and the log says which: the inquiry itself was
+                    // refused, or it answered about a payment that is not this order's.
+                    const detail =
+                        report?.result === 100 ? charged(report, tomanAmount) : why(asked);
                     return {
                         ok: false,
-                        reason: `already verified, but inquiry did not confirm it (code ${report?.result ?? 'none'})`
+                        reason: `zibal: already verified, but inquiry did not confirm it (${detail})`
                     };
                 }
                 return {
@@ -189,7 +220,7 @@ export function createZibal(options: ZibalOptions): PaymentGateway {
                 };
             }
 
-            return { ok: false, reason: `verify failed (code ${result ?? 'none'})` };
+            return { ok: false, reason: `zibal: verify failed (${why(answer)})` };
         }
     };
 }

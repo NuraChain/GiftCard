@@ -35,6 +35,9 @@ const ORDER = {
  *
  * Keyed by the last path segment - `request`, `verify`, `inquiry` - because the interesting
  * cases are the ones where two of them are called in a row and must be told apart.
+ *
+ * An answer is normally the JSON to send back under a 200. An `Error` is thrown instead, and a
+ * `Response` is handed over as it is - the two ways a gateway fails without saying so in JSON.
  */
 function recorder(answers: Record<string, unknown>) {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
@@ -43,6 +46,12 @@ function recorder(answers: Record<string, unknown>) {
         const answer = answers[url.slice(url.lastIndexOf('/') + 1)];
         if (answer === undefined) {
             return Promise.reject(new Error('network down'));
+        }
+        if (answer instanceof Error) {
+            return Promise.reject(answer);
+        }
+        if (answer instanceof Response) {
+            return Promise.resolve(answer);
         }
         return Promise.resolve(
             new Response(JSON.stringify(answer), {
@@ -92,12 +101,17 @@ describe('opening a Zibal payment', () => {
         expect(JSON.stringify(calls[0].body)).not.toContain('buyer@example.com');
     });
 
-    it('refuses when Zibal does, and says which code', async () => {
+    it('refuses when Zibal does, and repeats its code and its own words', async () => {
+        // The reason is what the operator reads in the log, and it is the only thing that
+        // tells a wrong merchant apart from an empty fee wallet or an unregistered server.
         const { gateway } = zibal({ request: { result: 102, message: 'merchant not found' } });
-        expect(await gateway.request(ORDER)).toEqual({
+        const refused = await gateway.request(ORDER);
+        expect(refused).toEqual({
             ok: false,
-            reason: 'request failed (code 102)'
+            reason: 'zibal: request failed (code 102: merchant not found)'
         });
+        // What was SENT is never repeated: the request is where the merchant id is.
+        expect(JSON.stringify(refused)).not.toContain(SETTINGS.merchant);
     });
 
     it('refuses a success that carries no usable track id', async () => {
@@ -105,16 +119,52 @@ describe('opening a Zibal payment', () => {
         // different payment. Opening one we could not find again is worse than not opening it.
         for (const trackId of [undefined, 0, -4, 'abc', 2 ** 53]) {
             const { gateway } = zibal({ request: { trackId, result: 100 } });
-            expect((await gateway.request(ORDER)).ok).toBe(false);
+            // Not "failed (code 100)": Zibal said yes here, and the log should not send
+            // anybody looking for a problem with the merchant.
+            expect(await gateway.request(ORDER)).toEqual({
+                ok: false,
+                reason: 'zibal: request succeeded without a usable track id'
+            });
         }
     });
 
-    it('treats a dead network as a refusal rather than a crash', async () => {
+    it('treats a dead network as a refusal rather than a crash, and says how it died', async () => {
         const { gateway } = zibal({});
         expect(await gateway.request(ORDER)).toEqual({
             ok: false,
-            reason: 'request failed (code none)'
+            reason: 'zibal: request failed (no answer: Error: network down)'
         });
+    });
+
+    it('reads the socket error out from behind "fetch failed"', async () => {
+        // Every transport failure reaches us as the same TypeError. Whether the name did not
+        // resolve or the connection was reset is on `cause`, and is the whole diagnosis.
+        const cause = Object.assign(new Error('getaddrinfo ENOTFOUND zibal.test'), {
+            code: 'ENOTFOUND'
+        });
+        const { gateway } = zibal({ request: new TypeError('fetch failed', { cause }) });
+        expect(await gateway.request(ORDER)).toEqual({
+            ok: false,
+            reason: 'zibal: request failed (no answer: TypeError: fetch failed - ENOTFOUND: getaddrinfo ENOTFOUND zibal.test)'
+        });
+    });
+
+    it('shows a block page for what it is', async () => {
+        // A firewall or a proxy answering in HTML is not Zibal refusing the merchant, and the
+        // status line and the page's first words are what tell the two apart.
+        const page = new Response('<html>\n  <h1>403 Forbidden</h1>\n</html>', { status: 403 });
+        const { gateway } = zibal({ request: page });
+        expect(await gateway.request(ORDER)).toEqual({
+            ok: false,
+            reason: 'zibal: request failed (http 403, not JSON: <html> <h1>403 Forbidden</h1> </html>)'
+        });
+    });
+
+    it('quotes only the start of a long answer', async () => {
+        const { gateway } = zibal({ request: new Response('x'.repeat(5000), { status: 502 }) });
+        const refused = await gateway.request(ORDER);
+        expect(refused.ok).toBe(false);
+        expect(JSON.stringify(refused).length).toBeLessThan(300);
     });
 });
 
@@ -145,7 +195,7 @@ describe('verifying a Zibal payment', () => {
         const { gateway } = zibal({ verify: { ...PAID, amount: TOMAN } });
         expect(await gateway.verify('42', TOMAN)).toEqual({
             ok: false,
-            reason: 'verify answered for a different payment'
+            reason: 'zibal: verify answered for a different payment (status 1, amount 1309000 Rial against our 13090000)'
         });
     });
 
@@ -193,7 +243,7 @@ describe('verifying a Zibal payment', () => {
         const { gateway } = zibal({ verify: { result: 202, status: 3 } });
         expect(await gateway.verify('42', TOMAN)).toEqual({
             ok: false,
-            reason: 'verify failed (code 202)'
+            reason: 'zibal: verify failed (code 202)'
         });
     });
 
