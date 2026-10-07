@@ -294,6 +294,74 @@ describe('buying from a card', () => {
         expect(document.body.textContent).toContain('پولی از حساب شما کم نشده');
         expect(document.body.textContent).not.toContain('شروع پرداخت ممکن نشد');
     });
+
+    /** Presses a card all the way to «پرداخت» against a gateway that answers `refusal`. */
+    async function refusedPurchase(refusal: Response): Promise<void> {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(CATALOG));
+                }
+                if (String(input).includes('/api/pay/start')) {
+                    return Promise.resolve(refusal);
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/" />);
+        const input = await screen.findByLabelText('ایمیل');
+        fireEvent.change(input, { target: { value: 'buyer@example.com' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+        fireEvent.click(await screen.findByRole('button', { name: /^پرداخت/ }));
+    }
+
+    const UNAVAILABLE = { code: 'gateway-unavailable', message: 'درگاه پرداخت در دسترس نیست' };
+
+    it('tells the buyer the gateway is down, and the operator WHY - in the console', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const reason = 'zibal: request failed (code 104: invalid merchant)';
+        await refusedPurchase(json({ error: { ...UNAVAILABLE, details: { reason } } }, 503));
+
+        // The card says the sentence the server wrote, and nothing about merchants: the
+        // reason is for whoever runs the shop, and the page is not where they read it.
+        await screen.findByText('درگاه پرداخت در دسترس نیست');
+        expect(document.body.textContent).not.toContain('invalid merchant');
+
+        expect(logged).toHaveBeenCalledWith(
+            expect.stringContaining('[checkout]'),
+            expect.objectContaining({ status: 503, code: 'gateway-unavailable', reason })
+        );
+        logged.mockRestore();
+    });
+
+    it('says where to find the reason when the server kept it back', async () => {
+        // No console session in this browser, so the server sent the sentence and no reason.
+        // A blank would read as "there is no reason"; the hint says how to be shown one.
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const hinted = vi.spyOn(console, 'info').mockImplementation(() => {});
+        await refusedPurchase(json({ error: UNAVAILABLE }, 503));
+
+        await screen.findByText('درگاه پرداخت در دسترس نیست');
+        expect(logged).toHaveBeenCalledTimes(1);
+        expect(hinted).toHaveBeenCalledWith(expect.stringContaining('/admin'));
+        logged.mockRestore();
+        hinted.mockRestore();
+    });
+
+    it('says so when the answer is not the shop’s own', async () => {
+        // What a CDN does to an origin 502: the body is replaced, so there is no envelope to
+        // read. The card can only be generic - but the console says what kind of answer it was.
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const hinted = vi.spyOn(console, 'info').mockImplementation(() => {});
+        await refusedPurchase(new Response('error code: 502', { status: 502 }));
+
+        await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(1));
+        expect(hinted).toHaveBeenCalledWith(expect.stringContaining('did not come from'));
+        logged.mockRestore();
+        hinted.mockRestore();
+    });
 });
 
 describe('the tether rate', () => {

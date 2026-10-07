@@ -505,9 +505,44 @@ describe('the shop', () => {
     it('gives the code back when the gateway refuses to open a payment', async () => {
         store.addCodes(5, uuids(1));
         fake.requestOverride = { ok: false, reason: 'request failed (code -9)' };
-        expect(await buy(5)).toBe(502);
+        // 503 and not 502: a CDN in front replaces a 502's body with its own page, and the
+        // sentence the buyer is owed never arrives.
+        expect(await buy(5)).toBe(503);
         // An order that never reached the gateway must not sit on stock for half an hour.
         expect(store.availableFor(5)).toBe(1);
+    });
+
+    it('explains a refused gateway to the operator, and to nobody else', async () => {
+        store.addCodes(5, uuids(2));
+        const reason = 'zibal: request failed (code 104: invalid merchant)';
+        fake.requestOverride = { ok: false, reason };
+        const purchase = {
+            amount: 5,
+            email: 'buyer@example.com',
+            quotedToman: tomanPrice(5, RATE_TOMAN, MARGIN_PERCENT)
+        };
+        type Refusal = { error: { code: string; message: string; details?: { reason?: string } } };
+
+        // A BUYER gets the sentence and the tag. The reason says which gateway this shop
+        // uses and what is wrong with its account, and that is nobody's business but ours.
+        const stranger = await post('/api/pay/start', purchase);
+        expect(stranger.status).toBe(503);
+        expect(stranger.json<Refusal>().error.code).toBe('gateway-unavailable');
+        expect(stranger.text()).not.toContain('invalid merchant');
+
+        // A cookie that names no session is a stranger too - the reason is not a prize for
+        // sending the right header.
+        const forged = await post('/api/pay/start', purchase, {
+            cookie: 'ashbringer_session=not-a-session'
+        });
+        expect(forged.text()).not.toContain('invalid merchant');
+
+        // The OPERATOR, signed in to the console in the same browser, is told why.
+        const session = await post('/api/admin/session', { key: ADMIN_KEY });
+        const cookie = (session.headers.get('set-cookie') ?? '').split(';')[0];
+        const operator = await post('/api/pay/start', purchase, { cookie });
+        expect(operator.status).toBe(503);
+        expect(operator.json<Refusal>().error.details?.reason).toBe(reason);
     });
 
     it('refuses a payment it could not track, and keeps the code', async () => {
@@ -520,7 +555,7 @@ describe('the shop', () => {
             payUrl: 'https://gateway.test/pay/repeat'
         };
         expect(await buy(10)).toBe(200);
-        expect(await buy(10)).toBe(502);
+        expect(await buy(10)).toBe(503);
         expect(store.availableFor(10)).toBe(1);
     });
 

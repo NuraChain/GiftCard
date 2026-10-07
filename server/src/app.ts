@@ -33,7 +33,8 @@ import Fastify, {
     type FastifyBaseLogger,
     type FastifyError,
     type FastifyInstance,
-    type FastifyReply
+    type FastifyReply,
+    type FastifyRequest
 } from 'fastify';
 
 import { guard, mountApi } from './platform/api.ts';
@@ -304,7 +305,30 @@ export function buildApp(options: AppOptions): FastifyInstance {
     // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
     // itself rather than through the contract.
     const checkout = createCheckout({ store, payment, mailer, notifier, log });
-    const pay = { store, settings, rate, payment, checkout, callbackUrl, resultPath, log };
+
+    // The same question the admin guard asks, as a yes or no instead of a refusal. Checkout is
+    // PUBLIC and stays public: this never turns anybody away, it only decides whether a failed
+    // payment is explained to the caller - which it is for the operator and for nobody else.
+    const isOperator = (request: FastifyRequest): boolean => {
+        try {
+            admin.require(request.cookies[SESSION_COOKIE]);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const pay = {
+        store,
+        settings,
+        rate,
+        payment,
+        checkout,
+        callbackUrl,
+        resultPath,
+        isOperator,
+        log
+    };
     mountPayCallback(app, pay);
 
     const requireAdmin = guard(({ request }) => admin.require(request.cookies[SESSION_COOKIE]));

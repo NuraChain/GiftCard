@@ -9,12 +9,25 @@
 // The MESSAGES ARE PERSIAN because they are shown to the reader. A message here is copy, not
 // a developer note; anything a developer needs goes to the log instead.
 
+/** Extra structure beside the message. Sent as it is, so nothing goes in here by accident. */
+export interface ErrorDetails {
+    /** A per-field message map, for a form to mark the input that was refused. */
+    fields?: Record<string, string>;
+
+    /**
+     * THE ONE EXCEPTION to "a developer's note goes to the log": why it failed, in plain
+     * English, for the browser console of somebody running the shop. A handler attaches it
+     * ONLY for a request it has proven comes from the operator - see `start` in
+     * features/checkout/routes.ts - because it describes how this installation is configured.
+     */
+    reason?: string;
+}
+
 export interface HttpErrorOptions {
     /** A stable machine-readable tag. The client passes it through untouched. */
     code?: string;
 
-    /** Extra structure the page can act on - today, only a per-field message map. */
-    details?: { fields?: Record<string, string> };
+    details?: ErrorDetails;
 
     /** Seconds. Sent as `Retry-After` so a well-behaved client knows when to return. */
     retryAfter?: number;
@@ -24,7 +37,7 @@ export interface HttpErrorOptions {
 export class HttpError extends Error {
     public readonly status: number;
     public readonly code: string;
-    public readonly details?: { fields?: Record<string, string> };
+    public readonly details?: ErrorDetails;
     public readonly retryAfter?: number;
 
     constructor(status: number, message: string, options: HttpErrorOptions = {}) {

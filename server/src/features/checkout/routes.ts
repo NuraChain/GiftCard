@@ -1,5 +1,5 @@
 // The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt.
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Logger } from '../../platform/logging.ts';
 
 import type { Handlers } from '../../platform/api.ts';
@@ -42,6 +42,13 @@ export interface PayOptions {
 
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath: string;
+
+    /**
+     * Whether a request comes from somebody signed in to the console. It decides ONE thing:
+     * whether a gateway's refusal is explained in the answer or only in the log - see `start`.
+     * Absent means nobody is, which is the safe way for a caller to forget it.
+     */
+    isOperator?: (request: FastifyRequest) => boolean;
 
     log?: Logger;
 }
@@ -92,7 +99,7 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
  * route and its handler is a compile error here rather than a runtime 500.
  */
 export function payHandlers(options: PayOptions): PayHandlers {
-    const { store, settings, rate, payment, callbackUrl, log } = options;
+    const { store, settings, rate, payment, callbackUrl, isOperator, log } = options;
 
     return {
         // GET /api/pay/catalog
@@ -124,7 +131,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
         },
 
         // POST /api/pay/start
-        start: async ({ input }) => {
+        start: async ({ input, request }) => {
             // The schema proved the address is valid; it does not canonicalise, so this is
             // where the buyer's typing becomes the one stored form.
             const email = normalizeEmail(input.email);
@@ -195,18 +202,28 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // the hold window.
             const tracked = opened.ok && store.attachAuthority(order.id, opened.authority);
             if (!tracked) {
+                const reason = opened.ok ? 'duplicate authority' : opened.reason;
                 store.abandonOrder(order.id);
-                log?.error(
-                    {
-                        amount: input.amount,
-                        reason: opened.ok ? 'duplicate authority' : opened.reason
-                    },
-                    'could not open a trackable payment'
-                );
+                log?.error({ amount: input.amount, reason }, 'could not open a trackable payment');
+
+                // 503, NOT THE 502 THIS IS. The shop sits behind a CDN, and a 502 from here
+                // reached the browser as the CDN's own sixteen-byte "error code: 502" - the
+                // sentence below never arrived, and the card had nothing to say but a generic
+                // line. A 503 is the same promise to the buyer ("not now, try again") under a
+                // status that is passed through with its body.
+                //
+                // THE REASON GOES TO THE OPERATOR AND TO NOBODY ELSE. It names the gateway,
+                // repeats its refusal and can quote a page from whatever answered instead -
+                // exactly what somebody fixing the shop needs in their browser console, and a
+                // description of how this installation is set up for anybody else. A buyer
+                // gets the sentence; the log has the rest either way.
                 throw new HttpError(
-                    502,
+                    503,
                     'درگاه پرداخت در دسترس نیست. چند دقیقه بعد دوباره تلاش کنید.',
-                    { code: 'gateway-unavailable' }
+                    {
+                        code: 'gateway-unavailable',
+                        details: isOperator?.(request) === true ? { reason } : undefined
+                    }
                 );
             }
 

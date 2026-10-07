@@ -44,6 +44,45 @@ import Button from '../ui/button.tsx';
 import Field from '../ui/field.tsx';
 import TextInput from '../ui/text-input.tsx';
 
+/**
+ * Says in the browser console why a payment did not start.
+ *
+ * FOR WHOEVER RUNS THE SHOP, NOT FOR THE BUYER - the buyer has the sentence on the card. A
+ * checkout that will not open is the shop being closed, and "it does nothing" is all anybody
+ * can report about it without this.
+ *
+ * The gateway's own account of the refusal arrives ONLY when this browser is signed in to the
+ * console; the server withholds it from everybody else. So an empty one is followed by where
+ * to get it, rather than left as a blank to be puzzled over.
+ */
+function logFailure(error: unknown): void {
+    /* oxlint-disable no-console -- the console IS the destination: see above. */
+    if (!(error instanceof ApiError)) {
+        console.error('[checkout] the request to start a payment never got an answer:', error);
+        return;
+    }
+
+    console.error('[checkout] could not start the payment:', {
+        status: error.status,
+        code: error.code,
+        message: error.message,
+        reason: error.reason === '' ? '(not sent)' : error.reason
+    });
+
+    if (error.code === 'gateway-unavailable' && error.reason === '') {
+        console.info(
+            '[checkout] the payment gateway refused. Sign in at /admin in THIS browser and try ' +
+                "again: the gateway's own reason is shown here only to a signed-in operator."
+        );
+    } else if (error.code === 'error') {
+        console.info(
+            "[checkout] that answer did not come from this shop's API - something in front of " +
+                'it (a proxy, a CDN) replied instead, or the API is not running.'
+        );
+    }
+    /* oxlint-enable no-console */
+}
+
 export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
     const catalog = useCatalog();
     const [step, setStep] = useState<'email' | 'confirm'>('email');
@@ -99,6 +138,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                 return;
             }
 
+            logFailure(error);
             setFailure(
                 failureText(
                     error,

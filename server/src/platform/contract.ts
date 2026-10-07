@@ -104,23 +104,30 @@ export type Client<C> = {
  * A failed call, carrying what the page needs to react: `status` to tell "your session
  * ended" from "something broke", `message` to show the reader, and `fields` so a form can
  * mark the input that was refused.
+ *
+ * `reason` is NOT for the reader. It is the server's own English account of what went wrong,
+ * sent only to a signed-in operator and empty for everybody else - something to put in the
+ * browser console, never on the page.
  */
 export class ApiError extends Error {
     public readonly status: number;
     public readonly code: string;
     public readonly fields: Record<string, string>;
+    public readonly reason: string;
 
     constructor(
         status: number,
         message: string,
         code = 'error',
-        fields: Record<string, string> = {}
+        fields: Record<string, string> = {},
+        reason = ''
     ) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.code = code;
         this.fields = fields;
+        this.reason = reason;
     }
 }
 
@@ -129,7 +136,7 @@ interface ErrorBody {
     error?: {
         code?: string;
         message?: string;
-        details?: { fields?: Record<string, string> };
+        details?: { fields?: Record<string, string>; reason?: unknown };
     };
 }
 
@@ -241,10 +248,12 @@ async function toError(response: Response): Promise<ApiError> {
         // A gateway, a proxy, or a crash can answer with something that is not our
         // envelope. The status is still true, so the error is still useful.
     }
+    const reason = body.error?.details?.reason;
     return new ApiError(
         response.status,
         body.error?.message ?? 'درخواست انجام نشد',
         body.error?.code ?? 'error',
-        body.error?.details?.fields ?? {}
+        body.error?.details?.fields ?? {},
+        typeof reason === 'string' ? reason : ''
     );
 }
