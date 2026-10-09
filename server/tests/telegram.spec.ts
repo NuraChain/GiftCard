@@ -24,7 +24,7 @@ const SETTINGS = {
 const SALE: Sale = {
     amount: 10,
     toman: 1_309_000,
-    email: 'buyer@example.com',
+    phone: '+989121234567',
     refId: 987654,
     receipt: 'r1',
     remaining: 3,
@@ -142,7 +142,7 @@ describe('the sale notification', () => {
         expect(bot.sent).toHaveLength(1);
         expect(bot.sent[0]).toContain('10');
         expect(bot.sent[0]).toContain('1,309,000');
-        expect(bot.sent[0]).toContain('buyer@example.com');
+        expect(bot.sent[0]).toContain('+989121234567');
         expect(bot.sent[0]).toContain('987654');
     });
 

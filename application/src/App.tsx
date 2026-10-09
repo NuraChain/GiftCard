@@ -5,7 +5,7 @@
 //
 // `url` exists for tests, which pin the route through a memory history rather than a real
 // address bar. A browser never passes it.
-import { Link2, Mail, MessageCircle, Phone, Clock } from 'lucide-react';
+import { Link2, MessageCircle, Phone, Clock } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter, MemoryRouter, Route, Routes, Link } from 'react-router';
 
@@ -154,17 +154,6 @@ function Chrome(): ReactNode {
                     <div>
                         <h2 className="text-h3 font-bold">پشتیبانی</h2>
                         <ul className="mt-3 text-small text-muted">
-                            <li>
-                                <a
-                                    className="flex min-h-tap items-center gap-2 hover:text-firouze"
-                                    href={`mailto:${CONTACT.email}`}
-                                >
-                                    <Mail className="size-4 shrink-0" aria-hidden="true" />
-                                    <span dir="ltr" className="latin">
-                                        {CONTACT.email}
-                                    </span>
-                                </a>
-                            </li>
                             <li>
                                 <a
                                     className="flex min-h-tap items-center gap-2 hover:text-firouze"

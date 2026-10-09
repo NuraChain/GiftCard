@@ -1,7 +1,7 @@
 // Bootstrap: config, logging, the database, the outside world, serve, graceful shutdown.
 // No build step - Node >= 24 runs this file directly.
 //
-// This is the ONLY file that reads the environment or constructs a real gateway, mailer
+// This is the ONLY file that reads the environment or constructs a real gateway, SMS sender
 // or database. `buildApp` takes them as arguments, which is what lets the tests drive the
 // entire payment flow without a network, a merchant account, or a file on disk.
 //
@@ -34,7 +34,7 @@ import { createCommandBot } from './features/telegram/commands.ts';
 import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings, DEFAULT_ADMIN_KEY } from './features/settings/settings.ts';
-import { createMailer } from './features/checkout/mailer.ts';
+import { createSms } from './features/checkout/panelsms.ts';
 import { createStore } from './db/index.ts';
 
 // Redaction happens in the logger rather than at each call site, so no formatter and no
@@ -55,7 +55,7 @@ const log = pino({
             'authority',
             'trackId',
             'code',
-            'email',
+            'phone',
             'botToken',
             'telegramBotToken',
             '*.merchantId',
@@ -69,7 +69,7 @@ const log = pino({
             '*.authority',
             '*.trackId',
             '*.code',
-            '*.email',
+            '*.phone',
             '*.botToken',
             '*.telegramBotToken'
         ],
@@ -118,11 +118,11 @@ if (!settings.adminKeyRotated()) {
 }
 
 const live = settings.current();
-if (!settings.view('').mailReady) {
-    // A shop can trade without email: the code is on screen and valid either way. It is a
+if (!settings.view('').smsReady) {
+    // A shop can trade without SMS: the code is on screen and valid either way. It is a
     // notice rather than a refusal because the operator can now fix it from the console
     // without a deploy.
-    log.warn('email delivery is OFF - set a Resend key and a From address in the console');
+    log.warn('SMS delivery is OFF - configure PanelSMS in the console');
 }
 // Only the ACTIVE gateway's credential matters here: the other one being unset is the normal
 // state of a shop that uses one gateway, not something to wake anybody up about.
@@ -229,13 +229,13 @@ const app = buildApp({
             }
         })
     }),
-    mailer: createMailer({
+    sms: createSms({
         settings: () => {
             const now = settings.current();
             return {
-                apiKey: now.resendApiKey,
-                from: now.mailFrom,
-                baseUrl: now.resendBase,
+                apiUrl: now.smsApiUrl,
+                apiKey: now.smsApiKey,
+                sender: now.smsSender,
                 appName: now.appName
             };
         }

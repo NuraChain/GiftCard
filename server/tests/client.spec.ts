@@ -36,7 +36,7 @@ function stubs(store: Store) {
             request: () => Promise.resolve({ ok: false as const, reason: 'not used' }),
             verify: () => Promise.resolve({ ok: false as const, reason: 'not used' })
         },
-        mailer: { sendCode: () => Promise.resolve({ ok: true as const }) },
+        sms: { sendCode: () => Promise.resolve({ ok: true as const }) },
         telegram: {
             configured: () => false,
             sendMessage: () => Promise.resolve({ ok: true as const }),

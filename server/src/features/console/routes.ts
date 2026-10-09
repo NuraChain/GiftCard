@@ -6,7 +6,7 @@ import type { Handlers } from '../../platform/api.ts';
 
 import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
-import { displayEmail } from '../../domain/email.ts';
+import { displayPhone } from '../../domain/phone.ts';
 import { SESSION_COOKIE, type Admin } from './session.ts';
 
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
@@ -61,11 +61,11 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
                     id: order.id,
                     amount: order.amount,
                     toman: order.toman,
-                    email: displayEmail(order.email),
+                    phone: displayPhone(order.phone),
                     status: order.status,
                     code: order.code,
                     refId: order.refId,
-                    mailDelivered: order.mailDelivered,
+                    smsDelivered: order.smsDelivered,
                     createdAt: order.createdAt
                 })),
                 total: found.total,

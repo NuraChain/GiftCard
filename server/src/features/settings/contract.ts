@@ -1,7 +1,7 @@
 // Runtime configuration's wire shapes and routes, and the admin key beside them.
 //
 // A secret is WRITE-ONLY across this boundary. The console may replace a merchant id or
-// the Resend key, and may see whether one is set and its last four characters - never the
+// the PanelSMS key, and may see whether one is set and its last four characters - never the
 // value. A stolen session must not be a way to read out the credentials it can overwrite.
 // That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
 //
@@ -10,7 +10,7 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
-import { emailField } from '../../domain/email.ts';
+import { phoneField } from '../../domain/phone.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
 /**
@@ -70,11 +70,11 @@ export const settingsView = z.object({
     zibalMerchantMasked: z.string(),
     zibalMerchantSet: z.boolean(),
 
-    /** How gift-code email is sent. The API key never comes back - only its last four. */
-    resendApiKeyMasked: z.string(),
-    resendApiKeySet: z.boolean(),
-    mailFrom: z.string(),
-    resendBase: z.string(),
+    /** PanelSMS API endpoint, sender, and write-only API credential. */
+    smsApiUrl: z.string(),
+    smsApiKeyMasked: z.string(),
+    smsApiKeySet: z.boolean(),
+    smsSender: z.string(),
 
     /** What one USDT costs in Toman, as the console last set it. Zero means never set. */
     tetherToman: z.number(),
@@ -85,8 +85,8 @@ export const settingsView = z.object({
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
 
-    /** Delivery only runs when both an API key and a From address are present. */
-    mailReady: z.boolean(),
+    /** Delivery runs when the endpoint, API key, and sender are configured. */
+    smsReady: z.boolean(),
 
     /**
      * Where the gateway returns the buyer, derived from `publicBaseUrl` and echoed back so the
@@ -119,10 +119,10 @@ export const settingsInput = z.object({
     zibalBase: z.string().trim().max(200).optional(),
     /** Zibal's merchant is write-only too: a blank one means "keep it", never "erase it". */
     zibalMerchant: z.string().trim().max(100).optional(),
-    /** The Resend key is write-only: a blank one means "keep it", never "erase it". */
-    resendApiKey: z.string().trim().max(200).optional(),
-    mailFrom: z.string().trim().max(254).optional(),
-    resendBase: z.string().trim().max(200).optional(),
+    smsApiUrl: z.string().trim().max(500).optional(),
+    /** The PanelSMS key is write-only: a blank one means "keep it", never "erase it". */
+    smsApiKey: z.string().trim().max(500).optional(),
+    smsSender: z.string().trim().max(100).optional(),
 
     /** The operations bot. The token is write-only; a blank one means "keep it". */
     telegramBotToken: z.string().trim().max(200).optional(),
@@ -174,9 +174,9 @@ export const rotateKeyInput = z.object({
     newKey: z.string().trim().max(32)
 });
 
-/** Proving the mail settings work without selling something first. */
-export const testEmailInput = z.object({ email: emailField });
-export const testEmailResult = z.object({ ok: z.boolean(), reason: z.string() });
+/** Proving the SMS settings work without selling something first. */
+export const testSmsInput = z.object({ phone: phoneField });
+export const testSmsResult = z.object({ ok: z.boolean(), reason: z.string() });
 
 export type SettingsView = z.infer<typeof settingsView>;
 export type SettingsInput = z.infer<typeof settingsInput>;
@@ -188,5 +188,5 @@ export const settingsRoutes = {
     saveSettings: post('/admin/settings', { input: settingsInput, output: settingsView }),
     settingsLog: get('/admin/settings/log', { output: settingsLog }),
     rotateKey: post('/admin/key', { input: rotateKeyInput }),
-    testEmail: post('/admin/test-email', { input: testEmailInput, output: testEmailResult })
+    testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult })
 };

@@ -227,7 +227,7 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                         : `نرخ تتر: ${money(live.toman)} تومان${live.stale ? ' - قدیمی شده' : ''}`,
                     `درصد سود: ${settings.current().marginPercent}٪`,
                     `موجودی: ${total} کد`,
-                    `ایمیل: ${settings.view('').mailReady ? 'آماده' : 'خاموش'}`,
+                    `پیامک: ${settings.view('').smsReady ? 'آماده' : 'خاموش'}`,
                     // Appended rather than always shown: a zero here is the normal state, and
                     // a status that reads `0` every day is a status nobody reads.
                     ...(owedPayouts > 0

@@ -38,9 +38,6 @@ export interface PaymentRequest {
     tomanAmount: number;
     description: string;
     callbackUrl: string;
-
-    /** Passed to the gateway as metadata so a refund can be matched to a buyer. */
-    email: string;
 }
 
 export type RequestResult =
@@ -127,8 +124,7 @@ export function createPayment(options: PaymentOptions): PaymentGateway {
                 amount: input.tomanAmount,
                 currency: 'IRT',
                 description: input.description,
-                callback_url: input.callbackUrl,
-                metadata: { email: input.email }
+                callback_url: input.callbackUrl
             });
 
             if (answer.body?.data?.code !== 100) {

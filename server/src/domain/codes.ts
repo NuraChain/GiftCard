@@ -32,7 +32,7 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 /**
  * Characters with no glyph and no meaning, which a paste out of a Persian chat or an RTL
- * document carries along invisibly. See domain/email.ts - the failure they cause is the same
+ * document carries along invisibly. See domain/phone.ts - the failure they cause is the same
  * one and it is just as unexplainable on screen.
  */
 const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
@@ -40,8 +40,8 @@ const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 /**
  * The one stored spelling of a code, or null when it is not a code at all.
  *
- * A buyer reading one back off an email arrives with any of: trailing whitespace, uppercase
- * (mail clients and phone keyboards both do this), and invisible marks from the paste. All
+ * A buyer reading one back from the receipt arrives with any of: trailing whitespace, uppercase
+ * (messaging apps and phone keyboards both do this), and invisible marks from the paste. All
  * three describe the same code, and the inventory holds exactly one of those spellings - so
  * a lookup that skipped this would tell a paying customer their own code does not exist.
  */

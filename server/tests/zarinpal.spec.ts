@@ -19,8 +19,7 @@ const SETTINGS = {
 const ORDER = {
     tomanAmount: 6000,
     description: 'خرید گیفت کارت',
-    callbackUrl: 'https://shop.test/api/pay/callback',
-    email: 'buyer@example.com'
+    callbackUrl: 'https://shop.test/api/pay/callback'
 };
 
 /** A client whose one answer is `answer`: an `Error` is thrown, anything else is sent back. */

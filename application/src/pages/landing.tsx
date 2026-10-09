@@ -76,8 +76,8 @@ export default function Landing(): ReactNode {
                         verified={verified}
                     />
                     <p className="mt-3 text-caption text-muted">
-                        کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و همزمان به ایمیلتان هم
-                        فرستاده می‌شود.
+                        کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و به شماره موبایلتان هم
+                        پیامک می‌شود.
                     </p>
                 </div>
             </section>
@@ -102,8 +102,8 @@ export default function Landing(): ReactNode {
                 <p className="mt-3 max-w-xl text-muted">
                     {/* No count in this sentence: the catalogue is editable, so "all three" was
                         a promise the page could not keep the moment a fourth card was added. */}
-                    ایمیلتان را روی همان کارتی که می‌خواهید وارد کنید. همهٔ کارت‌ها یک نوع کد می‌دهند و
-                    یک جور تحویل می‌شوند.
+                    شماره موبایلتان را روی همان کارتی که می‌خواهید وارد کنید. همهٔ کارت‌ها یک نوع کد
+                    می‌دهند و یک جور تحویل می‌شوند.
                 </p>
 
                 <div className="mt-stack">

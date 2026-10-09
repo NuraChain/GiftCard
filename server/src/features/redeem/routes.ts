@@ -51,8 +51,8 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
         // POST /api/redeem
         submit: async ({ input }) => {
             // The schema proved the shapes; it does not canonicalise. A code read back off an
-            // email arrives uppercased as often as not, and the inventory holds exactly one
-            // spelling - so this is where the holder's typing becomes that spelling.
+            // codes are case-insensitive and the inventory holds exactly one spelling - so
+            // this is where the holder's typing becomes that spelling.
             const code = normalizeGiftCode(input.code);
 
             // ONE DESTINATION, UNDER EITHER NAME. `wallet_address` is what Nura Wallet sends
@@ -127,7 +127,7 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
                 amount: redemption.amount,
                 wallet: redemption.wallet,
                 network: redemption.network,
-                email: redemption.email,
+                phone: redemption.phone,
                 code: redemption.code,
                 claimedAt: redemption.claimedAt
             });

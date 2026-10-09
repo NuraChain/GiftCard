@@ -54,8 +54,8 @@ export interface Order {
     /** What the buyer pays, in Toman. Stored so verify uses OUR number, not a request's. */
     toman: number;
 
-    /** Canonical: trimmed and lowercased. See domain/email.ts. */
-    email: string;
+    /** Canonical Iranian mobile number. See domain/phone.ts. */
+    phone: string;
 
     status: OrderStatus;
 
@@ -69,8 +69,8 @@ export interface Order {
     /** The gateway's transaction reference, quoted in support. */
     refId: number | null;
 
-    /** Whether the code reached the buyer by email. False never invalidates the code. */
-    mailDelivered: boolean;
+    /** Whether the code reached the buyer by SMS. False never invalidates the code. */
+    smsDelivered: boolean;
 
     createdAt: string;
     settledAt: string | null;
@@ -81,7 +81,7 @@ export interface NewOrder {
     id: string;
     amount: Amount;
     toman: number;
-    email: string;
+    phone: string;
     createdAt: string;
 }
 
@@ -116,7 +116,7 @@ export interface CodeRow {
     addedAt: string;
 
     /** The buyer, once there is one. Canonical, lowercased. */
-    email: string | null;
+    phone: string | null;
 
     /** When the order that took it settled. */
     soldAt: string | null;
@@ -145,7 +145,7 @@ export interface Redemption {
     network: string;
 
     /** Who bought the code. Copied from the order, so support has a name to match against. */
-    email: string;
+    phone: string;
 
     /**
      * Whether the operator has actually been told. FALSE IS THE DANGEROUS STATE: the code is
@@ -168,7 +168,7 @@ export type RedeemOutcome =
 
 /** One page of the ledger. An empty `search` means the whole ledger. */
 export interface OrderQuery {
-    /** Free text: part of an email address, a code, a reference, or a receipt handle. */
+    /** Free text: part of a mobile number, a code, a reference, or a receipt handle. */
     search: string;
 
     limit: number;
@@ -177,7 +177,7 @@ export interface OrderQuery {
 
 /** One page of the inventory. */
 export interface CodeQuery {
-    /** Free text over the code itself and over the buyer's address. */
+    /** Free text over the code itself and over the buyer's mobile number. */
     search: string;
 
     /** Narrow to one state, or `null` for all three. */
@@ -277,7 +277,7 @@ export interface Store extends SettingsStore {
     /** Settles an unpaid attempt and returns the held code to stock. */
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
 
-    markMailDelivered(orderId: string, delivered: boolean): void;
+    markSmsDelivered(orderId: string, delivered: boolean): void;
 
     /** The ledger, newest first, owed orders pinned to the top. */
     recentOrders(limit: number): Order[];

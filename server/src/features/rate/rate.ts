@@ -79,7 +79,7 @@ export interface TetherRate {
 export interface TetherRateOptions {
     /**
      * The stored rate and when it was set. Read PER CALL, the same way the gateway and the
-     * mailer take their credentials: the console can change this between two requests and the
+     * SMS sender take their credentials: the console can change this between two requests and the
      * second one must be priced with the new number.
      */
     settings: () => { tetherToman: number; tetherSetAt: string };

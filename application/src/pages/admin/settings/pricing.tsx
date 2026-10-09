@@ -100,7 +100,7 @@ export default function PricingSettings(): ReactNode {
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
 
-        // Nothing is saved before something is read - see the note in email.tsx.
+        // Nothing is saved before something is read - see the note in sms.tsx.
         if (settings === null) {
             notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
             return;

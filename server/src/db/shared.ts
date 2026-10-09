@@ -1,11 +1,8 @@
 // The order row's shape. `shaped` lives in platform/db.ts, and the UUID a code has to match
 // moved to domain/codes.ts when the redemption route started needing it too.
 //
-// THE PHONE-SEARCH HELPER IS GONE and is not missed. A mobile number has four spellings that
-// all mean the same number, so searching for one needed a helper that stripped the country
-// code and the trunk zero to find a fragment common to all of them. An email address has ONE
-// spelling - that is what `normalizeEmail` guarantees - so the ledger's search is a plain
-// substring match and there is nothing to reconcile.
+// New mobile numbers are stored in one canonical form, so the ledger can search directly while
+// retaining and matching historical email addresses moved into the phone column.
 import type { Order, OrderStatus } from './types.ts';
 
 /** The row shape SQLite returns for an order; booleans are integers and there are no unions. */
@@ -14,11 +11,11 @@ export interface OrderRow {
     authority: string | null;
     amount: number;
     toman: number;
-    email: string;
+    phone: string;
     status: string;
     code: string | null;
     ref_id: number | null;
-    mail_delivered: number;
+    sms_delivered: number;
     created_at: string;
     settled_at: string | null;
 }
@@ -29,11 +26,11 @@ export function toOrder(row: OrderRow): Order {
         authority: row.authority,
         amount: row.amount,
         toman: row.toman,
-        email: row.email,
+        phone: row.phone,
         status: row.status as OrderStatus,
         code: row.code,
         refId: row.ref_id,
-        mailDelivered: row.mail_delivered === 1,
+        smsDelivered: row.sms_delivered === 1,
         createdAt: row.created_at,
         settledAt: row.settled_at
     };

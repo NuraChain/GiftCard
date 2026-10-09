@@ -47,7 +47,7 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 export interface Sale {
     amount: number;
     toman: number;
-    email: string;
+    phone: string;
     refId: number | null;
 
     /** The receipt handle, which is what support quotes back to a buyer. */
@@ -94,7 +94,7 @@ export function createSaleNotifier(options: SaleNotifierOptions): SaleNotifier {
                 '',
                 `کارت: ${sale.amount} دلاری`,
                 `مبلغ: ${sale.toman.toLocaleString('en-US')} تومان`,
-                `خریدار: ${sale.email}`,
+                `خریدار: ${sale.phone}`,
                 `پیگیری: ${sale.refId ?? '-'}`,
                 `رسید: ${sale.receipt}`,
                 `موجودی باقی‌مانده: ${sale.remaining}`
@@ -135,7 +135,7 @@ export interface Payout {
     network: string;
 
     /** Who originally bought the code. Not necessarily the person redeeming it. */
-    email: string;
+    phone: string;
 
     /** The spent code. ONLY A PREFIX OF IT REACHES THE CHAT - see below. */
     code: string;
@@ -184,7 +184,7 @@ export function createPayoutNotifier(options: PayoutNotifierOptions): PayoutNoti
                 'آدرس کیف پول:',
                 payout.wallet,
                 '',
-                `خریدار کد: ${payout.email}`,
+                `خریدار کد: ${payout.phone}`,
                 `کد: ${payout.code.slice(0, CODE_PREFIX)}...`,
                 `زمان: ${payout.claimedAt}`,
                 '',

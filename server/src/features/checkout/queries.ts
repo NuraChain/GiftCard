@@ -9,6 +9,7 @@ import type { CodeQueries } from '../inventory/queries.ts';
 import { shaped } from '../../platform/db.ts';
 import { toOrder, type OrderRow } from '../../db/shared.ts';
 import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
+import { phoneSearchVariants } from '../../domain/phone.ts';
 
 export interface OrderQueries {
     startOrder(order: NewOrder, holdMs: number): boolean;
@@ -18,7 +19,7 @@ export interface OrderQueries {
     orderByAuthority(authority: string): Order | undefined;
     settlePaid(orderId: string, refId: number): string | null;
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
-    markMailDelivered(orderId: string, delivered: boolean): void;
+    markSmsDelivered(orderId: string, delivered: boolean): void;
     recentOrders(limit: number): Order[];
     searchOrders(query: OrderQuery): { rows: Order[]; total: number };
     owedCount(): number;
@@ -26,7 +27,7 @@ export interface OrderQueries {
 
 export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
     const insertOrder = db.prepare(`
-        INSERT INTO orders (id, authority, amount, toman, email, status, code, ref_id, mail_delivered, created_at, settled_at)
+        INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at)
         VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL)`);
     const setAuthority = db.prepare('UPDATE orders SET authority = ? WHERE id = ?');
     const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
@@ -36,7 +37,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
     );
     const setUnpaid = db.prepare('UPDATE orders SET status = ?, settled_at = ? WHERE id = ?');
-    const setMail = db.prepare('UPDATE orders SET mail_delivered = ? WHERE id = ?');
+    const setSms = db.prepare('UPDATE orders SET sms_delivered = ? WHERE id = ?');
     // Owed orders first: money taken, no code. They are the only rows needing a human.
     const selectRecent = db.prepare(`
         SELECT * FROM orders
@@ -48,13 +49,13 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
 
     // One WHERE clause, shared by the page and its count so the two can never disagree.
     //
-    // The address arm is a plain substring match, which it can be because an address has ONE
-    // stored spelling (domain/email.ts lowercases and trims). The phone version of this used
-    // to need a helper to reconcile four spellings of the same number.
+    // New mobile numbers have one canonical spelling. The substring search also continues to
+    // find historical email values retained in the phone column during migration.
     const MATCHES = `(
         ? = ''
         OR id = ?
-        OR email LIKE ?
+        OR phone LIKE ?
+        OR phone LIKE ?
         OR code LIKE ?
         OR CAST(ref_id AS TEXT) LIKE ?
     )`;
@@ -73,7 +74,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
                     db.exec('ROLLBACK');
                     return false;
                 }
-                insertOrder.run(order.id, order.amount, order.toman, order.email, order.createdAt);
+                insertOrder.run(order.id, order.amount, order.toman, order.phone, order.createdAt);
                 db.exec('COMMIT');
                 return true;
             } catch (error) {
@@ -155,8 +156,8 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        markMailDelivered(orderId, delivered) {
-            setMail.run(delivered ? 1 : 0, orderId);
+        markSmsDelivered(orderId, delivered) {
+            setSms.run(delivered ? 1 : 0, orderId);
         },
 
         recentOrders(limit) {
@@ -166,7 +167,8 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         searchOrders(query) {
             const term = query.search.trim();
             const like = `%${term.toLowerCase()}%`;
-            const bind = [term, term, like, like, like];
+            const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);
+            const bind = [term, term, phoneLike[0] ?? like, phoneLike[1] ?? like, like, like];
             return {
                 rows: shaped<OrderRow[]>(searchPage.all(...bind, query.limit, query.offset)).map(
                     toOrder

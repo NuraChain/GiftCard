@@ -26,7 +26,7 @@ export interface TextInputProps {
     /** `paper` for a field inside a panel, `surface` for one on the page. */
     tone?: 'paper' | 'surface';
 
-    inputMode?: 'text' | 'tel' | 'numeric' | 'email' | 'url';
+    inputMode?: 'text' | 'tel' | 'numeric' | 'url';
     autoComplete?: string;
     disabled?: boolean;
 

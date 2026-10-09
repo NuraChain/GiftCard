@@ -16,7 +16,7 @@ export const codeRow = z.object({
     amount: amountField,
     state: z.enum(['free', 'held', 'sold']),
     addedAt: z.string(),
-    email: z.string().nullable(),
+    phone: z.string().nullable(),
     soldAt: z.string().nullable(),
     refId: z.number().int().nullable()
 });

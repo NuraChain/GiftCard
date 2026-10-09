@@ -26,8 +26,7 @@ const RIAL = 13_090_000;
 const ORDER = {
     tomanAmount: TOMAN,
     description: 'خرید گیفت کارت',
-    callbackUrl: 'https://shop.test/api/pay/callback',
-    email: 'buyer@example.com'
+    callbackUrl: 'https://shop.test/api/pay/callback'
 };
 
 /**
@@ -98,7 +97,7 @@ describe('opening a Zibal payment', () => {
         // The only id an order has is its receipt token, which is the bearer handle the code
         // is read back with. It must not end up in a third party's transaction report.
         expect(calls[0].body).not.toHaveProperty('orderId');
-        expect(JSON.stringify(calls[0].body)).not.toContain('buyer@example.com');
+        expect(JSON.stringify(calls[0].body)).not.toContain('+989121234567');
     });
 
     it('refuses when Zibal does, and repeats its code and its own words', async () => {

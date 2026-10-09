@@ -14,7 +14,7 @@
 // the operator chooses the destination: a private chat with their own bot. That decision is
 // theirs to make, and this file's job is to be clear about what it is.
 //
-// `fetch` is INJECTED the same way the gateway, the mailer and the rate sources take it: it is
+// `fetch` is INJECTED the same way the gateway, SMS sender and rate sources take it: it is
 // what lets every path here be tested without a network or a bot token.
 import type { Fetch } from '../checkout/zarinpal.ts';
 
@@ -141,7 +141,7 @@ export function createTelegram(options: TelegramOptions): Telegram {
                     text,
                     // No parse mode. Telegram's Markdown and HTML modes both REJECT the whole
                     // message when a stray character in interpolated data looks like markup,
-                    // and the data here includes an email address someone else chose. A
+                    // and the data here includes a mobile number someone else chose. A
                     // notification that silently fails to arrive is worse than a plain one.
                     disable_web_page_preview: true
                 }),

@@ -2,8 +2,8 @@
 //
 // `CREATE TABLE IF NOT EXISTS` is most of the migration story: this file runs on every boot,
 // so adding a table or an index here is the whole deployment step. What it cannot do is ALTER
-// a table that already exists - and that day came when codes stopped being texted and started
-// being emailed. Those changes live in ./migrate.ts, which runs straight after this and is
+// a table that already exists. Those changes live in ./migrate.ts, which runs straight after
+// this and is guarded on the shape the database is actually in.
 // guarded on the shape the database is actually in.
 //
 // SO THIS FILE DESCRIBES THE DESTINATION, not the history. A fresh database gets exactly what
@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS orders (
     authority     TEXT    UNIQUE,
     amount        INTEGER NOT NULL,
     toman         INTEGER NOT NULL,
-    email         TEXT    NOT NULL,
+    phone         TEXT    NOT NULL,
     status        TEXT    NOT NULL,
     code          TEXT,
     ref_id        INTEGER,
-    mail_delivered INTEGER NOT NULL DEFAULT 0,
+    sms_delivered INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT    NOT NULL,
     settled_at    TEXT
 );
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
     amount     INTEGER NOT NULL,
     wallet     TEXT    NOT NULL,
     network    TEXT    NOT NULL,
-    email      TEXT    NOT NULL,
+    phone      TEXT    NOT NULL,
     notified   INTEGER NOT NULL DEFAULT 0,
     claimed_at TEXT    NOT NULL
 );

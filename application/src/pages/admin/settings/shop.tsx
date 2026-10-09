@@ -1,9 +1,9 @@
 // The shop's own name, on its own.
 //
 // IT IS HERE BECAUSE IT BELONGS TO NEITHER NEIGHBOUR. The name is the browser tab, the page
-// header, the footer, the subject line of the gift-code email AND the transaction description
-// on the gateway - so it cannot sit inside the payment panel without the mail settings
-// depending on a field in it, or inside the mail panel without the reverse. One field, one
+// header, the footer, the SMS text AND the transaction description on the gateway - so it
+// cannot sit inside the payment panel without the SMS settings depending on a field in it.
+// One field, one
 // job, one card.
 //
 // It is the only setting on this tab that changes something the BUYER sees on every page,
@@ -56,7 +56,7 @@ export default function ShopSettings(): ReactNode {
     const save = async (event: FormEvent): Promise<void> => {
         event.preventDefault();
 
-        // Nothing is saved before something is read - see the note in email.tsx. Posting the
+        // Nothing is saved before something is read - see the note in sms.tsx. Posting the
         // empty box this form starts with would rename the shop to nothing.
         if (!loaded) {
             notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
@@ -70,7 +70,7 @@ export default function ShopSettings(): ReactNode {
         setSaving(true);
         try {
             // ONLY this panel's field is sent. An absent field keeps its value, so a save here
-            // cannot touch the gateway or the mail server - which is the point of the split.
+            // cannot touch the gateway or SMS settings - which is the point of the split.
             await client.admin.saveSettings({ input: { appName: formAppName } });
             // The name is on every page of the shop, so it is told to re-read rather than left
             // showing the old one until somebody reloads.
@@ -107,7 +107,7 @@ export default function ShopSettings(): ReactNode {
                         <Field
                             label="نام فروشگاه"
                             htmlFor="app-name"
-                            hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، موضوع ایمیل کد، و توضیح تراکنش در درگاه دیده می‌شود."
+                            hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، متن پیامک کد، و توضیح تراکنش در درگاه دیده می‌شود."
                         >
                             <TextInput
                                 id="app-name"

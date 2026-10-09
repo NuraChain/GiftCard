@@ -10,7 +10,7 @@
 // `wallet_address` here on behalf of whoever is holding the card, which is why the address has
 // that name on the wire while everything inside the shop still calls it a wallet.
 //
-// IT IS DELIBERATELY ANONYMOUS. No session, no email, no receipt handle - whoever holds the
+// IT IS DELIBERATELY ANONYMOUS. No session, no contact detail, no receipt handle - whoever holds the
 // code may redeem it, because a gift card is bearer value and asking the holder to prove they
 // were the buyer would break the one thing a gift is for. What replaces authentication is
 // that the code is 122 bits of random and is consumed on first use.
@@ -28,12 +28,12 @@ import { walletField } from '../../domain/wallet.ts';
  *
  * Both fields VALIDATE ONLY - neither is canonicalised here. The handler runs
  * `normalizeGiftCode` and `readWallet` on what arrives, the same way `pay.start` runs
- * `normalizeEmail`, so nothing downstream may assume a stored spelling just because
+ * `normalizePhone`, so nothing downstream may assume a stored spelling just because
  * validation passed.
  */
 export const redeemInput = z.object({
     /**
-     * The gift code, as the holder reads it back off their email. Case and surrounding
+     * The gift code, as the holder reads it back off their receipt. Case and surrounding
      * whitespace are forgiven here and normalised in the handler; anything that is not a
      * UUID at all is refused before a database is touched.
      */
@@ -42,7 +42,7 @@ export const redeemInput = z.object({
         .trim()
         .max(64, { message: 'کد معتبر نیست' })
         .refine((value) => normalizeGiftCode(value) !== null, {
-            message: 'کد معتبر نیست. کد ۳۶ نویسه‌ای داخل ایمیل را وارد کنید.'
+            message: 'کد معتبر نیست. کد ۳۶ نویسه‌ای را وارد کنید.'
         }),
 
     /**

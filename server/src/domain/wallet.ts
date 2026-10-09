@@ -6,7 +6,7 @@
 //
 // It lives in domain/ because the CONTRACT imports it, and the contract is client-safe by
 // construction - so the browser form and the server boundary run this exact rule rather than
-// two hand-written regexes that drift. Same arrangement as domain/email.ts, and the same
+// two hand-written regexes that drift. Same arrangement as domain/phone.ts, and the same
 // split: `walletField` checks the SHAPE (cheap, synchronous, runs at both ends), and
 // `checksumOk` proves the address is real (asynchronous, and the handler awaits it before a
 // code is consumed).
@@ -68,7 +68,7 @@ const MAX_LENGTH = 64;
  * SHAPE ONLY. It says "this could be an address"; `checksumOk` says "this is one". Nothing
  * downstream may treat a non-null return as proof a payout will arrive.
  *
- * Persian digits are NOT rewritten here, and that is a departure from domain/email.ts on
+ * Persian digits are NOT rewritten here, and that is a departure from domain/phone.ts on
  * purpose: an address is 34 to 42 characters of mixed-case base58 or hex, which nobody types
  * by hand - it is pasted. Rewriting digits could only ever turn one wrong string into a
  * different wrong string, and the checksum is the guard that matters.
@@ -168,7 +168,7 @@ function base58Decode(input: string): Uint8Array<ArrayBuffer> | null {
 }
 
 /**
- * The shared field. Like `emailField` it VALIDATES ONLY - it does not clean and it does not
+ * The shared field. Like `phoneField` it VALIDATES ONLY - it does not clean and it does not
  * run the checksum, so the value reaches a handler in whatever shape it was typed. Every
  * handler therefore runs `readWallet` and then `checksumOk`; nothing downstream may assume an
  * address is spendable just because validation passed.

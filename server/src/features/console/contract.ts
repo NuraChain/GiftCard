@@ -38,11 +38,11 @@ export const ledgerRow = z.object({
     id: z.string(),
     amount: amountField,
     toman: z.number().int(),
-    email: z.string(),
+    phone: z.string(),
     status: z.enum(['pending', 'paid', 'cancelled', 'failed']),
     code: z.string().nullable(),
     refId: z.number().int().nullable(),
-    mailDelivered: z.boolean(),
+    smsDelivered: z.boolean(),
     createdAt: z.string()
 });
 

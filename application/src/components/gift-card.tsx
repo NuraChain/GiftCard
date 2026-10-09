@@ -6,12 +6,8 @@
 // that can drift out of step with what they are looking at, and the journey is one place
 // instead of two ends of a scroll.
 //
-// THE CONFIRM STEP SURVIVED THAT MOVE, and it matters MORE now than it did. The email address
-// is the ONLY way the code reaches the buyer afterwards, and an address has far more ways to
-// be wrong than a phone number does - a transposed letter in the domain is undeliverable and
-// looks perfectly fine. Reading it back costs one tap and catches the typo before the money
-// moves, which is why there is no confirmation link: that would cost the buyer a wait and the
-// operator a round trip to catch the same mistake.
+// THE CONFIRM STEP catches a mistyped mobile number before payment. Reading the number back
+// costs one tap and catches the typo before the money moves.
 //
 // THE PRICE IS NOW A MOVING TARGET, and this file is where that is made safe for the buyer.
 // Card prices are derived from the tether rate the console set, so the figure on screen has a shelf
@@ -85,7 +81,7 @@ function logFailure(error: unknown): void {
 
 export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
     const catalog = useCatalog();
-    const [step, setStep] = useState<'email' | 'confirm'>('email');
+    const [step, setStep] = useState<'phone' | 'confirm'>('phone');
     const [paying, setPaying] = useState(false);
     const [failure, setFailure] = useState('');
 
@@ -94,7 +90,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
     const [quoted, setQuoted] = useState<number | null>(null);
     const [repriced, setRepriced] = useState(false);
 
-    const form = useForm(purchaseFormInput, { email: '' });
+    const form = useForm(purchaseFormInput, { phone: '' });
 
     // `?? null` throughout: an older server mid-deploy answers without a `toman` at all, and
     // `undefined` must read as "no price" rather than slipping past a `=== null` check and
@@ -104,7 +100,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
     const soldOut = tier.available === 0;
     const unpriced = listed === null;
     const buyable = !soldOut && !unpriced;
-    const inputId = `email-${tier.amount}`;
+    const inputId = `phone-${tier.amount}`;
 
     const pay = async (): Promise<void> => {
         if (price === null) {
@@ -117,7 +113,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
             const opened = await client.pay.start({
                 input: {
                     amount: tier.amount,
-                    email: form.values.email,
+                    phone: form.values.phone,
                     // What this card was showing. The server charges its own figure and uses
                     // this only to check the two still agree.
                     quotedToman: price
@@ -189,7 +185,7 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                     )}
                 </p>
 
-                {step === 'email' ? (
+                {step === 'phone' ? (
                     <form
                         className="mt-3"
                         noValidate
@@ -203,30 +199,26 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                         })}
                     >
                         <Field
-                            label="ایمیل"
+                            label="شماره موبایل"
                             htmlFor={inputId}
-                            error={
-                                form.errorFor('email') === ''
-                                    ? ''
-                                    : 'ایمیل معتبر نیست. مثل name@example.com بنویسید.'
-                            }
+                            error={form.errorFor('phone') === '' ? '' : 'شماره موبایل معتبر نیست.'}
                             hint={
-                                form.errorFor('email') === ''
-                                    ? 'کد به همین ایمیل فرستاده می‌شود.'
+                                form.errorFor('phone') === ''
+                                    ? 'کد خرید به همین شماره پیامک می‌شود.'
                                     : undefined
                             }
                         >
                             <TextInput
                                 id={inputId}
-                                type="email"
+                                type="tel"
                                 latin
-                                inputMode="email"
-                                autoComplete="email"
-                                placeholder="name@example.com"
+                                inputMode="tel"
+                                autoComplete="tel"
+                                placeholder="09123456789"
                                 disabled={!buyable}
-                                invalid={form.errorFor('email') !== ''}
-                                value={form.values.email}
-                                onChange={(value) => form.set('email', value)}
+                                invalid={form.errorFor('phone') !== ''}
+                                value={form.values.phone}
+                                onChange={(value) => form.set('phone', value)}
                             />
                         </Field>
 
@@ -243,21 +235,16 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                 ) : (
                     <div className="mt-3">
                         <div className="rounded-xl border border-line bg-paper p-4">
-                            <p className="text-caption text-muted">ایمیل</p>
-                            {/* `break-all`: an address can be longer than the card is wide,
-                                and a clipped address is one the buyer cannot check. */}
-                            <p
-                                dir="ltr"
-                                className="latin mt-1 text-start text-lg font-semibold break-all"
-                            >
-                                {form.values.email}
+                            <p className="text-caption text-muted">شماره موبایل</p>
+                            <p dir="ltr" className="latin mt-1 text-start text-lg font-semibold">
+                                {form.values.phone}
                             </p>
                             <button
                                 type="button"
                                 className="mt-2 min-h-tap text-caption font-bold text-firouze hover:underline"
-                                onClick={() => setStep('email')}
+                                onClick={() => setStep('phone')}
                             >
-                                ویرایش ایمیل
+                                ویرایش شماره
                             </button>
                         </div>
 

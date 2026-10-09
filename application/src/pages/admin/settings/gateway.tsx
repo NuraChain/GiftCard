@@ -12,10 +12,10 @@
 // so the picker is safe to change in the middle of a busy afternoon.
 //
 // THIS PANEL USED TO CARRY THE MAIL SERVER TOO. They are apart now because they fail apart:
-// a broken mail key stops delivery and a wrong merchant id sends takings to a stranger,
+// a broken SMS key stops delivery and a wrong merchant id sends takings to a stranger,
 // and an operator fixing one should never be editing a form that can save the other. Each
 // panel sends ONLY its own fields, and the server treats an absent field as unchanged, so
-// saving here cannot disturb the mail settings even by accident.
+// saving here cannot disturb SMS settings even by accident.
 //
 // THE PUBLIC ORIGIN IS HERE because it is a gateway fact, not a deployment one: it is the
 // address the gateway sends the buyer back to, and getting it wrong strands every payment on

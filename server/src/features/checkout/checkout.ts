@@ -20,18 +20,18 @@
 //      that could have been about a payment the buyer went on to complete.
 //   4. A DELIVERY failure is a NOTICE, never a failed purchase. The code is already minted,
 //      stored, and on the buyer's screen. This held when delivery was an SMS and it holds now
-//      that it is an email: the message is a convenience, the screen is the delivery.
+//      that it is an SMS: the message is a convenience, the screen is the delivery.
 import type { Logger } from '../../platform/logging.ts';
 
 import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
-import type { MailSender } from './mailer.ts';
+import type { SmsSender } from './panelsms.ts';
 import type { SaleNotifier } from '../telegram/notify.ts';
 
 export interface CheckoutOptions {
     store: Store;
     payment: PaymentGateway;
-    mailer: MailSender;
+    sms: SmsSender;
 
     /**
      * Told about every settled sale. Optional, and FIRE AND FORGET by its own signature - a
@@ -51,7 +51,7 @@ export interface Checkout {
 }
 
 export function createCheckout(options: CheckoutOptions): Checkout {
-    const { store, payment, mailer, notifier, log } = options;
+    const { store, payment, sms, notifier, log } = options;
 
     // Settling is serialised per order. Without this, two callbacks arriving together (a
     // double-click on the gateway's return, a prefetching browser) would both see an
@@ -75,13 +75,13 @@ export function createCheckout(options: CheckoutOptions): Checkout {
 
         const code = store.settlePaid(order.id, verified.refId);
 
-        // Announced HERE - after the money and the code are decided, before the email is
-        // attempted. The operator hears about the sale even when the mail server is hanging,
+        // Announced HERE - after the money and the code are decided, before the SMS is
+        // attempted. The operator hears about the sale even when the SMS provider is hanging,
         // and the owed case below is the one they most need to hear about at all.
         notifier?.sold({
             amount: order.amount,
             toman: order.toman,
-            email: order.email,
+            phone: order.phone,
             refId: verified.refId,
             receipt: order.id,
             remaining: store.availableFor(order.amount),
@@ -99,12 +99,12 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
 
-        const sent = await mailer.sendCode(order.email, code, order.amount);
-        store.markMailDelivered(order.id, sent.ok);
+        const sent = await sms.sendCode(order.phone, code, order.amount);
+        store.markSmsDelivered(order.id, sent.ok);
         if (!sent.ok) {
             log?.error(
                 { refId: verified.refId, reason: sent.reason },
-                'gift code email not delivered'
+                'gift code SMS not delivered'
             );
         }
     }

@@ -25,7 +25,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
     // one is a checkout in flight, and paying out against either would be handing away
     // inventory to whoever guessed at it.
     const findSold = db.prepare(`
-        SELECT c.amount AS amount, o.email AS email
+        SELECT c.amount AS amount, o.phone AS phone
         FROM codes c JOIN orders o ON o.code = c.code
         WHERE c.code = ? AND o.status = 'paid'
         LIMIT 1`);
@@ -33,7 +33,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
     // OR IGNORE, not a plain INSERT: hitting the primary key is the table refusing a second
     // spend, which is an answer rather than a crash. `changes` is how that answer is read.
     const insertRedemption = db.prepare(`
-        INSERT OR IGNORE INTO redemptions (code, amount, wallet, network, email, notified, claimed_at)
+        INSERT OR IGNORE INTO redemptions (code, amount, wallet, network, phone, notified, claimed_at)
         VALUES (?, ?, ?, ?, ?, 0, ?)`);
     const selectRedemption = db.prepare('SELECT claimed_at FROM redemptions WHERE code = ?');
     const setNotified = db.prepare('UPDATE redemptions SET notified = 1 WHERE code = ?');
@@ -47,7 +47,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
             // as the refusal it actually is.
             db.exec('BEGIN IMMEDIATE');
             try {
-                const sold = shaped<{ amount: number; email: string } | undefined>(
+                const sold = shaped<{ amount: number; phone: string } | undefined>(
                     findSold.get(code)
                 );
                 if (sold === undefined) {
@@ -61,7 +61,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
                     sold.amount,
                     wallet,
                     network,
-                    sold.email,
+                    sold.phone,
                     claimedAt
                 ).changes;
 
@@ -85,7 +85,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
                         amount: sold.amount as Amount,
                         wallet,
                         network,
-                        email: sold.email,
+                        phone: sold.phone,
                         notified: false,
                         claimedAt
                     }

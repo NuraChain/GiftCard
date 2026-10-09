@@ -36,9 +36,9 @@ export const SETTING_KEYS = [
     'merchantId',
     'zibalBase',
     'zibalMerchant',
-    'resendApiKey',
-    'mailFrom',
-    'resendBase',
+    'smsApiUrl',
+    'smsApiKey',
+    'smsSender',
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
@@ -51,11 +51,11 @@ export const SETTING_KEYS = [
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
-/** The ones masked on the way out and in the audit. The rest are hosts and template names. */
+/** Credential fields are masked on the way out and in the audit. */
 const SECRETS = new Set<SettingKey>([
     'merchantId',
     'zibalMerchant',
-    'resendApiKey',
+    'smsApiKey',
     'telegramBotToken',
     'adminKeyHash'
 ]);
@@ -92,17 +92,10 @@ export interface RuntimeSettings {
     /** Zibal's merchant. The literal `zibal` is their published test account. */
     zibalMerchant: string;
 
-    /** The Resend API key. Empty means delivery is off. See features/checkout/mailer.ts. */
-    resendApiKey: string;
-
-    /**
-     * The From address. Resend refuses anything not on a domain verified against the account;
-     * `onboarding@resend.dev` works but only reaches the account owner's own inbox.
-     */
-    mailFrom: string;
-
-    /** Resend's API host. A setting so a blocked network can be routed around without a deploy. */
-    resendBase: string;
+    /** Configurable PanelSMS send endpoint and write-only API credential. */
+    smsApiUrl: string;
+    smsApiKey: string;
+    smsSender: string;
 
     /**
      * The operations bot: a ping on every sale, and the database on a timer. Empty means
@@ -175,9 +168,9 @@ const DEFAULTS = {
     merchantId: '',
     zibalBase: 'https://gateway.zibal.ir',
     zibalMerchant: '',
-    resendApiKey: '',
-    mailFrom: '',
-    resendBase: 'https://api.resend.com',
+    smsApiUrl: '',
+    smsApiKey: '',
+    smsSender: '',
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
@@ -239,14 +232,14 @@ export interface SettingsView {
     zibalBase: string;
     zibalMerchantMasked: string;
     zibalMerchantSet: boolean;
-    resendApiKeyMasked: string;
-    resendApiKeySet: boolean;
-    mailFrom: string;
-    resendBase: string;
+    smsApiUrl: string;
+    smsApiKeyMasked: string;
+    smsApiKeySet: boolean;
+    smsSender: string;
     tetherToman: number;
     tetherSetAt: string;
     marginPercent: number;
-    mailReady: boolean;
+    smsReady: boolean;
     callbackUrl: string;
     keyRotated: boolean;
 }
@@ -384,9 +377,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
                 zibalBase: pick('zibalBase', DEFAULTS.zibalBase),
                 zibalMerchant: pick('zibalMerchant', DEFAULTS.zibalMerchant),
-                resendApiKey: pick('resendApiKey', DEFAULTS.resendApiKey),
-                mailFrom: pick('mailFrom', DEFAULTS.mailFrom),
-                resendBase: pick('resendBase', DEFAULTS.resendBase),
+                smsApiUrl: pick('smsApiUrl', DEFAULTS.smsApiUrl),
+                smsApiKey: pick('smsApiKey', DEFAULTS.smsApiKey),
+                smsSender: pick('smsSender', DEFAULTS.smsSender),
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
@@ -422,14 +415,14 @@ export function createSettings(options: SettingsOptions): Settings {
                 zibalBase: live.zibalBase,
                 zibalMerchantMasked: mask(live.zibalMerchant),
                 zibalMerchantSet: live.zibalMerchant !== '',
-                resendApiKeyMasked: mask(live.resendApiKey),
-                resendApiKeySet: live.resendApiKey !== '',
-                mailFrom: live.mailFrom,
-                resendBase: live.resendBase,
+                smsApiUrl: live.smsApiUrl,
+                smsApiKeyMasked: mask(live.smsApiKey),
+                smsApiKeySet: live.smsApiKey !== '',
+                smsSender: live.smsSender,
                 tetherToman: live.tetherToman,
                 tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,
-                mailReady: live.resendApiKey !== '' && live.mailFrom !== '',
+                smsReady: live.smsApiUrl !== '' && live.smsApiKey !== '' && live.smsSender !== '',
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
             };

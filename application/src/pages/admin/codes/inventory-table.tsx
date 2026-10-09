@@ -169,7 +169,7 @@ export default function InventoryTable({ tiers, revision }: InventoryTableProps)
                         id="code-search"
                         tone="surface"
                         className="ps-11 pe-4 text-small"
-                        placeholder="بخشی از کد، یا ایمیل خریدار"
+                        placeholder="بخشی از کد یا شماره موبایل خریدار"
                         value={search}
                         onChange={setSearch}
                     />
@@ -293,11 +293,11 @@ export default function InventoryTable({ tiers, revision }: InventoryTableProps)
                                             data-label="خریدار"
                                             className="cell-inline p-3 whitespace-nowrap max-md:order-3"
                                         >
-                                            {row.email === null ? (
+                                            {row.phone === null ? (
                                                 <span className="text-muted">-</span>
                                             ) : (
                                                 <span dir="ltr" className="latin">
-                                                    {row.email}
+                                                    {row.phone}
                                                 </span>
                                             )}
                                         </td>
