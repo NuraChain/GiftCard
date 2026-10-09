@@ -1236,6 +1236,20 @@ describe('runtime settings', () => {
         expect(settings.current().zarinpalBase).toBe('https://sandbox.zarinpal.com');
     });
 
+    it('saves and returns Telegram proxy URLs in their configured order', async () => {
+        const cookie = await signedIn();
+        const proxies = ['https://proxy-one.example', 'https://proxy-two.example'];
+
+        const saved = await post('/api/admin/settings', { telegramProxies: proxies }, { cookie });
+        expect(saved.status).toBe(200);
+        expect(settings.current().telegramProxies).toEqual(proxies);
+
+        const status = (await (await get('/api/admin/telegram', { cookie })).json()) as {
+            proxyUrls: string[];
+        };
+        expect(status.proxyUrls).toEqual(proxies);
+    });
+
     it('records what changed, masked', async () => {
         const cookie = await signedIn();
         await post(

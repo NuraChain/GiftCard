@@ -162,7 +162,8 @@ const telegram = createTelegram({
         return {
             botToken: now.telegramBotToken,
             chatId: now.telegramChatId,
-            baseUrl: now.telegramBase
+            baseUrl: now.telegramBase,
+            proxies: now.telegramProxies
         };
     }
 });

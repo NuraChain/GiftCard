@@ -20,6 +20,7 @@ export const telegramStatus = z.object({
 
     chatId: z.string(),
     baseUrl: z.string(),
+    proxyUrls: z.array(z.string()),
 
     /**
      * How often the database is sent, in minutes. Echoed back rather than written here: it is

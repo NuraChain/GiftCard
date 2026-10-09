@@ -28,6 +28,9 @@ export interface TelegramSettings {
 
     /** The API host. A setting because a shop behind a filtered network may need a relay. */
     baseUrl: string;
+
+    /** Telegram API-compatible relay hosts, attempted in order before the primary API host. */
+    proxies?: string[];
 }
 
 export type TelegramResult = { ok: true } | { ok: false; reason: string };
@@ -90,6 +93,12 @@ function ready(live: TelegramSettings): boolean {
     return live.botToken !== '' && live.chatId !== '';
 }
 
+function apiBases(live: TelegramSettings): string[] {
+    return [
+        ...new Set([...(live.proxies ?? []), live.baseUrl].map((url) => url.replace(/\/+$/, '')))
+    ];
+}
+
 export function createTelegram(options: TelegramOptions): Telegram {
     const call = options.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
     const timeoutMs = options.timeoutMs ?? 10_000;
@@ -110,24 +119,25 @@ export function createTelegram(options: TelegramOptions): Telegram {
         if (!ready(live)) {
             return { ok: false, reason: 'telegram is not configured' };
         }
-        try {
-            const response = await call(`${live.baseUrl}/bot${live.botToken}/${path}`, {
-                method: 'POST',
-                headers,
-                body,
-                signal: AbortSignal.timeout(budget)
-            });
-            const answer = (await response.json()) as { ok?: boolean; description?: string };
-            if (answer.ok === true) {
-                return { ok: true };
+        let reason = 'telegram unreachable';
+        for (const baseUrl of apiBases(live)) {
+            try {
+                const response = await call(`${baseUrl}/bot${live.botToken}/${path}`, {
+                    method: 'POST',
+                    headers,
+                    body,
+                    signal: AbortSignal.timeout(budget)
+                });
+                const answer = (await response.json()) as { ok?: boolean; description?: string };
+                if (answer.ok === true) {
+                    return { ok: true };
+                }
+                reason = answer.description ?? `telegram returned ${response.status}`;
+            } catch {
+                reason = 'telegram unreachable';
             }
-            return {
-                ok: false,
-                reason: answer.description ?? `telegram returned ${response.status}`
-            };
-        } catch {
-            return { ok: false, reason: 'telegram unreachable' };
         }
+        return { ok: false, reason };
     }
 
     return {
@@ -168,31 +178,33 @@ export function createTelegram(options: TelegramOptions): Telegram {
             if (!ready(live)) {
                 return [];
             }
-            try {
-                const response = await call(`${live.baseUrl}/bot${live.botToken}/getUpdates`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        offset,
-                        timeout: seconds,
-                        // Only messages. Without this the bot is also handed edits, reactions
-                        // and join events, every one of which would have to be skipped here.
-                        allowed_updates: ['message']
-                    }),
-                    // The HTTP request is held open for the whole poll, so the budget has to
-                    // outlast it. A timeout equal to the poll would abort every quiet cycle.
-                    signal: AbortSignal.timeout(seconds * 1000 + timeoutMs)
-                });
-                const answer = (await response.json()) as { ok?: boolean; result?: unknown };
-                if (answer.ok !== true || !Array.isArray(answer.result)) {
-                    return [];
+            for (const baseUrl of apiBases(live)) {
+                try {
+                    const response = await call(`${baseUrl}/bot${live.botToken}/getUpdates`, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            offset,
+                            timeout: seconds,
+                            // Only messages. Without this the bot is also handed edits, reactions
+                            // and join events, every one of which would have to be skipped here.
+                            allowed_updates: ['message']
+                        }),
+                        // The HTTP request is held open for the whole poll, so the budget has to
+                        // outlast it. A timeout equal to the poll would abort every quiet cycle.
+                        signal: AbortSignal.timeout(seconds * 1000 + timeoutMs)
+                    });
+                    const answer = (await response.json()) as { ok?: boolean; result?: unknown };
+                    if (answer.ok === true && Array.isArray(answer.result)) {
+                        return (answer.result as RawUpdate[]).flatMap(readUpdate);
+                    }
+                } catch {
+                    // Try the next configured relay before giving up this poll.
                 }
-                return (answer.result as RawUpdate[]).flatMap(readUpdate);
-            } catch {
-                // A timeout, a dropped connection, a body that is not JSON: all the same thing
-                // to the loop upstairs - nothing arrived this cycle.
-                return [];
             }
+            // A timeout, a dropped connection, a body that is not JSON: all the same thing
+            // to the loop upstairs - nothing arrived this cycle.
+            return [];
         }
     };
 }

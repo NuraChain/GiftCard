@@ -31,6 +31,17 @@ export const MAX_BACKUP_MINUTES = 7 * 24 * 60;
 /** The gap until somebody chooses one. Hourly is what this shop ran on before it was settable. */
 export const DEFAULT_BACKUP_MINUTES = 60;
 
+/** Telegram API-compatible proxy endpoints tried in the order entered. */
+export const telegramProxyList = z
+    .array(
+        z
+            .string()
+            .trim()
+            .url()
+            .refine((url) => /^https?:\/\//i.test(url), 'Proxy URLs must use HTTP or HTTPS')
+    )
+    .max(20);
+
 /**
  * The gateways this shop can be paid through. ONE takes new payments at a time; the console
  * picks which.
@@ -128,6 +139,7 @@ export const settingsInput = z.object({
     telegramBotToken: z.string().trim().max(200).optional(),
     telegramChatId: z.string().trim().max(64).optional(),
     telegramBase: z.string().trim().max(200).optional(),
+    telegramProxies: telegramProxyList.optional(),
 
     /**
      * How many minutes between automatic database backups. Bounded at the boundary for the

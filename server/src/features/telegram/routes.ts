@@ -44,6 +44,7 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
                 botTokenSet: live.telegramBotToken !== '',
                 chatId: live.telegramChatId,
                 baseUrl: live.telegramBase,
+                proxyUrls: live.telegramProxies,
                 backupEveryMinutes: live.backupEveryMinutes
             };
         },

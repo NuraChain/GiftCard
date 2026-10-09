@@ -24,6 +24,7 @@ import {
     DEFAULT_BACKUP_MINUTES,
     MAX_BACKUP_MINUTES,
     MIN_BACKUP_MINUTES,
+    telegramProxyList,
     type GatewayName
 } from './contract.ts';
 
@@ -42,6 +43,7 @@ export const SETTING_KEYS = [
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
+    'telegramProxies',
     'backupEveryMinutes',
     'tetherToman',
     'tetherSetAt',
@@ -104,6 +106,7 @@ export interface RuntimeSettings {
     telegramBotToken: string;
     telegramChatId: string;
     telegramBase: string;
+    telegramProxies: string[];
 
     /**
      * How many minutes between automatic database backups.
@@ -174,6 +177,7 @@ const DEFAULTS = {
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
+    telegramProxies: [],
     backupEveryMinutes: DEFAULT_BACKUP_MINUTES,
     tetherToman: 0,
     tetherSetAt: '',
@@ -383,6 +387,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
+                telegramProxies: telegramProxyList.parse(
+                    JSON.parse(pick('telegramProxies', JSON.stringify(DEFAULTS.telegramProxies)))
+                ),
                 backupEveryMinutes: backupMinutesFrom(
                     pick('backupEveryMinutes', String(DEFAULTS.backupEveryMinutes))
                 ),
@@ -439,7 +446,10 @@ export function createSettings(options: SettingsOptions): Settings {
                 if (value !== undefined) {
                     // The margin and the rate are numbers and everything else is a string; the
                     // settings table holds text either way, and `current()` converts back.
-                    write(name as SettingKey, String(value));
+                    write(
+                        name as SettingKey,
+                        name === 'telegramProxies' ? JSON.stringify(value) : String(value)
+                    );
                 }
             }
 

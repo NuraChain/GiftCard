@@ -44,6 +44,7 @@ export default function TelegramSettings(): ReactNode {
     const [formToken, setFormToken] = useState('');
     const [formChatId, setFormChatId] = useState('');
     const [formBase, setFormBase] = useState('');
+    const [formProxies, setFormProxies] = useState('');
     const [formMinutes, setFormMinutes] = useState('');
 
     const load = useCallback(async (): Promise<void> => {
@@ -54,6 +55,7 @@ export default function TelegramSettings(): ReactNode {
             setStatus(view);
             setFormChatId(view.chatId);
             setFormBase(view.baseUrl);
+            setFormProxies(view.proxyUrls.join('\n'));
             setFormMinutes(String(view.backupEveryMinutes));
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات ربات خوانده نشد'));
@@ -93,6 +95,10 @@ export default function TelegramSettings(): ReactNode {
                 input: {
                     telegramChatId: formChatId,
                     telegramBase: formBase,
+                    telegramProxies: formProxies
+                        .split(/\r?\n/)
+                        .map((proxy) => proxy.trim())
+                        .filter((proxy) => proxy !== ''),
                     backupEveryMinutes: minutes,
                     // Absent, not empty: a blank token box must not switch the bot off.
                     telegramBotToken: formToken === '' ? undefined : formToken
@@ -217,6 +223,31 @@ export default function TelegramSettings(): ReactNode {
                                     onChange={setFormBase}
                                 />
                             </Field>
+                        </div>
+
+                        <div className="mt-4">
+                            <label
+                                className="block text-small font-bold"
+                                htmlFor="telegram-proxies"
+                            >
+                                پراکسی‌های تلگرام
+                            </label>
+                            <p className="mt-1 text-caption text-muted">
+                                آدرس هر پراکسی سازگار با API تلگرام را در یک خط بنویسید. به‌ترتیب
+                                امتحان می‌شوند و در صورت شکست، آدرس API بالا آخرین گزینه است. حداکثر
+                                ۲۰ آدرس؛ فقط از پراکسی‌های مورداعتماد استفاده کنید، چون توکن ربات به
+                                آن‌ها فرستاده می‌شود.
+                            </p>
+                            <textarea
+                                id="telegram-proxies"
+                                dir="ltr"
+                                rows={4}
+                                spellCheck={false}
+                                className="latin mt-2 w-full rounded-xl border border-line bg-paper p-4 text-start text-small outline-none focus:border-firouze"
+                                placeholder="https://telegram-proxy.example"
+                                value={formProxies}
+                                onChange={(event) => setFormProxies(event.target.value)}
+                            ></textarea>
                         </div>
 
                         <div className="mt-4">

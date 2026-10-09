@@ -120,6 +120,93 @@ describe('the telegram client', () => {
         });
     });
 
+    it('tries proxy URLs in order and stops after the first successful response', async () => {
+        const calls: string[] = [];
+        const telegram = createTelegram({
+            settings: () => ({
+                ...SETTINGS,
+                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
+            }),
+            fetch: (url) => {
+                calls.push(url);
+                if (url.startsWith('https://proxy-one.test/')) {
+                    return Promise.reject(new Error('ECONNREFUSED'));
+                }
+                return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+            }
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        expect(calls).toEqual([
+            'https://proxy-one.test/bot1234:TOKEN/sendMessage',
+            'https://proxy-two.test/bot1234:TOKEN/sendMessage'
+        ]);
+    });
+
+    it('tries the primary API after every proxy fails', async () => {
+        const calls: string[] = [];
+        const telegram = createTelegram({
+            settings: () => ({
+                ...SETTINGS,
+                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
+            }),
+            fetch: (url) => {
+                calls.push(url);
+                return Promise.reject(new Error('ECONNREFUSED'));
+            }
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({
+            ok: false,
+            reason: 'telegram unreachable'
+        });
+        expect(calls).toEqual([
+            'https://proxy-one.test/bot1234:TOKEN/sendMessage',
+            'https://proxy-two.test/bot1234:TOKEN/sendMessage',
+            'https://telegram.test/bot1234:TOKEN/sendMessage'
+        ]);
+    });
+
+    it('uses the next proxy when polling fails', async () => {
+        const calls: string[] = [];
+        const telegram = createTelegram({
+            settings: () => ({
+                ...SETTINGS,
+                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
+            }),
+            fetch: (url) => {
+                calls.push(url);
+                if (url.startsWith('https://proxy-one.test/')) {
+                    return Promise.reject(new Error('ECONNREFUSED'));
+                }
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({
+                            ok: true,
+                            result: [
+                                {
+                                    update_id: 1,
+                                    message: { text: '/status', chat: { id: -100999 } }
+                                }
+                            ]
+                        })
+                    )
+                );
+            }
+        });
+
+        expect(await telegram.receive(0, 1)).toEqual([
+            {
+                updateId: 1,
+                chatId: '-100999',
+                chatUsername: '',
+                text: '/status'
+            }
+        ]);
+        expect(calls).toHaveLength(2);
+        expect(calls[1]).toContain('https://proxy-two.test/');
+    });
+
     it('uploads a document as multipart without setting the boundary by hand', async () => {
         const spy = recorder();
         const telegram = createTelegram({ settings: () => SETTINGS, fetch: spy.fetch });
@@ -131,6 +218,29 @@ describe('the telegram client', () => {
         // Setting content-type by hand omits the multipart boundary and the upload is
         // rejected as malformed. Leaving it out is what lets fetch fill it in.
         expect(spy.calls[0].init?.headers).toEqual({});
+    });
+
+    it('retries a multipart upload through the next proxy', async () => {
+        const calls: Array<{ url: string; init?: RequestInit }> = [];
+        const telegram = createTelegram({
+            settings: () => ({ ...SETTINGS, proxies: ['https://proxy.test'] }),
+            fetch: (url, init) => {
+                calls.push({ url, init });
+                if (calls.length === 1) {
+                    return Promise.reject(new Error('ECONNREFUSED'));
+                }
+                return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+            }
+        });
+
+        expect(
+            await telegram.sendDocument('backup.db', new Uint8Array([1, 2, 3]), 'caption')
+        ).toEqual({
+            ok: true
+        });
+        expect(calls).toHaveLength(2);
+        expect(calls[1].url).toBe('https://telegram.test/bot1234:TOKEN/sendDocument');
+        expect(calls[1].init?.body).toBeInstanceOf(FormData);
     });
 });
 
