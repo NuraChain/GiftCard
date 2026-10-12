@@ -12,7 +12,14 @@ import { inflateRawSync } from 'node:zlib';
 
 import { createStore } from '../src/db/index.ts';
 import { createBackupJob, createSaleNotifier, type Sale } from '../src/features/telegram/notify.ts';
-import { createTelegram, type Telegram } from '../src/features/telegram/telegram.ts';
+import {
+    createTelegram,
+    TelegramRefusal,
+    type Mtproto,
+    type MtprotoMessage,
+    type Telegram
+} from '../src/features/telegram/telegram.ts';
+import { parseProxyLink } from '../src/contract/shared.ts';
 import { DEFAULT_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from '../src/features/settings/contract.ts';
 
 const SETTINGS = {
@@ -46,6 +53,89 @@ function recorder(answer: unknown = { ok: true }, status = 200) {
     return { calls, fetch: fake };
 }
 
+const PROXY_ONE = {
+    server: 'one.proxy.test',
+    port: 443,
+    secret: '00112233445566778899aabbccddeeff'
+};
+const PROXY_TWO = {
+    server: 'two.proxy.test',
+    port: 8443,
+    secret: '00112233445566778899aabbccddeeff'
+};
+
+/** The same bot, with the three things that send it through the proxies instead. */
+const PROXIED = {
+    ...SETTINGS,
+    apiId: '123456',
+    apiHash: 'feedfacefeedfacefeedfacefeedcafe',
+    proxies: [PROXY_ONE, PROXY_TWO]
+};
+
+/**
+ * An MTProto side that never opens a socket. A server named in `dead` refuses to connect and
+ * stops answering if it already had; `refusal` is Telegram itself saying no.
+ */
+function fakeMtproto() {
+    const state = {
+        dead: new Set<string>(),
+        refusal: '',
+        /** Telegram refusing the SIGN-IN, through a proxy that is working perfectly well. */
+        signInRefusal: null as TelegramRefusal | null,
+        dialled: [] as string[],
+        opened: [] as string[],
+        closed: [] as string[],
+        probed: [] as string[],
+        sent: [] as Array<{ via: string; chatId: string; text: string }>,
+        documents: [] as Array<{ via: string; filename: string; caption: string }>,
+        /** Delivers a message to the bot through whichever session opened last. */
+        say: (_message: MtprotoMessage): void => {}
+    };
+    const mtproto: Mtproto = {
+        open: (_login, proxy, onMessage) => {
+            state.dialled.push(proxy.server);
+            if (state.dead.has(proxy.server)) {
+                return Promise.reject(new Error('proxy refused'));
+            }
+            if (state.signInRefusal !== null) {
+                return Promise.reject(state.signInRefusal);
+            }
+            state.opened.push(proxy.server);
+            state.say = onMessage;
+            const alive = (): Promise<void> =>
+                state.dead.has(proxy.server)
+                    ? Promise.reject(new Error('connection lost'))
+                    : Promise.resolve();
+            return Promise.resolve({
+                sendMessage: async (chatId, text) => {
+                    await alive();
+                    if (state.refusal !== '') {
+                        return { ok: false, reason: state.refusal };
+                    }
+                    state.sent.push({ via: proxy.server, chatId, text });
+                    return { ok: true };
+                },
+                sendDocument: async (_chatId, filename, _bytes, caption) => {
+                    await alive();
+                    state.documents.push({ via: proxy.server, filename, caption });
+                    return { ok: true };
+                },
+                ping: alive,
+                close: () => {
+                    state.closed.push(proxy.server);
+                }
+            });
+        },
+        probe: (_api, proxy) => {
+            state.probed.push(proxy.server);
+            return state.dead.has(proxy.server)
+                ? Promise.reject(new Error('proxy refused'))
+                : Promise.resolve();
+        }
+    };
+    return { state, mtproto };
+}
+
 /** A telegram that records messages and is always configured. */
 function spyBot(): Telegram & { sent: string[] } {
     const sent: string[] = [];
@@ -57,7 +147,8 @@ function spyBot(): Telegram & { sent: string[] } {
             sent.push(text);
             return Promise.resolve({ ok: true });
         },
-        sendDocument: () => Promise.resolve({ ok: true })
+        sendDocument: () => Promise.resolve({ ok: true }),
+        testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 })
     };
 }
 
@@ -120,93 +211,6 @@ describe('the telegram client', () => {
         });
     });
 
-    it('tries proxy URLs in order and stops after the first successful response', async () => {
-        const calls: string[] = [];
-        const telegram = createTelegram({
-            settings: () => ({
-                ...SETTINGS,
-                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
-            }),
-            fetch: (url) => {
-                calls.push(url);
-                if (url.startsWith('https://proxy-one.test/')) {
-                    return Promise.reject(new Error('ECONNREFUSED'));
-                }
-                return Promise.resolve(new Response(JSON.stringify({ ok: true })));
-            }
-        });
-
-        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
-        expect(calls).toEqual([
-            'https://proxy-one.test/bot1234:TOKEN/sendMessage',
-            'https://proxy-two.test/bot1234:TOKEN/sendMessage'
-        ]);
-    });
-
-    it('tries the primary API after every proxy fails', async () => {
-        const calls: string[] = [];
-        const telegram = createTelegram({
-            settings: () => ({
-                ...SETTINGS,
-                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
-            }),
-            fetch: (url) => {
-                calls.push(url);
-                return Promise.reject(new Error('ECONNREFUSED'));
-            }
-        });
-
-        expect(await telegram.sendMessage('hello')).toEqual({
-            ok: false,
-            reason: 'telegram unreachable'
-        });
-        expect(calls).toEqual([
-            'https://proxy-one.test/bot1234:TOKEN/sendMessage',
-            'https://proxy-two.test/bot1234:TOKEN/sendMessage',
-            'https://telegram.test/bot1234:TOKEN/sendMessage'
-        ]);
-    });
-
-    it('uses the next proxy when polling fails', async () => {
-        const calls: string[] = [];
-        const telegram = createTelegram({
-            settings: () => ({
-                ...SETTINGS,
-                proxies: ['https://proxy-one.test', 'https://proxy-two.test']
-            }),
-            fetch: (url) => {
-                calls.push(url);
-                if (url.startsWith('https://proxy-one.test/')) {
-                    return Promise.reject(new Error('ECONNREFUSED'));
-                }
-                return Promise.resolve(
-                    new Response(
-                        JSON.stringify({
-                            ok: true,
-                            result: [
-                                {
-                                    update_id: 1,
-                                    message: { text: '/status', chat: { id: -100999 } }
-                                }
-                            ]
-                        })
-                    )
-                );
-            }
-        });
-
-        expect(await telegram.receive(0, 1)).toEqual([
-            {
-                updateId: 1,
-                chatId: '-100999',
-                chatUsername: '',
-                text: '/status'
-            }
-        ]);
-        expect(calls).toHaveLength(2);
-        expect(calls[1]).toContain('https://proxy-two.test/');
-    });
-
     it('uploads a document as multipart without setting the boundary by hand', async () => {
         const spy = recorder();
         const telegram = createTelegram({ settings: () => SETTINGS, fetch: spy.fetch });
@@ -219,28 +223,338 @@ describe('the telegram client', () => {
         // rejected as malformed. Leaving it out is what lets fetch fill it in.
         expect(spy.calls[0].init?.headers).toEqual({});
     });
+});
 
-    it('retries a multipart upload through the next proxy', async () => {
-        const calls: Array<{ url: string; init?: RequestInit }> = [];
+describe('the telegram client, through MTProto proxies', () => {
+    it('signs in through the first proxy that works and leaves the API host alone', async () => {
+        const spy = recorder();
+        const fake = fakeMtproto();
+        fake.state.dead.add(PROXY_ONE.server);
         const telegram = createTelegram({
-            settings: () => ({ ...SETTINGS, proxies: ['https://proxy.test'] }),
-            fetch: (url, init) => {
-                calls.push({ url, init });
-                if (calls.length === 1) {
-                    return Promise.reject(new Error('ECONNREFUSED'));
-                }
-                return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+            settings: () => PROXIED,
+            fetch: spy.fetch,
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        expect(fake.state.opened).toEqual([PROXY_TWO.server]);
+        expect(fake.state.sent).toEqual([
+            { via: PROXY_TWO.server, chatId: '-100999', text: 'hello' }
+        ]);
+        expect(spy.calls).toHaveLength(0);
+    });
+
+    it('signs in once, however many messages want the session at the same moment', async () => {
+        // Telegram counts sign-ins and starts refusing a bot that makes too many, so three
+        // sales in the same second must not be three of them.
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+
+        await Promise.all([
+            telegram.sendMessage('one'),
+            telegram.sendMessage('two'),
+            telegram.sendDocument('backup.zip', new Uint8Array([1, 2, 3]), 'caption')
+        ]);
+        await telegram.sendMessage('three');
+
+        expect(fake.state.opened).toEqual([PROXY_ONE.server]);
+        expect(fake.state.sent).toHaveLength(3);
+        expect(fake.state.documents).toEqual([
+            { via: PROXY_ONE.server, filename: 'backup.zip', caption: 'caption' }
+        ]);
+    });
+
+    it('moves to the next proxy when the one in use dies', async () => {
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+        await telegram.sendMessage('before');
+
+        fake.state.dead.add(PROXY_ONE.server);
+
+        expect(await telegram.sendMessage('after')).toEqual({ ok: true });
+        expect(fake.state.closed).toEqual([PROXY_ONE.server]);
+        expect(fake.state.sent.map((message) => message.via)).toEqual([
+            PROXY_ONE.server,
+            PROXY_TWO.server
+        ]);
+    });
+
+    it('falls back to the API host when no proxy will carry the message', async () => {
+        const spy = recorder();
+        const fake = fakeMtproto();
+        fake.state.dead.add(PROXY_ONE.server).add(PROXY_TWO.server);
+        const telegram = createTelegram({
+            settings: () => PROXIED,
+            fetch: spy.fetch,
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        expect(spy.calls.map((call) => call.url)).toEqual([
+            'https://telegram.test/bot1234:TOKEN/sendMessage'
+        ]);
+
+        // And the dead list is left alone for a while rather than dialled again per message.
+        await telegram.sendMessage('again');
+        expect(fake.state.opened).toEqual([]);
+        expect(spy.calls).toHaveLength(2);
+    });
+
+    it('says why the proxies failed when the API host fails too', async () => {
+        const fake = fakeMtproto();
+        fake.state.dead.add(PROXY_ONE.server).add(PROXY_TWO.server);
+        const telegram = createTelegram({
+            settings: () => PROXIED,
+            fetch: () => Promise.reject(new Error('ECONNREFUSED')),
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({
+            ok: false,
+            reason: 'telegram unreachable (proxies: proxy refused)'
+        });
+    });
+
+    it('gives the API host a turn when Telegram refuses through the proxy', async () => {
+        // The two wires do not resolve a chat the same way, so a "no" from one is not yet a
+        // "no" from Telegram. The session is kept: the proxy did nothing wrong.
+        const spy = recorder();
+        const fake = fakeMtproto();
+        fake.state.refusal = 'CHAT_WRITE_FORBIDDEN';
+        const telegram = createTelegram({
+            settings: () => PROXIED,
+            fetch: spy.fetch,
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        expect(spy.calls).toHaveLength(1);
+        expect(fake.state.closed).toEqual([]);
+    });
+
+    it('reports what the proxied side said when both wires refuse', async () => {
+        const fake = fakeMtproto();
+        fake.state.refusal = 'CHAT_WRITE_FORBIDDEN';
+        const telegram = createTelegram({
+            settings: () => PROXIED,
+            fetch: () => Promise.reject(new Error('ECONNREFUSED')),
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({
+            ok: false,
+            reason: 'CHAT_WRITE_FORBIDDEN'
+        });
+    });
+
+    it('stops at the first proxy when it is Telegram that refuses the sign-in', async () => {
+        // A mistyped token gets the same answer through every proxy, and each one asked is
+        // another sign-in on the count Telegram refuses a bot for. One, then leave it alone.
+        const spy = recorder();
+        const fake = fakeMtproto();
+        fake.state.signInRefusal = new TelegramRefusal('ACCESS_TOKEN_INVALID');
+        let live = PROXIED;
+        const telegram = createTelegram({
+            settings: () => live,
+            fetch: spy.fetch,
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        await telegram.sendMessage('again');
+        await telegram.receive(0, 0);
+
+        expect(fake.state.dialled).toEqual([PROXY_ONE.server]);
+        expect(spy.calls).toHaveLength(3);
+
+        // Fixing the token in the console ends the wait at once: the wait belonged to the
+        // settings that were refused.
+        fake.state.signInRefusal = null;
+        live = { ...PROXIED, botToken: '1234:RIGHT' };
+        await telegram.sendMessage('fixed');
+
+        expect(fake.state.opened).toEqual([PROXY_ONE.server]);
+        expect(fake.state.sent.map((message) => message.text)).toEqual(['fixed']);
+    });
+
+    it('ignores the list until the api id and hash are both set', async () => {
+        const spy = recorder();
+        const fake = fakeMtproto();
+        const telegram = createTelegram({
+            settings: () => ({ ...PROXIED, apiHash: '' }),
+            fetch: spy.fetch,
+            mtproto: fake.mtproto
+        });
+
+        expect(await telegram.sendMessage('hello')).toEqual({ ok: true });
+        expect(fake.state.opened).toEqual([]);
+        expect(spy.calls).toHaveLength(1);
+    });
+
+    it('opens a new session when the console changes the list', async () => {
+        const fake = fakeMtproto();
+        let live = PROXIED;
+        const telegram = createTelegram({ settings: () => live, mtproto: fake.mtproto });
+        await telegram.sendMessage('before');
+
+        live = { ...PROXIED, proxies: [PROXY_TWO] };
+        await telegram.sendMessage('after');
+
+        expect(fake.state.closed).toEqual([PROXY_ONE.server]);
+        expect(fake.state.opened).toEqual([PROXY_ONE.server, PROXY_TWO.server]);
+    });
+
+    it('hands over what arrives through the proxy without moving the offset', async () => {
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+
+        const waiting = telegram.receive(7, 30);
+        await vi.waitFor(() => expect(fake.state.opened).toHaveLength(1));
+        fake.state.say({ chatId: '-100999', chatUsername: '', text: '/status' });
+
+        // One BELOW the offset it was asked with: that number is the Bot API's cursor, and a
+        // message that was never in the Bot API's queue has no business advancing it.
+        expect(await waiting).toEqual([
+            { updateId: 6, chatId: '-100999', chatUsername: '', text: '/status' }
+        ]);
+    });
+
+    it('polls the API host for commands when no proxy works', async () => {
+        const fake = fakeMtproto();
+        fake.state.dead.add(PROXY_ONE.server).add(PROXY_TWO.server);
+        const offsets: number[] = [];
+        const telegram = createTelegram({
+            settings: () => PROXIED,
+            mtproto: fake.mtproto,
+            fetch: (_url, init) => {
+                offsets.push((JSON.parse(String(init?.body)) as { offset: number }).offset);
+                const result = [
+                    { update_id: 41, message: { text: '/status', chat: { id: -100999 } } }
+                ];
+                return Promise.resolve(new Response(JSON.stringify({ ok: true, result })));
             }
         });
 
-        expect(
-            await telegram.sendDocument('backup.db', new Uint8Array([1, 2, 3]), 'caption')
-        ).toEqual({
-            ok: true
+        expect(await telegram.receive(41, 0)).toEqual([
+            { updateId: 41, chatId: '-100999', chatUsername: '', text: '/status' }
+        ]);
+        // Nothing came by proxy, so there is no backlog to throw away - and the command that
+        // was waiting in the Bot API's queue is the one the operator wants run.
+        expect(offsets).toEqual([41]);
+    });
+
+    it('drops a session whose proxy has stopped answering, so the next poll redials', async () => {
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+        await telegram.sendMessage('before');
+
+        fake.state.dead.add(PROXY_ONE.server);
+
+        expect(await telegram.receive(0, 30)).toEqual([]);
+        expect(fake.state.closed).toEqual([PROXY_ONE.server]);
+    });
+
+    it('throws the Bot API backlog away once the proxies are removed', async () => {
+        // The Bot API keeps its own copy of everything the proxied session already answered.
+        // Read as usual, the first poll after the list is emptied would run a whole day of
+        // commands a second time - and one of them is /setprice.
+        const fake = fakeMtproto();
+        const offsets: number[] = [];
+        let live: typeof SETTINGS = PROXIED;
+        const telegram = createTelegram({
+            settings: () => live,
+            mtproto: fake.mtproto,
+            fetch: (_url, init) => {
+                const { offset } = JSON.parse(String(init?.body)) as { offset: number };
+                offsets.push(offset);
+                const result =
+                    offset === -1
+                        ? [
+                              {
+                                  update_id: 500,
+                                  message: { text: '/setprice 1', chat: { id: -100999 } }
+                              }
+                          ]
+                        : [];
+                return Promise.resolve(new Response(JSON.stringify({ ok: true, result })));
+            }
         });
-        expect(calls).toHaveLength(2);
-        expect(calls[1].url).toBe('https://telegram.test/bot1234:TOKEN/sendDocument');
-        expect(calls[1].init?.body).toBeInstanceOf(FormData);
+
+        const waiting = telegram.receive(0, 30);
+        await vi.waitFor(() => expect(fake.state.opened).toHaveLength(1));
+        fake.state.say({ chatId: '-100999', chatUsername: '', text: '/setprice 245000' });
+        await waiting;
+
+        live = SETTINGS;
+
+        expect(await telegram.receive(0, 0)).toEqual([]);
+        expect(offsets).toEqual([-1, 501]);
+    });
+
+    it('tries one proxy without signing the bot in', async () => {
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+
+        const result = await telegram.testProxy(PROXY_TWO);
+
+        expect(result.ok).toBe(true);
+        expect(fake.state.probed).toEqual([PROXY_TWO.server]);
+        expect(fake.state.opened).toEqual([]);
+    });
+
+    it('says why a proxy failed its test', async () => {
+        const fake = fakeMtproto();
+        fake.state.dead.add(PROXY_ONE.server);
+        const telegram = createTelegram({ settings: () => PROXIED, mtproto: fake.mtproto });
+
+        expect(await telegram.testProxy(PROXY_ONE)).toMatchObject({
+            ok: false,
+            reason: 'proxy refused'
+        });
+    });
+
+    it('will not test a proxy before the api id and hash are set', async () => {
+        const fake = fakeMtproto();
+        const telegram = createTelegram({ settings: () => SETTINGS, mtproto: fake.mtproto });
+
+        expect(await telegram.testProxy(PROXY_ONE)).toEqual({
+            ok: false,
+            reason: 'api id and api hash are not set',
+            ms: 0
+        });
+        expect(fake.state.probed).toEqual([]);
+    });
+});
+
+describe('a proxy link', () => {
+    it('reads the link Telegram shares, in both of its spellings', () => {
+        const secret = 'ee00112233445566778899aabbccddeeff676f6f676c652e636f6d';
+
+        expect(parseProxyLink(`tg://proxy?server=1.2.3.4&port=443&secret=${secret}`)).toEqual({
+            server: '1.2.3.4',
+            port: 443,
+            secret
+        });
+        expect(
+            parseProxyLink(
+                '  https://t.me/proxy?server=mt.example.com&port=8443&secret=3dpBFlW2hP6Hq_WOwiNeKBY '
+            )
+        ).toEqual({ server: 'mt.example.com', port: 8443, secret: '3dpBFlW2hP6Hq_WOwiNeKBY' });
+    });
+
+    it('reads nothing out of anything else', () => {
+        const secret = '00112233445566778899aabbccddeeff';
+
+        // Another kind of proxy, a link to somewhere else, and a secret that lost two characters.
+        expect(parseProxyLink(`tg://socks?server=1.2.3.4&port=1080`)).toBeNull();
+        expect(
+            parseProxyLink(`https://example.com/proxy?server=a&port=1&secret=${secret}`)
+        ).toBeNull();
+        expect(
+            parseProxyLink(`tg://proxy?server=1.2.3.4&port=443&secret=${secret.slice(2)}`)
+        ).toBeNull();
+        expect(parseProxyLink(`tg://proxy?server=1.2.3.4&port=99999&secret=${secret}`)).toBeNull();
+        expect(parseProxyLink('1.2.3.4:443')).toBeNull();
     });
 });
 
@@ -292,7 +606,8 @@ describe('the scheduled backup', () => {
                 uploadedName = name;
                 uploaded = bytes;
                 return Promise.resolve({ ok: true });
-            }
+            },
+            testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 })
         };
 
         const result = await createBackupJob({
@@ -344,7 +659,8 @@ describe('the scheduled backup', () => {
             configured: () => false,
             receive: () => Promise.resolve([]),
             sendMessage: () => Promise.resolve({ ok: true }),
-            sendDocument: () => Promise.resolve({ ok: true })
+            sendDocument: () => Promise.resolve({ ok: true }),
+            testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 })
         };
 
         expect(
@@ -384,7 +700,8 @@ function askCounter(): Telegram & { asked: number } {
         },
         receive: () => Promise.resolve([]),
         sendMessage: () => Promise.resolve({ ok: true }),
-        sendDocument: () => Promise.resolve({ ok: true })
+        sendDocument: () => Promise.resolve({ ok: true }),
+        testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 })
     };
     return bot;
 }

@@ -365,6 +365,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
             // Guarded, and throttled hard enough that a stolen session cannot use them to
             // walk the business out one upload at a time.
             'admin.testTelegram': [requireAdmin, guard(throttle(5, 60_000))],
+
+            // Opens a connection to whatever host and port it is handed. Twenty a minute is a
+            // full list tested once, and not a port scanner.
+            'admin.testTelegramProxy': [requireAdmin, guard(throttle(20, 60_000))],
             'admin.backupNow': [requireAdmin, guard(throttle(3, 60_000))],
 
             // Rotation takes the CURRENT key, so it is one more place a credential can be

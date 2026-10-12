@@ -9,6 +9,7 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
+import { telegramProxy, telegramProxyList } from '../../contract/shared.ts';
 
 export const telegramStatus = z.object({
     /** True when a bot token and a chat are both set. Nothing is attempted otherwise. */
@@ -20,7 +21,14 @@ export const telegramStatus = z.object({
 
     chatId: z.string(),
     baseUrl: z.string(),
-    proxyUrls: z.array(z.string()),
+
+    /** The my.telegram.org pair the proxies need. The hash is write-only, like the token. */
+    apiId: z.string(),
+    apiHashMasked: z.string(),
+    apiHashSet: z.boolean(),
+
+    /** MTProto proxies, in the order they are tried. */
+    proxies: telegramProxyList,
 
     /**
      * How often the database is sent, in minutes. Echoed back rather than written here: it is
@@ -33,11 +41,29 @@ export const telegramStatus = z.object({
 /** What a test message or a manual backup did. `reason` is empty when it worked. */
 export const telegramAction = z.object({ ok: z.boolean(), reason: z.string() });
 
+/**
+ * What testing one proxy found. `ms` is how long Telegram took to answer THROUGH it, which is
+ * the number that says which of two working proxies belongs at the top of the list.
+ */
+export const telegramProxyTest = z.object({
+    ok: z.boolean(),
+    reason: z.string(),
+    ms: z.number().int()
+});
+
 export type TelegramStatusView = z.infer<typeof telegramStatus>;
+export type TelegramProxyTest = z.infer<typeof telegramProxyTest>;
 
 /** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
 export const telegramRoutes = {
     telegram: get('/admin/telegram', { output: telegramStatus }),
     testTelegram: post('/admin/telegram/test', { output: telegramAction }),
+
+    // Takes the proxy itself rather than its place in the list, so one can be tried before
+    // it is saved.
+    testTelegramProxy: post('/admin/telegram/proxy-test', {
+        input: telegramProxy,
+        output: telegramProxyTest
+    }),
     backupNow: post('/admin/telegram/backup', { output: telegramAction })
 };

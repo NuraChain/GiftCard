@@ -1,4 +1,4 @@
-// Telegram's handlers: what is configured, and the two ways to prove it works.
+// Telegram's handlers: what is configured, and the ways to prove it works.
 //
 // The test message and the manual backup are the only ways an operator can find out whether a
 // bot token is right without waiting for a sale or waiting out the backup interval - and
@@ -18,7 +18,7 @@ export interface TelegramOptions {
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type TelegramHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'telegram' | 'testTelegram' | 'backupNow'
+    'telegram' | 'testTelegram' | 'testTelegramProxy' | 'backupNow'
 >;
 
 /** @internal `••••5678`: enough to tell two bots apart, not enough to drive one. */
@@ -44,7 +44,10 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
                 botTokenSet: live.telegramBotToken !== '',
                 chatId: live.telegramChatId,
                 baseUrl: live.telegramBase,
-                proxyUrls: live.telegramProxies,
+                apiId: live.telegramApiId,
+                apiHashMasked: mask(live.telegramApiHash),
+                apiHashSet: live.telegramApiHash !== '',
+                proxies: live.telegramProxies,
                 backupEveryMinutes: live.backupEveryMinutes
             };
         },
@@ -57,6 +60,9 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
             );
             return { ok: result.ok, reason: result.ok ? '' : result.reason };
         },
+
+        // POST /api/admin/telegram/proxy-test
+        testTelegramProxy: ({ input }) => telegram.testProxy(input),
 
         // POST /api/admin/telegram/backup
         backupNow: async () => {

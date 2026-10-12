@@ -10,6 +10,7 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
+import { telegramProxyList } from '../../contract/shared.ts';
 import { phoneField } from '../../domain/phone.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
@@ -30,17 +31,6 @@ export const MAX_BACKUP_MINUTES = 7 * 24 * 60;
 
 /** The gap until somebody chooses one. Hourly is what this shop ran on before it was settable. */
 export const DEFAULT_BACKUP_MINUTES = 60;
-
-/** Telegram API-compatible proxy endpoints tried in the order entered. */
-export const telegramProxyList = z
-    .array(
-        z
-            .string()
-            .trim()
-            .url()
-            .refine((url) => /^https?:\/\//i.test(url), 'Proxy URLs must use HTTP or HTTPS')
-    )
-    .max(20);
 
 /**
  * The gateways this shop can be paid through. ONE takes new payments at a time; the console
@@ -139,6 +129,17 @@ export const settingsInput = z.object({
     telegramBotToken: z.string().trim().max(200).optional(),
     telegramChatId: z.string().trim().max(64).optional(),
     telegramBase: z.string().trim().max(200).optional(),
+
+    /**
+     * What the bot signs in to MTProto with, from my.telegram.org. Only the proxies need
+     * them. The hash is write-only, like the token: a blank one means "keep it".
+     */
+    telegramApiId: z
+        .string()
+        .trim()
+        .regex(/^\d{0,12}$/)
+        .optional(),
+    telegramApiHash: z.string().trim().max(64).optional(),
     telegramProxies: telegramProxyList.optional(),
 
     /**

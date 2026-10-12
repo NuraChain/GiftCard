@@ -18,13 +18,13 @@
 // more, so a stolen console session can overwrite a credential but never read one out.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
+import { telegramProxyList, type TelegramProxy } from '../../contract/shared.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
 import {
     DEFAULT_BACKUP_MINUTES,
     MAX_BACKUP_MINUTES,
     MIN_BACKUP_MINUTES,
-    telegramProxyList,
     type GatewayName
 } from './contract.ts';
 
@@ -43,6 +43,8 @@ export const SETTING_KEYS = [
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
+    'telegramApiId',
+    'telegramApiHash',
     'telegramProxies',
     'backupEveryMinutes',
     'tetherToman',
@@ -59,6 +61,7 @@ const SECRETS = new Set<SettingKey>([
     'zibalMerchant',
     'smsApiKey',
     'telegramBotToken',
+    'telegramApiHash',
     'adminKeyHash'
 ]);
 
@@ -106,7 +109,14 @@ export interface RuntimeSettings {
     telegramBotToken: string;
     telegramChatId: string;
     telegramBase: string;
-    telegramProxies: string[];
+
+    /**
+     * MTProto proxies, tried in order, and the my.telegram.org pair the bot needs to speak
+     * MTProto at all. Without the pair the list is ignored and the bot uses `telegramBase`.
+     */
+    telegramApiId: string;
+    telegramApiHash: string;
+    telegramProxies: TelegramProxy[];
 
     /**
      * How many minutes between automatic database backups.
@@ -177,6 +187,8 @@ const DEFAULTS = {
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
+    telegramApiId: '',
+    telegramApiHash: '',
     telegramProxies: [],
     backupEveryMinutes: DEFAULT_BACKUP_MINUTES,
     tetherToman: 0,
@@ -313,6 +325,23 @@ function backupMinutesFrom(raw: string): number {
 }
 
 /**
+ * @internal A proxy list that cannot take the shop down.
+ *
+ * This row is read on every request, so a value that will not parse must cost the proxies and
+ * nothing else. AND ONE SUCH VALUE IS ALREADY OUT THERE: before proxies were MTProto-only this
+ * key held a list of HTTP relay URLs, and a shop that saved one still has it. It reads as an
+ * empty list, which the console shows as exactly that.
+ */
+function proxiesFrom(raw: string): TelegramProxy[] {
+    try {
+        const parsed = telegramProxyList.safeParse(JSON.parse(raw));
+        return parsed.success ? parsed.data : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
  * @internal A rate that cannot poison a price.
  *
  * The stored value is text an operator typed, so it can be empty, `'abc'`, negative, or one
@@ -387,9 +416,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
-                telegramProxies: telegramProxyList.parse(
-                    JSON.parse(pick('telegramProxies', JSON.stringify(DEFAULTS.telegramProxies)))
-                ),
+                telegramApiId: pick('telegramApiId', DEFAULTS.telegramApiId),
+                telegramApiHash: pick('telegramApiHash', DEFAULTS.telegramApiHash),
+                telegramProxies: proxiesFrom(pick('telegramProxies', '[]')),
                 backupEveryMinutes: backupMinutesFrom(
                     pick('backupEveryMinutes', String(DEFAULTS.backupEveryMinutes))
                 ),

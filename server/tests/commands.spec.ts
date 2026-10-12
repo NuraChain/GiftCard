@@ -41,6 +41,7 @@ function harness(options: { backup?: BackupJob; updates?: TelegramUpdate[] } = {
             return Promise.resolve({ ok: true });
         },
         sendDocument: () => Promise.resolve({ ok: true }),
+        testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 }),
         receive: () => {
             const batch = pending;
             pending = [];

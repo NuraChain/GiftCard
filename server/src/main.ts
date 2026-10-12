@@ -24,6 +24,7 @@ import { createGatewaySwitch } from './features/checkout/gateway.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createZibal } from './features/checkout/zibal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
+import { mtproto } from './features/telegram/mtproto.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
 import {
     createBackupJob,
@@ -58,6 +59,8 @@ const log = pino({
             'phone',
             'botToken',
             'telegramBotToken',
+            'apiHash',
+            'telegramApiHash',
             '*.merchantId',
             '*.merchant',
             '*.zibalMerchant',
@@ -71,7 +74,9 @@ const log = pino({
             '*.code',
             '*.phone',
             '*.botToken',
-            '*.telegramBotToken'
+            '*.telegramBotToken',
+            '*.apiHash',
+            '*.telegramApiHash'
         ],
         censor: '[redacted]'
     },
@@ -163,9 +168,12 @@ const telegram = createTelegram({
             botToken: now.telegramBotToken,
             chatId: now.telegramChatId,
             baseUrl: now.telegramBase,
+            apiId: now.telegramApiId,
+            apiHash: now.telegramApiHash,
             proxies: now.telegramProxies
         };
-    }
+    },
+    mtproto
 });
 const notifier = createSaleNotifier({
     telegram,

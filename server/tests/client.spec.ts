@@ -41,6 +41,7 @@ function stubs(store: Store) {
             configured: () => false,
             sendMessage: () => Promise.resolve({ ok: true as const }),
             sendDocument: () => Promise.resolve({ ok: true as const }),
+            testProxy: () => Promise.resolve({ ok: true, reason: '', ms: 0 }),
             receive: () => Promise.resolve([])
         },
         notifier: { sold: (): void => {} },
