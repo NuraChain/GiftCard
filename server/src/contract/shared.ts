@@ -3,43 +3,20 @@
 import { z } from 'zod';
 
 /**
- * @internal The bytes of a proxy secret, or null when it is not one.
+ * One proxy the bot reaches Telegram through: an ordinary HTTP proxy, asked to open a tunnel
+ * (CONNECT) to the API host.
  *
- * A secret is hex or base64, and what it decodes to decides which proxy it is: 16 bytes is a
- * plain one, `dd` plus 16 is the padded kind, and `ee` plus 16 plus a domain is fake-TLS - the
- * kind almost every shared link is. Anything else is a paste that lost a character, and it is
- * refused here rather than saved and left to fail at three in the morning.
- */
-function secretBytes(secret: string): number[] | null {
-    let bytes: number[];
-    if (/^[0-9a-f]+$/i.test(secret)) {
-        if (secret.length % 2 !== 0) {
-            return null;
-        }
-        bytes = (secret.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16));
-    } else {
-        try {
-            const plain = atob(secret.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, ''));
-            bytes = [...plain].map((char) => char.charCodeAt(0));
-        } catch {
-            return null;
-        }
-    }
-    const [kind] = bytes;
-    const known =
-        bytes.length === 16 ||
-        (bytes.length === 17 && kind === 0xdd) ||
-        (bytes.length >= 18 && kind === 0xee);
-    return known ? bytes : null;
-}
-
-/**
- * One MTProto proxy: the three things a `tg://proxy` link carries.
+ * `protocol` IS HOW THE PROXY ITSELF IS SPOKEN TO, not what goes through it. What goes through
+ * is always the same TLS connection to Telegram, which the proxy carries and cannot read - so
+ * it never sees the bot token, whichever of the two this is. `https` adds TLS between this
+ * machine and the proxy as well, which hides the proxy's own password, and the fact that the
+ * tunnel is to Telegram, from the network in between.
  *
- * MTPROTO AND NOTHING ELSE. An HTTP relay has to be handed the bot token to do its job; this
- * kind is handed traffic it cannot read. That is why the list takes no other type.
+ * THE PASSWORD IS WRITE-ONLY, like every other credential the console holds. A blank one means
+ * "the one already stored for this address" - see `keepPasswords`.
  */
 export const telegramProxy = z.object({
+    protocol: z.enum(['http', 'https']),
     server: z
         .string()
         .trim()
@@ -47,11 +24,13 @@ export const telegramProxy = z.object({
         .max(253)
         .regex(/^[a-z0-9.:-]+$/i, 'Proxy server must be a host name or an IP address'),
     port: z.number().int().min(1).max(65_535),
-    secret: z
+    username: z
         .string()
         .trim()
-        .max(600)
-        .refine((secret) => secretBytes(secret) !== null, 'Proxy secret is not valid')
+        .max(200)
+        // It is what separates the name from the password on the wire.
+        .regex(/^[^:]*$/, 'Proxy username cannot contain a colon'),
+    password: z.string().max(200)
 });
 
 /** Tried in the order entered. */
@@ -60,31 +39,67 @@ export const telegramProxyList = z.array(telegramProxy).max(20);
 export type TelegramProxy = z.infer<typeof telegramProxy>;
 
 /**
- * A proxy read out of the link Telegram itself shares - `tg://proxy?server=…&port=…&secret=…`
- * or its `https://t.me/proxy?…` twin - or null when the text is not one.
+ * Where a proxy is, written the way one is handed around - and what tells two of them apart.
+ * Everything but the password.
  */
-export function parseProxyLink(text: string): TelegramProxy | null {
-    let link: URL;
+export function proxyAddress(proxy: Omit<TelegramProxy, 'password'>): string {
+    const login = proxy.username === '' ? '' : `${proxy.username}@`;
+    // An IPv6 address is full of colons, and a URL needs to know which one starts the port.
+    const host = proxy.server.includes(':') ? `[${proxy.server}]` : proxy.server;
+    return `${proxy.protocol}://${login}${host}:${proxy.port}`;
+}
+
+/**
+ * The list as it is STORED: every blank password filled in from the proxy already stored at
+ * the same address.
+ *
+ * BY ADDRESS, NOT BY POSITION. A password kept for "the second row" would follow that row to
+ * whatever server it was edited to point at - and the console could then be used to send a
+ * stored password to a machine of somebody's choosing. Change the address and the password
+ * has to be typed again.
+ */
+export function keepPasswords(next: TelegramProxy[], stored: TelegramProxy[]): TelegramProxy[] {
+    return next.map((proxy) => {
+        if (proxy.username === '') {
+            // Nobody to sign in as, so nothing to sign in with.
+            return { ...proxy, password: '' };
+        }
+        if (proxy.password !== '') {
+            return proxy;
+        }
+        const kept = stored.find((old) => proxyAddress(old) === proxyAddress(proxy));
+        return { ...proxy, password: kept?.password ?? '' };
+    });
+}
+
+/**
+ * A proxy read out of the address it is usually handed around as -
+ * `https://user:pass@host:8443`, or a bare `host:port`, which is taken for plain http - or
+ * null when the text is not one. Any other kind of proxy is not one: the bot can only use
+ * these two.
+ */
+export function parseProxyUrl(text: string): TelegramProxy | null {
+    const trimmed = text.trim();
     try {
-        link = new URL(text.trim());
+        const url = new URL(
+            /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+        );
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return null;
+        }
+        const parsed = telegramProxy.safeParse({
+            protocol: url.protocol.slice(0, -1),
+            server: url.hostname.replace(/^\[|\]$/g, ''),
+            // A URL drops the port when it is the one its scheme implies.
+            port: Number(url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : url.port),
+            // Both are percent-encoded in a URL, and neither is on the wire to the proxy.
+            username: decodeURIComponent(url.username),
+            password: decodeURIComponent(url.password)
+        });
+        return parsed.success ? parsed.data : null;
     } catch {
         return null;
     }
-    const shared =
-        (link.protocol === 'tg:' && link.hostname === 'proxy') ||
-        (/^https?:$/.test(link.protocol) &&
-            /^(t|telegram)\.me$/.test(link.hostname) &&
-            link.pathname === '/proxy');
-    if (!shared) {
-        return null;
-    }
-    const parsed = telegramProxy.safeParse({
-        server: link.searchParams.get('server') ?? '',
-        port: Number(link.searchParams.get('port')),
-        // A query string turns `+` into a space, and base64 is allowed to contain one.
-        secret: (link.searchParams.get('secret') ?? '').replace(/ /g, '+')
-    });
-    return parsed.success ? parsed.data : null;
 }
 
 /**

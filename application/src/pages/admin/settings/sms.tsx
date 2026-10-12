@@ -20,6 +20,8 @@ export default function SmsSettings(): ReactNode {
     const [testing, setTesting] = useState(false);
     const [apiUrl, setApiUrl] = useState('');
     const [sender, setSender] = useState('');
+    const [username, setUsername] = useState('');
+    const [domain, setDomain] = useState('');
     const [apiKey, setApiKey] = useState('');
     const [testPhone, setTestPhone] = useState('');
 
@@ -31,6 +33,8 @@ export default function SmsSettings(): ReactNode {
             setSettings(view);
             setApiUrl(view.smsApiUrl);
             setSender(view.smsSender);
+            setUsername(view.smsUsername);
+            setDomain(view.smsDomain);
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات پیامک خوانده نشد'));
         } finally {
@@ -69,6 +73,8 @@ export default function SmsSettings(): ReactNode {
                     input: {
                         smsApiUrl: apiUrl,
                         smsSender: sender,
+                        smsUsername: username,
+                        smsDomain: domain,
                         smsApiKey: apiKey === '' ? undefined : apiKey
                     }
                 })
@@ -106,8 +112,9 @@ export default function SmsSettings(): ReactNode {
                 پنل پیامک
             </h2>
             <p className="mt-2 text-small text-muted">
-                پس از تأیید پرداخت، کد خرید به شماره موبایل خریدار پیامک می‌شود. درخواست با روش REST،
-                هدر Bearer و بدنهٔ JSON شامل from، to و message ارسال می‌شود.
+                پس از تأیید پرداخت، کد خرید به شماره موبایل خریدار پیامک می‌شود. پیامک با «ارسال از
+                طریق لینک» پنل فرستاده می‌شود: همان آدرس sendsmslink.aspx با FROM، TO، TEXT،
+                USERNAME، PASSWORD و DOMAIN.
             </p>
 
             <div className="mt-4">
@@ -126,21 +133,21 @@ export default function SmsSettings(): ReactNode {
                     >
                         <div className="grid gap-4 sm:grid-cols-2">
                             <Field
-                                label="آدرس کامل API ارسال"
+                                label="آدرس لینک ارسال"
                                 htmlFor="sms-api-url"
-                                hint="آدرس کامل endpoint ارسال پیامک را از پنل سرویس وارد کنید."
+                                hint="آدرس sendsmslink.aspx پنل. لینک نمونهٔ پنل را هم می‌توانید کامل بچسبانید؛ مقدارها از همین فرم جایگزین می‌شوند."
                             >
                                 <TextInput
                                     id="sms-api-url"
                                     latin
                                     inputMode="url"
                                     autoComplete="url"
-                                    placeholder="https://api.example.com/sms/send"
+                                    placeholder="https://0098vip.com/sendsmslink.aspx"
                                     value={apiUrl}
                                     onChange={setApiUrl}
                                 />
                             </Field>
-                            <Field label="شماره فرستنده" htmlFor="sms-sender">
+                            <Field label="شماره فرستنده (FROM)" htmlFor="sms-sender">
                                 <TextInput
                                     id="sms-sender"
                                     latin
@@ -150,26 +157,49 @@ export default function SmsSettings(): ReactNode {
                                     onChange={setSender}
                                 />
                             </Field>
+                            <Field label="نام کاربری پنل (USERNAME)" htmlFor="sms-username">
+                                <TextInput
+                                    id="sms-username"
+                                    latin
+                                    autoComplete="off"
+                                    value={username}
+                                    onChange={setUsername}
+                                />
+                            </Field>
+                            <Field
+                                label="رمز عبور پنل (PASSWORD)"
+                                htmlFor="sms-api-key"
+                                hint="پس از ذخیره نمایش داده نمی‌شود. برای نگه داشتن رمز فعلی، کادر را خالی بگذارید."
+                            >
+                                <TextInput
+                                    id="sms-api-key"
+                                    type="password"
+                                    latin
+                                    autoComplete="off"
+                                    placeholder={
+                                        settings?.smsApiKeySet
+                                            ? `${settings.smsApiKeyMasked} (برای تغییر وارد کنید)`
+                                            : 'رمز عبور'
+                                    }
+                                    value={apiKey}
+                                    onChange={setApiKey}
+                                />
+                            </Field>
+                            <Field
+                                label="دامنه (DOMAIN)"
+                                htmlFor="sms-domain"
+                                hint="همان مقداری که پنل شما برای DOMAIN در لینک نمونه می‌دهد."
+                            >
+                                <TextInput
+                                    id="sms-domain"
+                                    latin
+                                    autoComplete="off"
+                                    placeholder="0098"
+                                    value={domain}
+                                    onChange={setDomain}
+                                />
+                            </Field>
                         </div>
-                        <Field
-                            label="کلید API پنل پیامک"
-                            htmlFor="sms-api-key"
-                            hint="پس از ذخیره نمایش داده نمی‌شود. برای نگه داشتن کلید فعلی، کادر را خالی بگذارید."
-                        >
-                            <TextInput
-                                id="sms-api-key"
-                                type="password"
-                                latin
-                                autoComplete="off"
-                                placeholder={
-                                    settings?.smsApiKeySet
-                                        ? `${settings.smsApiKeyMasked} (برای تغییر وارد کنید)`
-                                        : 'کلید API'
-                                }
-                                value={apiKey}
-                                onChange={setApiKey}
-                            />
-                        </Field>
                         <div className="mt-4 flex flex-wrap items-center gap-3">
                             <Button type="submit" glyph={Save} disabled={saving}>
                                 {saving ? 'در حال ذخیره…' : 'ذخیره تنظیمات پیامک'}

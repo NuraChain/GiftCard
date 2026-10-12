@@ -41,6 +41,15 @@ import { createStore, type Store } from '../src/db/index.ts';
 /** The shipped default. A fresh database answers to this and nothing else. */
 const ADMIN_KEY = DEFAULT_ADMIN_KEY;
 
+/** An HTTP proxy for the bot, of the kind that asks for a login. */
+const PROXY: TelegramProxy = {
+    protocol: 'https',
+    server: 'one.proxy.example',
+    port: 8443,
+    username: 'shop',
+    password: 'hunter2-proxy'
+};
+
 /** The tether rate every price in this suite derives from. Round, so the sums stay readable. */
 const RATE_TOMAN = 100_000;
 
@@ -1231,6 +1240,40 @@ describe('runtime settings', () => {
         expect(settings.current().merchantId).toBe('');
     });
 
+    it('is ready to send SMS only once the panel has a username as well', async () => {
+        const cookie = await signedIn();
+        const before = (await (
+            await post(
+                '/api/admin/settings',
+                { smsApiKey: 'panel-password-1234', smsSender: '30001234' },
+                { cookie }
+            )
+        ).json()) as { smsReady: boolean };
+        // The address and the domain have defaults; a password with nobody to belong to is
+        // still not something the panel will accept.
+        expect(before.smsReady).toBe(false);
+
+        const saved = await (
+            await post('/api/admin/settings', { smsUsername: 'shop-user' }, { cookie })
+        ).text();
+        const view = JSON.parse(saved) as {
+            smsReady: boolean;
+            smsUsername: string;
+            smsDomain: string;
+            smsApiUrl: string;
+        };
+
+        expect(view).toMatchObject({
+            smsReady: true,
+            smsUsername: 'shop-user',
+            smsDomain: '0098',
+            smsApiUrl: 'https://0098vip.com/sendsmslink.aspx'
+        });
+        // The password is as write-only as every other credential.
+        expect(saved).toContain('••••1234');
+        expect(saved).not.toContain('panel-password');
+    });
+
     it('takes effect on the next payment without a restart', async () => {
         const cookie = await signedIn();
         await post(
@@ -1248,8 +1291,8 @@ describe('runtime settings', () => {
     it('saves and returns Telegram proxies in their configured order', async () => {
         const cookie = await signedIn();
         const proxies = [
-            { server: 'one.proxy.example', port: 443, secret: '00112233445566778899aabbccddeeff' },
-            { server: '10.0.0.7', port: 8443, secret: 'dd00112233445566778899aabbccddeeff' }
+            { ...PROXY, server: 'one.proxy.example' },
+            { protocol: 'http', server: '10.0.0.7', port: 3128, username: '', password: '' }
         ];
 
         const saved = await post('/api/admin/settings', { telegramProxies: proxies }, { cookie });
@@ -1257,45 +1300,73 @@ describe('runtime settings', () => {
         expect(settings.current().telegramProxies).toEqual(proxies);
 
         const status = (await (await get('/api/admin/telegram', { cookie })).json()) as {
-            proxies: TelegramProxy[];
+            proxies: unknown[];
         };
-        expect(status.proxies).toEqual(proxies);
+        expect(status.proxies).toEqual([
+            {
+                protocol: 'https',
+                server: 'one.proxy.example',
+                port: 8443,
+                username: 'shop',
+                passwordSet: true
+            },
+            { protocol: 'http', server: '10.0.0.7', port: 3128, username: '', passwordSet: false }
+        ]);
     });
 
-    it('takes MTProto proxies and nothing else', async () => {
+    it('takes HTTP proxies and nothing else', async () => {
         const cookie = await signedIn();
-        const relay = await post(
-            '/api/admin/settings',
-            { telegramProxies: ['https://relay.example'] },
-            { cookie }
-        );
-        expect(relay.status).toBe(422);
-
-        // A secret one character short is a paste that went wrong, and it is refused here
-        // rather than saved to fail the first time a sale needs it.
-        const mangled = await post(
-            '/api/admin/settings',
-            {
-                telegramProxies: [
-                    {
-                        server: 'one.proxy.example',
-                        port: 443,
-                        secret: '00112233445566778899aabbccddee'
-                    }
-                ]
-            },
-            { cookie }
-        );
-        expect(mangled.status).toBe(422);
+        for (const refused of [
+            // A relay, which is a second API host and belongs in the API address box.
+            'https://relay.example',
+            // The kind this list held before: the bot cannot speak it without an api id.
+            { server: 'one.proxy.example', port: 443, secret: '00112233445566778899aabbccddeeff' },
+            { ...PROXY, protocol: 'socks5' },
+            { ...PROXY, port: 0 },
+            { ...PROXY, username: 'shop:keeper' }
+        ]) {
+            const answer = await post(
+                '/api/admin/settings',
+                { telegramProxies: [refused] },
+                { cookie }
+            );
+            expect(answer.status, JSON.stringify(refused)).toBe(422);
+        }
         expect(settings.current().telegramProxies).toEqual([]);
     });
 
-    it('reads a relay list saved before proxies were MTProto-only as no proxies at all', () => {
+    it('reads what this list held before it held HTTP proxies as no proxies at all', () => {
         // The row is read on every request. One that no longer parses must cost the proxies
         // and nothing else - not the shop.
-        store.putSetting('telegramProxies', JSON.stringify(['https://proxy-one.example']));
+        for (const legacy of [
+            ['https://proxy-one.example'],
+            [{ server: 'one.proxy.example', port: 443, secret: '00112233445566778899aabbccddeeff' }]
+        ]) {
+            store.putSetting('telegramProxies', JSON.stringify(legacy));
 
-        expect(createSettings({ store }).current().telegramProxies).toEqual([]);
+            expect(createSettings({ store }).current().telegramProxies).toEqual([]);
+        }
+    });
+
+    it('keeps a proxy password the console sends back blank, for the same address only', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { telegramProxies: [PROXY] }, { cookie });
+
+        // What the console does on every save of the list: it was never shown the password,
+        // so it has none to send.
+        await post(
+            '/api/admin/settings',
+            { telegramProxies: [{ ...PROXY, password: '' }] },
+            { cookie }
+        );
+        expect(settings.current().telegramProxies).toEqual([PROXY]);
+
+        await post(
+            '/api/admin/settings',
+            { telegramProxies: [{ ...PROXY, server: 'elsewhere.example', password: '' }] },
+            { cookie }
+        );
+        expect(settings.current().telegramProxies[0].password).toBe('');
     });
 
     it('records what changed, masked', async () => {
@@ -1577,36 +1648,40 @@ describe('the operations bot', () => {
         expect(view).not.toContain('SECRETTOKEN');
     });
 
-    it('keeps the api hash as write-only as the token', async () => {
+    it('keeps a proxy password as write-only as the token', async () => {
         const cookie = await signedIn();
-        await post(
-            '/api/admin/settings',
-            { telegramApiId: '123456', telegramApiHash: 'feedfacefeedfacefeedfacefeedcafe' },
-            { cookie }
-        );
+        await post('/api/admin/settings', { telegramProxies: [PROXY] }, { cookie });
 
         const view = await (await get('/api/admin/telegram', { cookie })).text();
+        expect(view).toContain('one.proxy.example');
+        expect(view).not.toContain('hunter2-proxy');
 
-        expect(view).toContain('123456');
-        expect(view).toContain('••••cafe');
-        expect(view).not.toContain('feedface');
+        // And the audit is not a way around it.
+        const log = await (await get('/api/admin/settings/log', { cookie })).text();
+        expect(log).toContain('one.proxy.example');
+        expect(log).toContain('••••roxy');
+        expect(log).not.toContain('hunter2-proxy');
     });
 
     it('tries a proxy that has not been saved yet', async () => {
         const cookie = await signedIn();
-        const proxy = {
-            server: 'one.proxy.example',
-            port: 443,
-            secret: '00112233445566778899aabbccddeeff'
-        };
 
         const result = (await (
-            await post('/api/admin/telegram/proxy-test', proxy, { cookie })
+            await post('/api/admin/telegram/proxy-test', PROXY, { cookie })
         ).json()) as { ok: boolean; ms: number };
 
         expect(result).toEqual({ ok: true, reason: '', ms: 42 });
-        expect(fake.proxiesTested).toEqual([proxy]);
+        expect(fake.proxiesTested).toEqual([PROXY]);
         expect(settings.current().telegramProxies).toEqual([]);
+    });
+
+    it('tests a saved proxy with the password the console was never shown', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { telegramProxies: [PROXY] }, { cookie });
+
+        await post('/api/admin/telegram/proxy-test', { ...PROXY, password: '' }, { cookie });
+
+        expect(fake.proxiesTested).toEqual([PROXY]);
     });
 
     it('sends a test message so a token can be checked before a sale depends on it', async () => {

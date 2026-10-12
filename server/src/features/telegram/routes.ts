@@ -5,6 +5,7 @@
 // finding out at 3am, from the absence of a message, is not finding out.
 import type { Handlers } from '../../platform/api.ts';
 import type { contract } from '../../contract/index.ts';
+import { keepPasswords } from '../../contract/shared.ts';
 import type { Settings } from '../settings/settings.ts';
 import type { BackupJob } from './notify.ts';
 import type { Telegram } from './telegram.ts';
@@ -44,10 +45,11 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
                 botTokenSet: live.telegramBotToken !== '',
                 chatId: live.telegramChatId,
                 baseUrl: live.telegramBase,
-                apiId: live.telegramApiId,
-                apiHashMasked: mask(live.telegramApiHash),
-                apiHashSet: live.telegramApiHash !== '',
-                proxies: live.telegramProxies,
+                // A proxy's password is as write-only as the token.
+                proxies: live.telegramProxies.map(({ password, ...proxy }) => ({
+                    ...proxy,
+                    passwordSet: password !== ''
+                })),
                 backupEveryMinutes: live.backupEveryMinutes
             };
         },
@@ -62,7 +64,10 @@ export function telegramHandlers(options: TelegramOptions): TelegramHandlers {
         },
 
         // POST /api/admin/telegram/proxy-test
-        testTelegramProxy: ({ input }) => telegram.testProxy(input),
+        testTelegramProxy: ({ input }) => {
+            const [proxy] = keepPasswords([input], settings.current().telegramProxies);
+            return telegram.testProxy(proxy);
+        },
 
         // POST /api/admin/telegram/backup
         backupNow: async () => {

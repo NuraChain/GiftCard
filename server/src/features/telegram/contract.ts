@@ -9,7 +9,12 @@
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
-import { telegramProxy, telegramProxyList } from '../../contract/shared.ts';
+import { telegramProxy } from '../../contract/shared.ts';
+
+/** A proxy as the console is shown it: where it is, and whether it has a password - not which. */
+export const telegramProxyView = telegramProxy
+    .omit({ password: true })
+    .extend({ passwordSet: z.boolean() });
 
 export const telegramStatus = z.object({
     /** True when a bot token and a chat are both set. Nothing is attempted otherwise. */
@@ -22,13 +27,8 @@ export const telegramStatus = z.object({
     chatId: z.string(),
     baseUrl: z.string(),
 
-    /** The my.telegram.org pair the proxies need. The hash is write-only, like the token. */
-    apiId: z.string(),
-    apiHashMasked: z.string(),
-    apiHashSet: z.boolean(),
-
-    /** MTProto proxies, in the order they are tried. */
-    proxies: telegramProxyList,
+    /** The proxies the bot reaches the API host through, in the order they are tried. */
+    proxies: z.array(telegramProxyView),
 
     /**
      * How often the database is sent, in minutes. Echoed back rather than written here: it is
@@ -52,6 +52,7 @@ export const telegramProxyTest = z.object({
 });
 
 export type TelegramStatusView = z.infer<typeof telegramStatus>;
+export type TelegramProxyView = z.infer<typeof telegramProxyView>;
 export type TelegramProxyTest = z.infer<typeof telegramProxyTest>;
 
 /** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
@@ -60,7 +61,8 @@ export const telegramRoutes = {
     testTelegram: post('/admin/telegram/test', { output: telegramAction }),
 
     // Takes the proxy itself rather than its place in the list, so one can be tried before
-    // it is saved.
+    // it is saved. A saved one comes without its password, which the console was never given,
+    // and is tried with the one stored for its address.
     testTelegramProxy: post('/admin/telegram/proxy-test', {
         input: telegramProxy,
         output: telegramProxyTest

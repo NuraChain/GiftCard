@@ -1,9 +1,10 @@
 // Runtime configuration's wire shapes and routes, and the admin key beside them.
 //
 // A secret is WRITE-ONLY across this boundary. The console may replace a merchant id or
-// the PanelSMS key, and may see whether one is set and its last four characters - never the
-// value. A stolen session must not be a way to read out the credentials it can overwrite.
-// That rule is enforced in ./settings.ts, not in a handler, so a new route cannot leak one.
+// the SMS panel password, and may see whether one is set and its last four characters -
+// never the value. A stolen session must not be a way to read out the credentials it can
+// overwrite. That rule is enforced in ./settings.ts, not in a handler, so a new route
+// cannot leak one.
 //
 // CLIENT-SAFE. Like every features/*/contract.ts, this may import only
 // `platform/contract.ts`, `zod` and `domain/`.
@@ -71,10 +72,16 @@ export const settingsView = z.object({
     zibalMerchantMasked: z.string(),
     zibalMerchantSet: z.boolean(),
 
-    /** PanelSMS API endpoint, sender, and write-only API credential. */
+    /**
+     * The SMS panel's send-by-link address, and the five things it is called with. The
+     * password is write-only; it is stored under `smsApiKey`, a name from before it was known
+     * that this panel has a username and a password rather than a key.
+     */
     smsApiUrl: z.string(),
+    smsUsername: z.string(),
     smsApiKeyMasked: z.string(),
     smsApiKeySet: z.boolean(),
+    smsDomain: z.string(),
     smsSender: z.string(),
 
     /** What one USDT costs in Toman, as the console last set it. Zero means never set. */
@@ -86,7 +93,7 @@ export const settingsView = z.object({
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
 
-    /** Delivery runs when the endpoint, API key, and sender are configured. */
+    /** Delivery runs when the address, username, password, domain and sender are all set. */
     smsReady: z.boolean(),
 
     /**
@@ -121,8 +128,10 @@ export const settingsInput = z.object({
     /** Zibal's merchant is write-only too: a blank one means "keep it", never "erase it". */
     zibalMerchant: z.string().trim().max(100).optional(),
     smsApiUrl: z.string().trim().max(500).optional(),
-    /** The PanelSMS key is write-only: a blank one means "keep it", never "erase it". */
+    smsUsername: z.string().trim().max(100).optional(),
+    /** The panel password is write-only: a blank one means "keep it", never "erase it". */
     smsApiKey: z.string().trim().max(500).optional(),
+    smsDomain: z.string().trim().max(100).optional(),
     smsSender: z.string().trim().max(100).optional(),
 
     /** The operations bot. The token is write-only; a blank one means "keep it". */
@@ -130,16 +139,7 @@ export const settingsInput = z.object({
     telegramChatId: z.string().trim().max(64).optional(),
     telegramBase: z.string().trim().max(200).optional(),
 
-    /**
-     * What the bot signs in to MTProto with, from my.telegram.org. Only the proxies need
-     * them. The hash is write-only, like the token: a blank one means "keep it".
-     */
-    telegramApiId: z
-        .string()
-        .trim()
-        .regex(/^\d{0,12}$/)
-        .optional(),
-    telegramApiHash: z.string().trim().max(64).optional(),
+    /** The whole list at once. A proxy's blank password means "keep it", like the token's. */
     telegramProxies: telegramProxyList.optional(),
 
     /**

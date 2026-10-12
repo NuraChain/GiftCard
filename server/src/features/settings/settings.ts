@@ -18,7 +18,7 @@
 // more, so a stolen console session can overwrite a credential but never read one out.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
-import { telegramProxyList, type TelegramProxy } from '../../contract/shared.ts';
+import { keepPasswords, telegramProxyList, type TelegramProxy } from '../../contract/shared.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
 import {
@@ -38,13 +38,13 @@ export const SETTING_KEYS = [
     'zibalBase',
     'zibalMerchant',
     'smsApiUrl',
+    'smsUsername',
     'smsApiKey',
+    'smsDomain',
     'smsSender',
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
-    'telegramApiId',
-    'telegramApiHash',
     'telegramProxies',
     'backupEveryMinutes',
     'tetherToman',
@@ -61,7 +61,6 @@ const SECRETS = new Set<SettingKey>([
     'zibalMerchant',
     'smsApiKey',
     'telegramBotToken',
-    'telegramApiHash',
     'adminKeyHash'
 ]);
 
@@ -97,9 +96,15 @@ export interface RuntimeSettings {
     /** Zibal's merchant. The literal `zibal` is their published test account. */
     zibalMerchant: string;
 
-    /** Configurable PanelSMS send endpoint and write-only API credential. */
+    /**
+     * The SMS panel's send-by-link address and what it is called with - see
+     * features/checkout/panelsms.ts. `smsApiKey` IS THE PANEL PASSWORD: the name predates
+     * knowing that this panel signs a request with a username and a password, not a key.
+     */
     smsApiUrl: string;
+    smsUsername: string;
     smsApiKey: string;
+    smsDomain: string;
     smsSender: string;
 
     /**
@@ -110,12 +115,7 @@ export interface RuntimeSettings {
     telegramChatId: string;
     telegramBase: string;
 
-    /**
-     * MTProto proxies, tried in order, and the my.telegram.org pair the bot needs to speak
-     * MTProto at all. Without the pair the list is ignored and the bot uses `telegramBase`.
-     */
-    telegramApiId: string;
-    telegramApiHash: string;
+    /** HTTP proxies to reach `telegramBase` through, tried in order before going direct. */
     telegramProxies: TelegramProxy[];
 
     /**
@@ -181,14 +181,14 @@ const DEFAULTS = {
     merchantId: '',
     zibalBase: 'https://gateway.zibal.ir',
     zibalMerchant: '',
-    smsApiUrl: '',
+    smsApiUrl: 'https://0098vip.com/sendsmslink.aspx',
+    smsUsername: '',
     smsApiKey: '',
+    smsDomain: '0098',
     smsSender: '',
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
-    telegramApiId: '',
-    telegramApiHash: '',
     telegramProxies: [],
     backupEveryMinutes: DEFAULT_BACKUP_MINUTES,
     tetherToman: 0,
@@ -249,8 +249,10 @@ export interface SettingsView {
     zibalMerchantMasked: string;
     zibalMerchantSet: boolean;
     smsApiUrl: string;
+    smsUsername: string;
     smsApiKeyMasked: string;
     smsApiKeySet: boolean;
+    smsDomain: string;
     smsSender: string;
     tetherToman: number;
     tetherSetAt: string;
@@ -266,6 +268,22 @@ function mask(value: string): string {
         return '';
     }
     return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
+}
+
+/**
+ * @internal What the audit may keep of a value. A credential is masked - and so is the one
+ * that sits inside a longer value, which is a proxy's password.
+ */
+function audited(name: SettingKey, value: string): string {
+    if (SECRETS.has(name)) {
+        return mask(value);
+    }
+    if (name === 'telegramProxies') {
+        return JSON.stringify(proxiesFrom(value), (key, held: unknown) =>
+            key === 'password' ? mask(String(held)) : held
+        );
+    }
+    return value;
 }
 
 /** @internal `scrypt$<salt>$<hash>`. A slow KDF costs nothing here and covers a weak key. */
@@ -328,9 +346,9 @@ function backupMinutesFrom(raw: string): number {
  * @internal A proxy list that cannot take the shop down.
  *
  * This row is read on every request, so a value that will not parse must cost the proxies and
- * nothing else. AND ONE SUCH VALUE IS ALREADY OUT THERE: before proxies were MTProto-only this
- * key held a list of HTTP relay URLs, and a shop that saved one still has it. It reads as an
- * empty list, which the console shows as exactly that.
+ * nothing else. AND SUCH VALUES ARE ALREADY OUT THERE: this key has held a list of relay URLs,
+ * and then a list of MTProto proxies, and a shop that saved either still has it. Both read as
+ * an empty list, which the console shows as exactly that.
  */
 function proxiesFrom(raw: string): TelegramProxy[] {
     try {
@@ -387,8 +405,8 @@ export function createSettings(options: SettingsOptions): Settings {
         // credentials is a second copy of them.
         options.store.logSetting({
             key: name,
-            before: SECRETS.has(name) ? mask(before) : before,
-            after: SECRETS.has(name) ? mask(value) : value,
+            before: audited(name, before),
+            after: audited(name, value),
             changedAt: new Date().toISOString()
         });
         cache = null;
@@ -411,13 +429,13 @@ export function createSettings(options: SettingsOptions): Settings {
                 zibalBase: pick('zibalBase', DEFAULTS.zibalBase),
                 zibalMerchant: pick('zibalMerchant', DEFAULTS.zibalMerchant),
                 smsApiUrl: pick('smsApiUrl', DEFAULTS.smsApiUrl),
+                smsUsername: pick('smsUsername', DEFAULTS.smsUsername),
                 smsApiKey: pick('smsApiKey', DEFAULTS.smsApiKey),
+                smsDomain: pick('smsDomain', DEFAULTS.smsDomain),
                 smsSender: pick('smsSender', DEFAULTS.smsSender),
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
-                telegramApiId: pick('telegramApiId', DEFAULTS.telegramApiId),
-                telegramApiHash: pick('telegramApiHash', DEFAULTS.telegramApiHash),
                 telegramProxies: proxiesFrom(pick('telegramProxies', '[]')),
                 backupEveryMinutes: backupMinutesFrom(
                     pick('backupEveryMinutes', String(DEFAULTS.backupEveryMinutes))
@@ -452,13 +470,21 @@ export function createSettings(options: SettingsOptions): Settings {
                 zibalMerchantMasked: mask(live.zibalMerchant),
                 zibalMerchantSet: live.zibalMerchant !== '',
                 smsApiUrl: live.smsApiUrl,
+                smsUsername: live.smsUsername,
                 smsApiKeyMasked: mask(live.smsApiKey),
                 smsApiKeySet: live.smsApiKey !== '',
+                smsDomain: live.smsDomain,
                 smsSender: live.smsSender,
                 tetherToman: live.tetherToman,
                 tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,
-                smsReady: live.smsApiUrl !== '' && live.smsApiKey !== '' && live.smsSender !== '',
+                smsReady: ![
+                    live.smsApiUrl,
+                    live.smsUsername,
+                    live.smsApiKey,
+                    live.smsDomain,
+                    live.smsSender
+                ].includes(''),
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
             };
@@ -477,7 +503,11 @@ export function createSettings(options: SettingsOptions): Settings {
                     // settings table holds text either way, and `current()` converts back.
                     write(
                         name as SettingKey,
-                        name === 'telegramProxies' ? JSON.stringify(value) : String(value)
+                        name === 'telegramProxies'
+                            ? JSON.stringify(
+                                  keepPasswords(value as TelegramProxy[], current().telegramProxies)
+                              )
+                            : String(value)
                     );
                 }
             }

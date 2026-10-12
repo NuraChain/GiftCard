@@ -35,10 +35,12 @@ import {
     DEFAULT_BACKUP_MINUTES,
     MAX_BACKUP_MINUTES,
     MIN_BACKUP_MINUTES,
-    parseProxyLink,
+    parseProxyUrl,
+    proxyAddress,
     telegramProxy,
     type TelegramProxy,
     type TelegramProxyTest,
+    type TelegramProxyView,
     type TelegramStatusView
 } from '../../../../../server/src/contract/index.ts';
 import { count } from '../../../lib/format.ts';
@@ -46,11 +48,21 @@ import { useToasts } from '../../../ui/toast.tsx';
 import Async from '../../../ui/async.tsx';
 import Button from '../../../ui/button.tsx';
 import Field from '../../../ui/field.tsx';
+import Select from '../../../ui/select.tsx';
 import TextInput from '../../../ui/text-input.tsx';
 import { useAdminSession } from '../session.tsx';
 
 /** The server's own ceiling, repeated here so the button can say so before a request does. */
 const MAX_PROXIES = 20;
+
+/**
+ * How the proxy itself is spoken to. Written as the start of an address because that is where
+ * the operator has seen it: whatever their proxy's address begins with is the one to pick.
+ */
+const PROTOCOL_OPTIONS = [
+    { value: 'http', label: 'http://', latin: true },
+    { value: 'https', label: 'https://', latin: true }
+];
 
 /**
  * A proxy as the form holds it: text in every box, because that is what a box contains.
@@ -59,14 +71,35 @@ const MAX_PROXIES = 20;
 interface ProxyDraft {
     index: number | null;
     link: string;
+    protocol: TelegramProxy['protocol'];
     server: string;
     port: string;
-    secret: string;
+    username: string;
+    password: string;
 }
 
-/** What tells two rows apart. Also what a row's test result is filed under. */
-function proxyId(proxy: TelegramProxy): string {
-    return `${proxy.server}:${proxy.port}:${proxy.secret}`;
+const EMPTY_DRAFT: ProxyDraft = {
+    index: null,
+    link: '',
+    protocol: 'http',
+    server: '',
+    port: '',
+    username: '',
+    password: ''
+};
+
+/**
+ * A row as it is sent back to the server: without a password, because this page was never
+ * given one. A blank password is kept as the one already stored for that address.
+ */
+function unchanged(proxy: TelegramProxyView): TelegramProxy {
+    return {
+        protocol: proxy.protocol,
+        server: proxy.server,
+        port: proxy.port,
+        username: proxy.username,
+        password: ''
+    };
 }
 
 export default function TelegramSettings(): ReactNode {
@@ -85,9 +118,6 @@ export default function TelegramSettings(): ReactNode {
     const [formToken, setFormToken] = useState('');
     const [formChatId, setFormChatId] = useState('');
     const [formBase, setFormBase] = useState('');
-    const [formApiId, setFormApiId] = useState('');
-    // Write-only, like the token: blank means "unchanged".
-    const [formApiHash, setFormApiHash] = useState('');
     const [formMinutes, setFormMinutes] = useState('');
 
     const [draft, setDraft] = useState<ProxyDraft | null>(null);
@@ -104,7 +134,6 @@ export default function TelegramSettings(): ReactNode {
             setStatus(view);
             setFormChatId(view.chatId);
             setFormBase(view.baseUrl);
-            setFormApiId(view.apiId);
             setFormMinutes(String(view.backupEveryMinutes));
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات ربات خوانده نشد'));
@@ -144,15 +173,12 @@ export default function TelegramSettings(): ReactNode {
                 input: {
                     telegramChatId: formChatId,
                     telegramBase: formBase,
-                    telegramApiId: formApiId,
                     backupEveryMinutes: minutes,
                     // Absent, not empty: a blank token box must not switch the bot off.
-                    telegramBotToken: formToken === '' ? undefined : formToken,
-                    telegramApiHash: formApiHash === '' ? undefined : formApiHash
+                    telegramBotToken: formToken === '' ? undefined : formToken
                 }
             });
             setFormToken('');
-            setFormApiHash('');
             await load();
             notify.success('تنظیمات ربات ذخیره شد');
         } catch (failure) {
@@ -204,15 +230,16 @@ export default function TelegramSettings(): ReactNode {
     const proxies = status?.proxies ?? [];
 
     /**
-     * Writes the whole list, and nothing but the list. The view is patched in place rather
-     * than re-read: `load` refills every box on the page, and somebody half way through
-     * typing a new chat id should not lose it because they removed a proxy.
+     * Writes the whole list, and nothing but the list. Only the list is read back afterwards,
+     * too: `load` refills every box on the page, and somebody half way through typing a new
+     * chat id should not lose it because they removed a proxy.
      */
     const saveProxies = async (next: TelegramProxy[], done: string): Promise<boolean> => {
         setSavingProxy(true);
         try {
             await client.admin.saveSettings({ input: { telegramProxies: next } });
-            setStatus((current) => (current === null ? current : { ...current, proxies: next }));
+            const { proxies: saved } = await client.admin.telegram();
+            setStatus((current) => (current === null ? current : { ...current, proxies: saved }));
             notify.success(done);
             return true;
         } catch (failure) {
@@ -228,12 +255,12 @@ export default function TelegramSettings(): ReactNode {
         setDraft(next);
     };
 
-    /** A pasted share link fills the three boxes under it. Anything else is left to be typed. */
+    /** A pasted address fills the boxes under it. Anything else is left to be typed. */
     const pasteLink = (link: string): void => {
         if (draft === null) {
             return;
         }
-        const parsed = parseProxyLink(link);
+        const parsed = parseProxyUrl(link);
         setDraftError('');
         setDraft(
             parsed === null
@@ -241,9 +268,11 @@ export default function TelegramSettings(): ReactNode {
                 : {
                       ...draft,
                       link,
+                      protocol: parsed.protocol,
                       server: parsed.server,
                       port: String(parsed.port),
-                      secret: parsed.secret
+                      username: parsed.username,
+                      password: parsed.password
                   }
         );
     };
@@ -257,29 +286,47 @@ export default function TelegramSettings(): ReactNode {
         // The same shape the server enforces, checked here first so the operator gets a
         // sentence beside the form rather than a rejected request.
         const parsed = telegramProxy.safeParse({
+            protocol: draft.protocol,
             server: draft.server,
             port: Number(draft.port),
-            secret: draft.secret
+            username: draft.username,
+            password: draft.password
         });
         if (!parsed.success) {
             setDraftError(
-                'سرور، پورت یا کلید درست نیست. کلید باید همان secret لینک پراکسی MTProto باشد.'
+                'سرور، پورت یا نام کاربری درست نیست. سرور باید نام دامنه یا IP باشد و پورت عددی بین ۱ و ۶۵۵۳۵.'
             );
             return;
         }
+        const address = proxyAddress(parsed.data);
         const taken = proxies.some(
-            (proxy, index) => index !== draft.index && proxyId(proxy) === proxyId(parsed.data)
+            (proxy, index) => index !== draft.index && proxyAddress(proxy) === address
         );
         if (taken) {
             setDraftError('این پراکسی از قبل در فهرست هست.');
             return;
         }
 
+        // A stored password belongs to the address it was typed for, and the server will not
+        // carry it to another one. Said here, so the row does not quietly lose its password.
+        const before = draft.index === null ? undefined : proxies[draft.index];
+        if (
+            before?.passwordSet === true &&
+            parsed.data.username !== '' &&
+            parsed.data.password === '' &&
+            proxyAddress(before) !== address
+        ) {
+            setDraftError('نشانی یا نام کاربری پراکسی عوض شده است. رمز عبور را دوباره بنویسید.');
+            return;
+        }
+
         const saved =
             draft.index === null
-                ? await saveProxies([...proxies, parsed.data], 'پراکسی اضافه شد')
+                ? await saveProxies([...proxies.map(unchanged), parsed.data], 'پراکسی اضافه شد')
                 : await saveProxies(
-                      proxies.map((proxy, index) => (index === draft.index ? parsed.data : proxy)),
+                      proxies.map((proxy, index) =>
+                          index === draft.index ? parsed.data : unchanged(proxy)
+                      ),
                       'پراکسی ذخیره شد'
                   );
         if (saved) {
@@ -294,7 +341,7 @@ export default function TelegramSettings(): ReactNode {
         }
         if (
             await saveProxies(
-                proxies.filter((_, at) => at !== index),
+                proxies.filter((_, at) => at !== index).map(unchanged),
                 'پراکسی حذف شد'
             )
         ) {
@@ -303,12 +350,12 @@ export default function TelegramSettings(): ReactNode {
         }
     };
 
-    const testProxy = async (proxy: TelegramProxy): Promise<void> => {
-        const id = proxyId(proxy);
+    const testProxy = async (proxy: TelegramProxyView): Promise<void> => {
+        const id = proxyAddress(proxy);
         setTests((current) => ({ ...current, [id]: null }));
         let result: TelegramProxyTest;
         try {
-            result = await client.admin.testTelegramProxy({ input: proxy });
+            result = await client.admin.testTelegramProxy({ input: unchanged(proxy) });
         } catch (failure) {
             result = { ok: false, reason: failureText(failure, 'تست انجام نشد'), ms: 0 };
         }
@@ -316,11 +363,6 @@ export default function TelegramSettings(): ReactNode {
     };
 
     const ready = status?.configured === true;
-
-    // The list is ignored until the bot has what it needs to speak MTProto at all, and a
-    // list that is silently ignored is worse than no list.
-    const proxiesIdle =
-        status !== null && proxies.length > 0 && (status.apiId === '' || !status.apiHashSet);
 
     return (
         <section className="mt-section">
@@ -392,43 +434,6 @@ export default function TelegramSettings(): ReactNode {
                             </Field>
                         </div>
 
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                            <Field
-                                label="API ID"
-                                htmlFor="telegram-api-id"
-                                hint="از my.telegram.org می‌گیرید. فقط برای اتصال از راه پراکسی لازم است."
-                            >
-                                <TextInput
-                                    id="telegram-api-id"
-                                    latin
-                                    inputMode="numeric"
-                                    autoComplete="off"
-                                    placeholder="1234567"
-                                    value={formApiId}
-                                    onChange={setFormApiId}
-                                />
-                            </Field>
-                            <Field
-                                label="API Hash"
-                                htmlFor="telegram-api-hash"
-                                hint="بعد از ذخیره دیگر نمایش داده نمی‌شود؛ برای نگه داشتن مقدار فعلی خالی بگذارید."
-                            >
-                                <TextInput
-                                    id="telegram-api-hash"
-                                    type="password"
-                                    latin
-                                    autoComplete="off"
-                                    placeholder={
-                                        status?.apiHashSet === true
-                                            ? `${status.apiHashMasked} (برای تغییر بنویسید)`
-                                            : 'تنظیم نشده'
-                                    }
-                                    value={formApiHash}
-                                    onChange={setFormApiHash}
-                                />
-                            </Field>
-                        </div>
-
                         <div className="mt-4">
                             <Field
                                 label="فاصلهٔ پشتیبان‌گیری (دقیقه)"
@@ -479,43 +484,23 @@ export default function TelegramSettings(): ReactNode {
 
                     <div className="mt-4 rounded-2xl border border-line bg-surface p-5">
                         <div className="flex flex-wrap items-center gap-3">
-                            <h3 className="font-bold">پراکسی‌های MTProto</h3>
+                            <h3 className="font-bold">پراکسی‌های HTTP / HTTPS</h3>
                             <Button
                                 glyph={Plus}
                                 size="sm"
                                 className="ms-auto"
                                 disabled={proxies.length >= MAX_PROXIES}
-                                onClick={() =>
-                                    openDraft({
-                                        index: null,
-                                        link: '',
-                                        server: '',
-                                        port: '',
-                                        secret: ''
-                                    })
-                                }
+                                onClick={() => openDraft(EMPTY_DRAFT)}
                             >
                                 پراکسی تازه
                             </Button>
                         </div>
                         <p className="mt-2 text-caption text-muted">
                             ربات از راه اولین پراکسی‌ای که جواب بدهد به تلگرام وصل می‌شود، به‌ترتیب
-                            همین فهرست. اگر هیچ‌کدام کار نکند، آدرس API بالا آخرین گزینه است. فقط
-                            پراکسی MTProto پذیرفته می‌شود؛ حداکثر {count(MAX_PROXIES)} پراکسی.
+                            همین فهرست، و تا وقتی کار می‌کند روی همان می‌ماند. اگر هیچ‌کدام کار نکند،
+                            آدرس API بالا آخرین گزینه است. توکن ربات از دید پراکسی پنهان می‌ماند؛
+                            حداکثر {count(MAX_PROXIES)} پراکسی.
                         </p>
-
-                        {proxiesIdle && (
-                            <p className="mt-3 flex items-start gap-2 text-small">
-                                <AlertTriangle
-                                    className="size-5 shrink-0 text-gold"
-                                    aria-hidden="true"
-                                />
-                                <span>
-                                    تا وقتی API ID و API Hash در فرم بالا ذخیره نشده‌اند، این فهرست
-                                    استفاده نمی‌شود و تست هم جواب نمی‌دهد.
-                                </span>
-                            </p>
-                        )}
 
                         {proxies.length === 0 ? (
                             <p className="mt-4 text-small text-muted">
@@ -524,7 +509,7 @@ export default function TelegramSettings(): ReactNode {
                         ) : (
                             <ol className="mt-4 grid gap-3">
                                 {proxies.map((proxy, index) => {
-                                    const id = proxyId(proxy);
+                                    const id = proxyAddress(proxy);
                                     const result = tests[id];
                                     return (
                                         <li
@@ -539,7 +524,7 @@ export default function TelegramSettings(): ReactNode {
                                                     dir="ltr"
                                                     className="latin text-small font-bold break-all"
                                                 >
-                                                    {proxy.server}:{proxy.port}
+                                                    {id}
                                                 </span>
                                                 {/* Always in the tree, so a result that
                                                     arrives later is announced rather than
@@ -597,11 +582,12 @@ export default function TelegramSettings(): ReactNode {
                                                     disabled={savingProxy}
                                                     onClick={() =>
                                                         openDraft({
+                                                            ...EMPTY_DRAFT,
                                                             index,
-                                                            link: '',
+                                                            protocol: proxy.protocol,
                                                             server: proxy.server,
                                                             port: String(proxy.port),
-                                                            secret: proxy.secret
+                                                            username: proxy.username
                                                         })
                                                     }
                                                 >
@@ -637,10 +623,10 @@ export default function TelegramSettings(): ReactNode {
                                 </h4>
 
                                 <Field
-                                    label="لینک پراکسی"
+                                    label="آدرس پراکسی"
                                     htmlFor="proxy-link"
                                     className="mt-4"
-                                    hint="لینک tg://proxy یا t.me/proxy را اینجا بچسبانید تا سه خانهٔ پایین پر شود. یا آن‌ها را دستی بنویسید."
+                                    hint="آدرس کامل پراکسی را اینجا بچسبانید تا خانه‌های پایین پر شود. یا آن‌ها را دستی بنویسید."
                                 >
                                     <TextInput
                                         id="proxy-link"
@@ -648,13 +634,32 @@ export default function TelegramSettings(): ReactNode {
                                         tone="surface"
                                         inputMode="url"
                                         autoComplete="off"
-                                        placeholder="tg://proxy?server=...&port=...&secret=..."
+                                        placeholder="https://user:pass@host:port"
                                         value={draft.link}
                                         onChange={pasteLink}
                                     />
                                 </Field>
 
-                                <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_8rem]">
+                                <div className="mt-4 grid gap-4 sm:grid-cols-[9rem_1fr_8rem]">
+                                    <Field
+                                        label="نوع"
+                                        htmlFor="proxy-protocol"
+                                        hint="همان چیزی که اول آدرس پراکسی است."
+                                    >
+                                        <Select
+                                            id="proxy-protocol"
+                                            label="نوع اتصال به پراکسی"
+                                            value={draft.protocol}
+                                            options={PROTOCOL_OPTIONS}
+                                            onChange={(next) => {
+                                                setDraftError('');
+                                                setDraft({
+                                                    ...draft,
+                                                    protocol: next as TelegramProxy['protocol']
+                                                });
+                                            }}
+                                        />
+                                    </Field>
                                     <Field label="سرور" htmlFor="proxy-server">
                                         <TextInput
                                             id="proxy-server"
@@ -677,7 +682,7 @@ export default function TelegramSettings(): ReactNode {
                                             tone="surface"
                                             inputMode="numeric"
                                             autoComplete="off"
-                                            placeholder="443"
+                                            placeholder="8080"
                                             invalid={draftError !== ''}
                                             value={draft.port}
                                             onChange={(next) => {
@@ -688,25 +693,53 @@ export default function TelegramSettings(): ReactNode {
                                     </Field>
                                 </div>
 
-                                <Field
-                                    label="کلید (secret)"
-                                    htmlFor="proxy-secret"
-                                    className="mt-4"
-                                    error={draftError}
-                                >
-                                    <TextInput
-                                        id="proxy-secret"
-                                        latin
-                                        tone="surface"
-                                        autoComplete="off"
-                                        invalid={draftError !== ''}
-                                        value={draft.secret}
-                                        onChange={(next) => {
-                                            setDraftError('');
-                                            setDraft({ ...draft, secret: next });
-                                        }}
-                                    />
-                                </Field>
+                                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                    <Field
+                                        label="نام کاربری"
+                                        htmlFor="proxy-username"
+                                        hint="اگر پراکسی نام کاربری و رمز ندارد، هر دو را خالی بگذارید."
+                                    >
+                                        <TextInput
+                                            id="proxy-username"
+                                            latin
+                                            tone="surface"
+                                            autoComplete="off"
+                                            invalid={draftError !== ''}
+                                            value={draft.username}
+                                            onChange={(next) => {
+                                                setDraftError('');
+                                                setDraft({ ...draft, username: next });
+                                            }}
+                                        />
+                                    </Field>
+                                    <Field
+                                        label="رمز عبور"
+                                        htmlFor="proxy-password"
+                                        error={draftError}
+                                    >
+                                        {/* `new-password`, so a browser does not fill in the
+                                            console's own saved login here. */}
+                                        <TextInput
+                                            id="proxy-password"
+                                            type="password"
+                                            latin
+                                            tone="surface"
+                                            autoComplete="new-password"
+                                            placeholder={
+                                                draft.index !== null &&
+                                                proxies[draft.index]?.passwordSet === true
+                                                    ? 'برای نگه داشتن رمز فعلی خالی بگذارید'
+                                                    : undefined
+                                            }
+                                            invalid={draftError !== ''}
+                                            value={draft.password}
+                                            onChange={(next) => {
+                                                setDraftError('');
+                                                setDraft({ ...draft, password: next });
+                                            }}
+                                        />
+                                    </Field>
+                                </div>
 
                                 <div className="mt-5 flex gap-2">
                                     <Button

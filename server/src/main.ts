@@ -24,7 +24,6 @@ import { createGatewaySwitch } from './features/checkout/gateway.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createZibal } from './features/checkout/zibal.ts';
 import { createTetherRate } from './features/rate/rate.ts';
-import { mtproto } from './features/telegram/mtproto.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
 import {
     createBackupJob,
@@ -49,6 +48,7 @@ const log = pino({
             'merchant',
             'zibalMerchant',
             'apiKey',
+            'password',
             'adminKey',
             'key',
             'currentKey',
@@ -59,12 +59,11 @@ const log = pino({
             'phone',
             'botToken',
             'telegramBotToken',
-            'apiHash',
-            'telegramApiHash',
             '*.merchantId',
             '*.merchant',
             '*.zibalMerchant',
             '*.apiKey',
+            '*.password',
             '*.adminKey',
             '*.key',
             '*.currentKey',
@@ -74,9 +73,7 @@ const log = pino({
             '*.code',
             '*.phone',
             '*.botToken',
-            '*.telegramBotToken',
-            '*.apiHash',
-            '*.telegramApiHash'
+            '*.telegramBotToken'
         ],
         censor: '[redacted]'
     },
@@ -168,12 +165,9 @@ const telegram = createTelegram({
             botToken: now.telegramBotToken,
             chatId: now.telegramChatId,
             baseUrl: now.telegramBase,
-            apiId: now.telegramApiId,
-            apiHash: now.telegramApiHash,
             proxies: now.telegramProxies
         };
-    },
-    mtproto
+    }
 });
 const notifier = createSaleNotifier({
     telegram,
@@ -243,7 +237,9 @@ const app = buildApp({
             const now = settings.current();
             return {
                 apiUrl: now.smsApiUrl,
-                apiKey: now.smsApiKey,
+                username: now.smsUsername,
+                password: now.smsApiKey,
+                domain: now.smsDomain,
                 sender: now.smsSender,
                 appName: now.appName
             };
