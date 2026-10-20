@@ -46,7 +46,7 @@ describe('PanelSMS sender', () => {
             FROM: '30001234',
             // The way the number is dialled in Iran, not the +98 form the shop stores it in.
             TO: '09121234567',
-            TEXT: 'کد گیفت کارت 10 دلاری اشبرینگر: NC-1234-5678',
+            TEXT: 'کد گیفت کارت شما\n\nNC-1234-5678\n\nفروشگاه اشبرینگر\n',
             USERNAME: 'shop-user',
             PASSWORD: 'p@ss&word',
             DOMAIN: '0098'
@@ -203,7 +203,9 @@ describe('PanelSMS web service sender', () => {
         expect(envelope).not.toContain('p@ss&<word>');
         expect(field(envelope, 'username')).toBe('shop-user');
         expect(field(envelope, 'password')).toBe('p@ss&<word>');
-        expect(field(envelope, 'text')).toBe('کد گیفت کارت 10 دلاری اشبرینگر: NC-1234-5678');
+        expect(field(envelope, 'text')).toBe(
+            'کد گیفت کارت شما\n\nNC-1234-5678\n\nفروشگاه اشبرینگر\n'
+        );
         expect(field(envelope, 'mobileno')).toBe('09121234567');
         expect(field(envelope, 'pnlno')).toBe('30001234');
         // In the PHP sample, not in the WSDL.

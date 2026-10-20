@@ -202,12 +202,13 @@ export function createSms(options: SmsOptions): SmsSender {
     }
 
     return {
-        async sendCode(phone, code, amountUsd) {
+        // The amount is no longer in the message; the parameter stays for the callers.
+        async sendCode(phone, code) {
             const live = options.settings();
             if (!smsConfigured(live)) {
                 return { ok: false, reason: 'PanelSMS is not configured' };
             }
-            const text = `کد گیفت کارت ${amountUsd} دلاری ${live.appName}: ${code}`;
+            const text = `کد گیفت کارت شما\n\n${code}\n\nفروشگاه ${live.appName}\n`;
             return isSoapUrl(live.apiUrl) ? viaSoap(live, phone, text) : viaLink(live, phone, text);
         }
     };
