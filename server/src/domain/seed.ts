@@ -20,8 +20,8 @@ import type { TierInput } from '../db/index.ts';
 export function seedTiers(): TierInput[] {
     return [
         {
-            amount: 5,
-            title: 'گیفت کارت نورا ۵ دلاری',
+            amount: 3,
+            title: 'خرید گیفت کارت نورا ۳ دلاری',
             blurb: 'برای امتحان کردن سرویس یا هدیه‌ای کوچک. همان کد و همان تحویل آنی کارت‌های بزرگ‌تر.',
             recommended: false,
             active: true,
@@ -29,15 +29,15 @@ export function seedTiers(): TierInput[] {
         },
         {
             amount: 10,
-            title: 'گیفت کارت نورا ۱۰ دلاری',
+            title: 'خرید گیفت کارت نورا ۱۰ دلاری',
             blurb: 'رایج‌ترین انتخاب: اندازه‌ای که برای بیشتر خریدها کافی است و ته‌مانده‌ای باقی نمی‌گذارد.',
             recommended: true,
             active: true,
             sort: 20
         },
         {
-            amount: 25,
-            title: 'گیفت کارت نورا ۲۵ دلاری',
+            amount: 20,
+            title: 'خرید گیفت کارت نورا ۲۰ دلاری',
             blurb: 'برای استفاده طولانی‌تر یا هدیه دادن. یک کد، بدون تاریخ انقضا.',
             recommended: false,
             active: true,

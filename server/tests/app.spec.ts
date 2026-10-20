@@ -64,9 +64,9 @@ const MARGIN_PERCENT = 6;
  * check the WIRING, and the arithmetic itself is checked on its own in `the price formula`.
  */
 const PRICES = {
-    5: tomanPrice(5, RATE_TOMAN, MARGIN_PERCENT),
+    3: tomanPrice(3, RATE_TOMAN, MARGIN_PERCENT),
     10: tomanPrice(10, RATE_TOMAN, MARGIN_PERCENT),
-    25: tomanPrice(25, RATE_TOMAN, MARGIN_PERCENT)
+    20: tomanPrice(20, RATE_TOMAN, MARGIN_PERCENT)
 } as const;
 
 /**
@@ -372,9 +372,9 @@ describe('the shop', () => {
         expect(ten?.available).toBe(3);
         // The card's words come from the catalogue too, so a tier added at runtime is not a
         // blank card on the shop.
-        expect(ten?.title).toBe('گیفت کارت نورا ۱۰ دلاری');
+        expect(ten?.title).toBe('خرید گیفت کارت نورا ۱۰ دلاری');
         expect(ten?.recommended).toBe(true);
-        expect(body.tiers.find((tier) => tier.amount === 5)?.available).toBe(0);
+        expect(body.tiers.find((tier) => tier.amount === 3)?.available).toBe(0);
     });
 
     it('does not offer a withdrawn denomination at all', async () => {
@@ -384,7 +384,7 @@ describe('the shop', () => {
         };
         // Not "hidden by the page": an inactive tier never leaves the server, so nothing on
         // the client can reveal an amount the operator has taken off sale.
-        expect(body.tiers.map((tier) => tier.amount)).toEqual([10, 25]);
+        expect(body.tiers.map((tier) => tier.amount)).toEqual([10, 20]);
     });
 
     it('refuses an amount that is not a sellable tier', async () => {
@@ -407,15 +407,15 @@ describe('the shop', () => {
     });
 
     it('refuses a denomination the operator has taken off sale', async () => {
-        store.addCodes(5, uuids(1));
+        store.addCodes(3, uuids(1));
         const five = seedTiers()[0];
         store.saveTier({ ...five, active: false });
 
         // Disabling has to mean unbuyable, not merely hidden - otherwise a stale page or a
         // hand-written request still sells it.
-        expect(await buy(5)).toBe(409);
+        expect(await buy(3)).toBe(409);
         expect(fake.opened).toBe(0);
-        expect(store.availableFor(5)).toBe(1);
+        expect(store.availableFor(3)).toBe(1);
     });
 
     it('charges the price it computed, never one from the request', async () => {
@@ -493,9 +493,9 @@ describe('the shop', () => {
 
     it('rejects a malformed address with a field map the form can display', async () => {
         const response = await post('/api/pay/start', {
-            amount: 5,
+            amount: 3,
             phone: 'not-a-phone',
-            quotedToman: PRICES[5]
+            quotedToman: PRICES[3]
         });
         expect(response.status).toBe(422);
         const body = (await response.json()) as {
@@ -507,7 +507,7 @@ describe('the shop', () => {
     it('refuses to sell what it does not have', async () => {
         // Nothing in stock. The buyer must never be sent to a payment page for a card that
         // cannot be delivered.
-        expect(await buy(25)).toBe(409);
+        expect(await buy(20)).toBe(409);
     });
 
     it('holds a code for the buyer as soon as checkout starts', async () => {
@@ -518,23 +518,23 @@ describe('the shop', () => {
     });
 
     it('gives the code back when the gateway refuses to open a payment', async () => {
-        store.addCodes(5, uuids(1));
+        store.addCodes(3, uuids(1));
         fake.requestOverride = { ok: false, reason: 'request failed (code -9)' };
         // 503 and not 502: a CDN in front replaces a 502's body with its own page, and the
         // sentence the buyer is owed never arrives.
-        expect(await buy(5)).toBe(503);
+        expect(await buy(3)).toBe(503);
         // An order that never reached the gateway must not sit on stock for half an hour.
-        expect(store.availableFor(5)).toBe(1);
+        expect(store.availableFor(3)).toBe(1);
     });
 
     it('explains a refused gateway to the operator, and to nobody else', async () => {
-        store.addCodes(5, uuids(2));
+        store.addCodes(3, uuids(2));
         const reason = 'zibal: request failed (code 104: invalid merchant)';
         fake.requestOverride = { ok: false, reason };
         const purchase = {
-            amount: 5,
+            amount: 3,
             phone: '+989121234567',
-            quotedToman: tomanPrice(5, RATE_TOMAN, MARGIN_PERCENT)
+            quotedToman: tomanPrice(3, RATE_TOMAN, MARGIN_PERCENT)
         };
         type Refusal = { error: { code: string; message: string; details?: { reason?: string } } };
 
@@ -604,7 +604,7 @@ describe('the shop', () => {
 describe('the callback', () => {
     /** Stocks one code and buys it, leaving an order the gateway would call back about. */
     async function pending(
-        amount: 5 | 10 | 25 = 10
+        amount: 3 | 10 | 20 = 10
     ): Promise<{ authority: string; token: string }> {
         store.addCodes(amount, uuids(1));
         await buy(amount);
@@ -612,11 +612,11 @@ describe('the callback', () => {
     }
 
     it('verifies with OUR stored amount, never one from the request', async () => {
-        const { authority } = await pending(5);
+        const { authority } = await pending(3);
         // The query string carries a bigger number. If it reached verify, a 350,000 Toman
         // payment would settle a 1,750,000 Toman card.
         await get(`/api/pay/callback?Authority=${authority}&Status=OK&amount=1750000`);
-        expect(fake.verifyCalls).toEqual([{ authority, toman: PRICES[5] }]);
+        expect(fake.verifyCalls).toEqual([{ authority, toman: PRICES[3] }]);
     });
 
     it('delivers the code by SMS once the payment verifies', async () => {
@@ -1008,8 +1008,8 @@ describe('the console', () => {
 
     it('finds an order by any of the things a support call starts with', async () => {
         const cookie = await signIn();
-        store.addCodes(5, uuids(1));
-        await buy(5, '09121234567');
+        store.addCodes(3, uuids(1));
+        await buy(3, '09121234567');
         const { authority } = lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         const code = store.recentOrders(1)[0].code ?? '';
@@ -1034,15 +1034,15 @@ describe('the console', () => {
 
     it('pages the ledger without losing or repeating a row', async () => {
         const cookie = await signIn();
-        store.addCodes(5, uuids(30));
+        store.addCodes(3, uuids(30));
         // Straight into the store: 30 checkouts through the HTTP route would trip the
         // purchase throttle, which is a different test's subject.
         for (let index = 0; index < 30; index += 1) {
             store.startOrder(
                 {
                     id: `order-${String(index).padStart(3, '0')}`,
-                    amount: 5,
-                    toman: PRICES[5],
+                    amount: 3,
+                    toman: PRICES[3],
                     phone: '+989121234567',
                     createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()
                 },
@@ -1094,7 +1094,7 @@ describe('the console', () => {
             total: number;
         };
         expect(free.total).toBe(1);
-        const wrongTier = (await (await get('/api/admin/codes?amount=25', { cookie })).json()) as {
+        const wrongTier = (await (await get('/api/admin/codes?amount=20', { cookie })).json()) as {
             total: number;
         };
         expect(wrongTier.total).toBe(0);
@@ -1160,8 +1160,8 @@ describe('the catalogue', () => {
             await post(
                 '/api/admin/tiers',
                 {
-                    amount: 5,
-                    title: 'گیفت کارت نورا ۵ دلاری',
+                    amount: 3,
+                    title: 'خرید گیفت کارت نورا ۳ دلاری',
                     blurb: 'x',
                     recommended: true,
                     active: true,
@@ -1173,7 +1173,7 @@ describe('the catalogue', () => {
 
         // The treatment means "most people pick this". Two of them means nothing.
         expect(body.tiers.filter((tier) => tier.recommended)).toHaveLength(1);
-        expect(body.tiers.find((tier) => tier.recommended)?.amount).toBe(5);
+        expect(body.tiers.find((tier) => tier.recommended)?.amount).toBe(3);
     });
 
     it('deactivates rather than deletes a tier that has been sold', async () => {
@@ -1195,9 +1195,9 @@ describe('the catalogue', () => {
 
     it('deletes a tier nobody ever used', async () => {
         const cookie = await signedIn();
-        const removed = await send('DELETE', '/api/admin/tiers?amount=25', undefined, { cookie });
+        const removed = await send('DELETE', '/api/admin/tiers?amount=20', undefined, { cookie });
         expect(await removed.json()).toEqual({ outcome: 'deleted' });
-        expect(store.tiers().map((tier) => tier.amount)).toEqual([5, 10]);
+        expect(store.tiers().map((tier) => tier.amount)).toEqual([3, 10]);
     });
 });
 
@@ -1666,11 +1666,11 @@ describe('the public address', () => {
         const cookie = await signedIn();
         await post('/api/admin/settings', { publicBaseUrl: 'https://shop.example' }, { cookie });
 
-        store.addCodes(5, uuids(1));
+        store.addCodes(3, uuids(1));
         await post('/api/pay/start', {
-            amount: 5,
+            amount: 3,
             phone: '+989121234567',
-            quotedToman: PRICES[5]
+            quotedToman: PRICES[3]
         });
 
         // THE CLAIM: this app was built once, at the top of the file, and the origin changed
@@ -1975,7 +1975,7 @@ describe('redeeming a code', () => {
     it('lists every payout request in the console, the unnotified ones first', async () => {
         const told = await bought(10);
         await post('/api/redeem', { code: told, wallet: WALLET });
-        const untold = await bought(25);
+        const untold = await bought(20);
         fake.payoutResult = { ok: false, reason: 'telegram is not configured' };
         await post('/api/redeem', { code: untold, wallet: WALLET });
 
@@ -1989,7 +1989,7 @@ describe('redeeming a code', () => {
 
         expect(page.total).toBe(2);
         expect(page.rows.map((row) => [row.code, row.amount, row.notified])).toEqual([
-            [untold, 25, false],
+            [untold, 20, false],
             [told, 10, true]
         ]);
         // Dialled the Iranian way, like the ledger's.
@@ -2026,7 +2026,7 @@ describe('redeeming a code', () => {
         // survive this test. The guard against a REAL race is the primary key on
         // `redemptions.code` and the IMMEDIATE transaction around it, which is a claim about
         // the schema rather than about this process, and is stated where it lives.
-        const code = await bought(25);
+        const code = await bought(20);
 
         const results = await Promise.all([
             post('/api/redeem', { code, wallet: WALLET }),
@@ -2127,7 +2127,7 @@ describe('redeeming a code', () => {
     });
 
     it('takes an ERC20 address too, and names the chain it must be sent on', async () => {
-        const code = await bought(5);
+        const code = await bought(3);
 
         const response = await post('/api/redeem', {
             code,

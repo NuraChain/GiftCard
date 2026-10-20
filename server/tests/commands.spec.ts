@@ -70,7 +70,7 @@ describe('the bot commands', () => {
         // The reply quotes the SHOP'S OWN arithmetic, not a restatement of the input - so an
         // operator sees what a buyer would actually be charged.
         const margin = h.settings.current().marginPercent;
-        expect(reply).toContain(tomanPrice(5, 245_000, margin).toLocaleString('en-US'));
+        expect(reply).toContain(tomanPrice(3, 245_000, margin).toLocaleString('en-US'));
         h.store.close();
     });
 
@@ -125,7 +125,7 @@ describe('the bot commands', () => {
 
     it('answers /status and /stock from the real database', async () => {
         const h = harness();
-        h.store.addCodes(5, [crypto.randomUUID(), crypto.randomUUID()]);
+        h.store.addCodes(3, [crypto.randomUUID(), crypto.randomUUID()]);
 
         expect(await h.bot.handle('/status')).toContain('بسته');
         await h.bot.handle('/setprice 245000');
