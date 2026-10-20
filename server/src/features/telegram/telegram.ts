@@ -21,7 +21,7 @@
 // road changes. See ./proxy.ts for what a proxy can and cannot see of it.
 import type { TelegramProxy } from '../../contract/shared.ts';
 import type { Fetch } from '../checkout/zarinpal.ts';
-import { throughProxy } from './proxy.ts';
+import { stoppedAtProxy, throughProxy } from './proxy.ts';
 
 /** What the client needs, read fresh per call so the console can change it without a restart. */
 export interface TelegramSettings {
@@ -93,6 +93,9 @@ export interface TelegramOptions {
     /** A `fetch` that goes through one proxy. Injected for the reason `fetch` is. */
     through?: (proxy: TelegramProxy) => Fetch;
 
+    /** Whether a failure of that fetch was in reaching the proxy itself. Injected with it. */
+    stoppedAtProxy?: (error: unknown) => boolean;
+
     /** A backup upload is slower than a message, so the two get different budgets. */
     timeoutMs?: number;
     uploadTimeoutMs?: number;
@@ -123,8 +126,17 @@ interface Answer {
  *
  * `fetch` says "fetch failed" and nothing else. What went wrong - the proxy refusing the
  * tunnel, the wrong password, a name that does not resolve - is the cause underneath it.
+ *
+ * THREE OF THEM HAPPEN BEFORE THE LOGIN IS EVER SENT, and so look the same whatever password is
+ * typed: the wrong kind chosen for the proxy, in either direction, and a certificate this
+ * machine does not trust. Left in the library's words, each reads as a password that is being
+ * ignored. They are said here as what to change instead.
+ *
+ * `atProxy` IS WHAT KEEPS THE CERTIFICATE ONE HONEST. The same error comes from the proxy's own
+ * certificate and from the one shown inside its tunnel, and they call for opposite things: a
+ * proxy to be given a certificate that can be trusted, and a proxy not to be trusted at all.
  */
-function reasonOf(error: unknown): string {
+function reasonOf(error: unknown, proxy: TelegramProxy, atProxy: boolean): string {
     let at = error;
     while (at instanceof Error && at.cause instanceof Error) {
         at = at.cause;
@@ -136,11 +148,39 @@ function reasonOf(error: unknown): string {
     if (!(at instanceof Error) || at.message === '') {
         return 'proxy unreachable';
     }
+
+    // The proxy was reached, and answered the request for a tunnel with a status of its own.
+    const refused = /^Proxy response \((\d+)\)/.exec(at.message)?.[1];
+    if (refused === '407') {
+        return proxy.username === '' && proxy.password === ''
+            ? 'the proxy asks for a username and password (407)'
+            : 'the proxy refused the username and password (407)';
+    }
+    if (refused !== undefined) {
+        // 400 is what a TLS port says to a request that reached it without TLS.
+        return proxy.protocol === 'http' && refused === '400'
+            ? 'the proxy refused the tunnel (400) - if its address starts with https://, set its type to https://'
+            : `the proxy refused the tunnel (${refused})`;
+    }
+
+    const code = String((at as NodeJS.ErrnoException).code ?? '');
+    if (/CERT|ISSUER|LEAF_SIGNATURE|INVALID_CA/.test(code)) {
+        return atProxy
+            ? `the proxy's certificate is not trusted (${at.message})`
+            : `the API host's certificate, as seen through this proxy, is not trusted (${at.message})`;
+    }
+    if (
+        atProxy &&
+        (code === 'ERR_SSL_PACKET_LENGTH_TOO_LONG' || code === 'ERR_SSL_WRONG_VERSION_NUMBER')
+    ) {
+        return 'this proxy does not use TLS - set its type to http://';
+    }
+    if (proxy.protocol === 'http' && at.name === 'HTTPParserError') {
+        // What came back was not HTTP at all - which is how TLS reads to a plain client.
+        return 'the proxy did not answer in HTTP - if its address starts with https://, set its type to https://';
+    }
     // OpenSSL words a failed handshake as a line of hex and a source file. Its code reads.
-    const { code } = at as NodeJS.ErrnoException;
-    return typeof code === 'string' && code.startsWith('ERR_SSL_')
-        ? `TLS failed: ${code}`
-        : at.message;
+    return code.startsWith('ERR_SSL_') ? `TLS failed: ${code}` : at.message;
 }
 
 /** @internal What a road is known by: the proxy, password and all, or the API host itself. */
@@ -154,6 +194,7 @@ const REST_MS = 60_000;
 export function createTelegram(options: TelegramOptions): Telegram {
     const call = options.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
     const through = options.through ?? throughProxy;
+    const atProxy = options.stoppedAtProxy ?? stoppedAtProxy;
     const timeoutMs = options.timeoutMs ?? 10_000;
     const uploadTimeoutMs = options.uploadTimeoutMs ?? 120_000;
 
@@ -355,7 +396,11 @@ export function createTelegram(options: TelegramOptions): Telegram {
                 resting.delete(keyOf(proxy));
                 return { ok: true, reason: '', ms: Date.now() - startedAt };
             } catch (error) {
-                return { ok: false, reason: reasonOf(error), ms: Date.now() - startedAt };
+                return {
+                    ok: false,
+                    reason: reasonOf(error, proxy, atProxy(error)),
+                    ms: Date.now() - startedAt
+                };
             }
         }
     };

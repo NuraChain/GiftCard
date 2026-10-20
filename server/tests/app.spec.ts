@@ -1663,6 +1663,27 @@ describe('the operations bot', () => {
         expect(log).not.toContain('hunter2-proxy');
     });
 
+    it('keeps a proxy password with no username beside it just as write-only', async () => {
+        // Such a password used to be thrown away on the way in, so it was never stored to be
+        // shown. Now it is kept, and it has to be hidden like any other.
+        const cookie = await signedIn();
+        const nameless = { ...PROXY, username: '', password: 'nameless-secret-1' };
+        await post('/api/admin/settings', { telegramProxies: [nameless] }, { cookie });
+        expect(settings.current().telegramProxies).toEqual([nameless]);
+
+        const view = await (await get('/api/admin/telegram', { cookie })).text();
+        expect(view).toContain('"passwordSet":true');
+        expect(view).not.toContain('nameless-secret');
+
+        const log = await (await get('/api/admin/settings/log', { cookie })).text();
+        expect(log).toContain('one.proxy.example');
+        expect(log).not.toContain('nameless-secret');
+
+        // And it is the one a test of the saved row is given.
+        await post('/api/admin/telegram/proxy-test', { ...nameless, password: '' }, { cookie });
+        expect(fake.proxiesTested).toEqual([nameless]);
+    });
+
     it('tries a proxy that has not been saved yet', async () => {
         const cookie = await signedIn();
 

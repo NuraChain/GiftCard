@@ -96,6 +96,16 @@ function fakeProxies(answer: unknown = { ok: true }) {
     return { state, through, via: (): string[] => state.tried.map((attempt) => attempt.via) };
 }
 
+/** An error the way Node and OpenSSL make them: the code is what says which one it is. */
+function coded(message: string, code: string): Error {
+    return Object.assign(new Error(message), { code });
+}
+
+/** And the way undici makes one of its own: by name, with no code at all. */
+function named(name: string, message: string): Error {
+    return Object.assign(new Error(message), { name });
+}
+
 /** Starts a server on a port of the machine's choosing, and says which. */
 function listening(server: Server): Promise<number> {
     return new Promise((resolve) => {
@@ -428,14 +438,110 @@ describe('the telegram client, through proxies', () => {
             reason: 'connect ECONNREFUSED 127.0.0.1:9'
         });
 
-        // And https:// chosen for a proxy that only speaks http is a line of OpenSSL.
+        // And a handshake that failed is a line of OpenSSL.
         const handshake = Object.assign(
-            new Error('1C5A0000:error:0A0000C6:SSL routines:tls_get_more_records'),
-            { code: 'ERR_SSL_PACKET_LENGTH_TOO_LONG' }
+            new Error('1C5A0000:error:0A00042E:SSL routines:ssl3_read_bytes'),
+            { code: 'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION' }
         );
         expect(await failing(handshake).testProxy(PROXY_ONE)).toMatchObject({
-            reason: 'TLS failed: ERR_SSL_PACKET_LENGTH_TOO_LONG'
+            reason: 'TLS failed: ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION'
         });
+    });
+
+    it('says what to change when the proxy was never asked for its login', async () => {
+        // Each of these fails the same way whatever password is typed, because it fails before
+        // the password is sent - and each one, left in the library's words, reads as a
+        // password that is being ignored.
+        const reason = async (
+            cause: Error,
+            proxy: TelegramProxy,
+            where: 'at the proxy' | 'in the tunnel' = 'at the proxy'
+        ): Promise<string> => {
+            const failing = createTelegram({
+                settings: () => SETTINGS,
+                through: () => () => Promise.reject(new TypeError('fetch failed', { cause })),
+                stoppedAtProxy: () => where === 'at the proxy'
+            });
+            return (await failing.testProxy(proxy)).reason;
+        };
+
+        // https:// chosen for a proxy that only speaks http.
+        expect(
+            await reason(
+                coded('1C5A0000:error:0A0000C6:SSL routines', 'ERR_SSL_PACKET_LENGTH_TOO_LONG'),
+                PROXY_ONE
+            )
+        ).toBe('this proxy does not use TLS - set its type to http://');
+
+        // http:// chosen for one that only speaks https: a TLS port answers 400, or TLS.
+        const plain = { ...PROXY_ONE, protocol: 'http' as const };
+        expect(
+            await reason(new Error('Proxy response (400) !== 200 when HTTP Tunneling'), plain)
+        ).toMatch(/^the proxy refused the tunnel \(400\) - .* set its type to https:\/\/$/);
+        expect(
+            await reason(
+                named('HTTPParserError', 'Response does not match the HTTP/1.1 protocol'),
+                plain
+            )
+        ).toMatch(/^the proxy did not answer in HTTP - .* set its type to https:\/\/$/);
+
+        // And a certificate nobody vouches for, which Node says without saying whose.
+        expect(
+            await reason(coded('self-signed certificate', 'DEPTH_ZERO_SELF_SIGNED_CERT'), PROXY_ONE)
+        ).toBe("the proxy's certificate is not trusted (self-signed certificate)");
+        expect(
+            await reason(
+                coded(
+                    "Hostname/IP does not match certificate's altnames",
+                    'ERR_TLS_CERT_ALTNAME_INVALID'
+                ),
+                PROXY_ONE
+            )
+        ).toMatch(/^the proxy's certificate is not trusted \(Hostname/);
+    });
+
+    it('does not blame the proxy for a certificate that was shown inside its tunnel', async () => {
+        // The same error, word for word, and it calls for the opposite: not a proxy that needs
+        // a better certificate, but one that is answering in the API host's place.
+        const inTunnel = createTelegram({
+            settings: () => SETTINGS,
+            through: () => () =>
+                Promise.reject(
+                    new TypeError('fetch failed', {
+                        cause: coded('self-signed certificate', 'DEPTH_ZERO_SELF_SIGNED_CERT')
+                    })
+                ),
+            stoppedAtProxy: () => false
+        });
+
+        for (const proxy of [PROXY_ONE, PROXY_TWO]) {
+            expect((await inTunnel.testProxy(proxy)).reason).toBe(
+                "the API host's certificate, as seen through this proxy, is not trusted (self-signed certificate)"
+            );
+        }
+    });
+
+    it('says whether a refused login was a wrong one or a missing one', async () => {
+        const refusing = createTelegram({
+            settings: () => SETTINGS,
+            through: () => () =>
+                Promise.reject(
+                    new TypeError('fetch failed', {
+                        cause: new Error('Proxy response (407) !== 200 when HTTP Tunneling')
+                    })
+                )
+        });
+
+        expect((await refusing.testProxy(PROXY_ONE)).reason).toBe(
+            'the proxy refused the username and password (407)'
+        );
+        expect((await refusing.testProxy(PROXY_TWO)).reason).toBe(
+            'the proxy asks for a username and password (407)'
+        );
+        // A password on its own is still a login that was sent.
+        expect((await refusing.testProxy({ ...PROXY_TWO, password: 'only' })).reason).toBe(
+            'the proxy refused the username and password (407)'
+        );
     });
 
     it('uses a proxy that has just passed its test, resting or not', async () => {
@@ -458,7 +564,12 @@ describe('the telegram client, through proxies', () => {
 });
 
 describe('the telegram client, through a real proxy', () => {
-    it('tunnels a message and an upload to the API host, signed in to the proxy', async () => {
+    it.each([
+        // Everything that would need escaping in an address.
+        { username: 'shop', password: 'p@ss:w/rd #1' },
+        // And a password with no name beside it, which is still a password to send.
+        { username: '', password: 'only a password' }
+    ])('tunnels a message and an upload to the API host, signed in as %j', async (login) => {
         // THE ONE TEST HERE THAT OPENS SOCKETS, all of them on this machine. Everything above
         // hands the client a fake road; this is the real one, and what it proves cannot be
         // faked: that the proxy agent from the `undici` package and the `fetch` that comes with
@@ -500,16 +611,7 @@ describe('the telegram client, through a real proxy', () => {
                 settings: () => ({
                     ...SETTINGS,
                     baseUrl: `http://127.0.0.1:${apiPort}`,
-                    proxies: [
-                        {
-                            protocol: 'http',
-                            server: '127.0.0.1',
-                            port: proxyPort,
-                            username: 'shop',
-                            // Everything that would need escaping in an address.
-                            password: 'p@ss:w/rd #1'
-                        }
-                    ]
+                    proxies: [{ protocol: 'http', server: '127.0.0.1', port: proxyPort, ...login }]
                 })
             });
 
@@ -523,7 +625,7 @@ describe('the telegram client, through a real proxy', () => {
             for (const tunnel of tunnels) {
                 expect(tunnel).toEqual({
                     to: `127.0.0.1:${apiPort}`,
-                    login: `Basic ${Buffer.from('shop:p@ss:w/rd #1').toString('base64')}`
+                    login: `Basic ${Buffer.from(`${login.username}:${login.password}`).toString('base64')}`
                 });
             }
 
@@ -541,6 +643,35 @@ describe('the telegram client, through a real proxy', () => {
             api.closeAllConnections();
             api.close();
             proxy.close();
+        }
+    });
+});
+
+describe('the telegram client, at a proxy that is not what its row says', () => {
+    it('knows a failure to reach the proxy from one inside its tunnel', async () => {
+        // Real sockets again, because what is proved is that the marking is real: an https://
+        // row pointed at a port that speaks plain http fails in the TLS to the PROXY, and has to
+        // be reported as the proxy's - not as a certificate or a handshake somewhere beyond it.
+        const plain = createServer();
+        const port = await listening(plain);
+        try {
+            const telegram = createTelegram({ settings: () => SETTINGS, timeoutMs: 5000 });
+
+            expect(
+                await telegram.testProxy({
+                    protocol: 'https',
+                    server: '127.0.0.1',
+                    port,
+                    username: 'shop',
+                    password: 's3cret'
+                })
+            ).toMatchObject({
+                ok: false,
+                reason: 'this proxy does not use TLS - set its type to http://'
+            });
+        } finally {
+            plain.closeAllConnections();
+            plain.close();
         }
     });
 });
@@ -567,12 +698,63 @@ describe('a proxy address', () => {
             server: '2001:db8::1',
             port: 8080
         });
+        // One proxy, however its name was capitalised, and with the `/` a browser adds.
+        expect(parseProxyUrl('HTTPS://Proxy.Example.com:8443/')).toMatchObject({
+            protocol: 'https',
+            server: 'proxy.example.com',
+            port: 8443
+        });
+    });
+
+    it('is read as the line a seller hands out, too', () => {
+        expect(parseProxyUrl('1.2.3.4:3128:shop:s3cret')).toEqual({
+            protocol: 'http',
+            server: '1.2.3.4',
+            port: 3128,
+            username: 'shop',
+            password: 's3cret'
+        });
+        // The password is whatever is left, colons and all - and the kind can be put in front.
+        expect(parseProxyUrl('1.2.3.4:3128:shop:p@ss:w/rd')).toMatchObject({
+            server: '1.2.3.4',
+            username: 'shop',
+            password: 'p@ss:w/rd'
+        });
+        expect(parseProxyUrl('https://proxy.example.com:443:shop:s3cret')).toEqual({
+            protocol: 'https',
+            server: 'proxy.example.com',
+            port: 443,
+            username: 'shop',
+            password: 's3cret'
+        });
+    });
+
+    it('keeps a password that was pasted as it is, not percent-encoded', () => {
+        // A URL parser ends the host at the first of these, reads `shop` as the server, and
+        // drops the login - which is a proxy saved with no password and nothing to say so.
+        for (const password of ['p/ss', 'p#ss', 'p?ss', 'p@ss', '100%', '8080:a:b']) {
+            expect(
+                parseProxyUrl(`https://shop:${password}@proxy.example.com:8443`),
+                password
+            ).toEqual({
+                protocol: 'https',
+                server: 'proxy.example.com',
+                port: 8443,
+                username: 'shop',
+                password
+            });
+        }
+        expect(parseProxyUrl('https://:only@proxy.example.com')).toMatchObject({
+            username: '',
+            password: 'only'
+        });
     });
 
     it('reads nothing out of a proxy the bot cannot use', () => {
         expect(parseProxyUrl('socks5://1.2.3.4:1080')).toBeNull();
         expect(parseProxyUrl('tg://proxy?server=1.2.3.4&port=443&secret=00')).toBeNull();
         expect(parseProxyUrl('http://1.2.3.4:99999')).toBeNull();
+        expect(parseProxyUrl('proxy example com')).toBeNull();
         expect(parseProxyUrl('')).toBeNull();
     });
 });
@@ -603,8 +785,16 @@ describe('a proxy password left blank', () => {
         }
     });
 
-    it('is no password at all once there is no name to sign in with', () => {
-        expect(keepPasswords([{ ...PROXY_ONE, username: '', password: 'left over' }], [])).toEqual([
+    it('is kept for a proxy that has a password and no username, like any other', () => {
+        // It used to be thrown away, on the grounds that there was nobody to sign in as - and
+        // the console went on to say nothing about it.
+        const nameless = { ...PROXY_ONE, username: '', password: 'only a password' };
+        expect(keepPasswords([nameless], [])).toEqual([nameless]);
+        expect(keepPasswords([{ ...nameless, password: '' }], [nameless])).toEqual([nameless]);
+
+        // Taking the username off is how a login is removed, and it still is: the address
+        // without it is another address, with nothing stored for it.
+        expect(keepPasswords([{ ...PROXY_ONE, username: '', password: '' }], stored)).toEqual([
             { ...PROXY_ONE, username: '', password: '' }
         ]);
     });

@@ -13,7 +13,8 @@ import { z } from 'zod';
  * tunnel is to Telegram, from the network in between.
  *
  * THE PASSWORD IS WRITE-ONLY, like every other credential the console holds. A blank one means
- * "the one already stored for this address" - see `keepPasswords`.
+ * "the one already stored for this address" - see `keepPasswords`. It is sent to the proxy
+ * whenever there is one, with a username or without.
  */
 export const telegramProxy = z.object({
     protocol: z.enum(['http', 'https']),
@@ -60,10 +61,7 @@ export function proxyAddress(proxy: Omit<TelegramProxy, 'password'>): string {
  */
 export function keepPasswords(next: TelegramProxy[], stored: TelegramProxy[]): TelegramProxy[] {
     return next.map((proxy) => {
-        if (proxy.username === '') {
-            // Nobody to sign in as, so nothing to sign in with.
-            return { ...proxy, password: '' };
-        }
+        // A password that was typed is the password, with a username beside it or without.
         if (proxy.password !== '') {
             return proxy;
         }
@@ -72,34 +70,68 @@ export function keepPasswords(next: TelegramProxy[], stored: TelegramProxy[]): T
     });
 }
 
+/** @internal Percent-decoded when it decodes, and as it was typed when it does not. */
+function unescaped(part: string): string {
+    try {
+        return decodeURIComponent(part);
+    } catch {
+        return part;
+    }
+}
+
 /**
- * A proxy read out of the address it is usually handed around as -
- * `https://user:pass@host:8443`, or a bare `host:port`, which is taken for plain http - or
- * null when the text is not one. Any other kind of proxy is not one: the bot can only use
- * these two.
+ * A proxy read out of the text it is usually handed around as, or null when the text is not
+ * one. Any other kind of proxy is not one: the bot can only use these two.
+ *
+ * TWO WAYS OF WRITING ONE ARE READ. An address, `https://user:pass@host:8443`, where no scheme
+ * is taken for plain http and no port for the one the scheme implies. And the line a seller's
+ * list has, `host:port:user:pass`.
+ *
+ * SPLIT BY HAND, NOT BY `new URL`. A password is pasted as it is, not percent-encoded, and a
+ * `/` or a `#` in one makes a URL parser end the host early: it then reads a different server
+ * out of the same text and drops the login without a word. The login here is everything up to
+ * the LAST `@`, whatever is in it.
  */
 export function parseProxyUrl(text: string): TelegramProxy | null {
     const trimmed = text.trim();
-    try {
-        const url = new URL(
-            /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
-        );
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-            return null;
-        }
-        const parsed = telegramProxy.safeParse({
-            protocol: url.protocol.slice(0, -1),
-            server: url.hostname.replace(/^\[|\]$/g, ''),
-            // A URL drops the port when it is the one its scheme implies.
-            port: Number(url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : url.port),
-            // Both are percent-encoded in a URL, and neither is on the wire to the proxy.
-            username: decodeURIComponent(url.username),
-            password: decodeURIComponent(url.password)
-        });
-        return parsed.success ? parsed.data : null;
-    } catch {
+    const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed);
+    const protocol = scheme === null ? 'http' : scheme[1].toLowerCase();
+    const rest = scheme === null ? trimmed : trimmed.slice(scheme[0].length);
+
+    // The seller's line. Not looked for in an address that has its login in front of an `@`,
+    // where a password of `8080:a:b` would otherwise be read as one.
+    const line =
+        scheme === null || !rest.includes('@')
+            ? /^([a-z0-9.-]+):(\d+):([^:]*):(.*)$/i.exec(rest)
+            : null;
+    if (line !== null) {
+        const [, server, port, username, password] = line;
+        return checked({ protocol, server, port: Number(port), username, password });
+    }
+
+    const at = rest.lastIndexOf('@');
+    const [username = '', ...password] = at === -1 ? [] : rest.slice(0, at).split(':');
+    const place = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d+))?$/i.exec(
+        // An address may end in a `/`, and nothing after one says where the proxy is.
+        rest.slice(at + 1).replace(/[/?#].*$/, '')
+    );
+    if (place === null) {
         return null;
     }
+    return checked({
+        protocol,
+        server: place[1].replace(/^\[|\]$/g, ''),
+        port: Number(place[2] ?? (protocol === 'https' ? 443 : 80)),
+        username: unescaped(username),
+        password: unescaped(password.join(':'))
+    });
+}
+
+/** @internal What was read, if it is a proxy: this is where a `socks5://` one stops. */
+function checked(read: Record<keyof TelegramProxy, unknown>): TelegramProxy | null {
+    const parsed = telegramProxy.safeParse(read);
+    // A host name means the same in either case, and one proxy must not become two rows.
+    return parsed.success ? { ...parsed.data, server: parsed.data.server.toLowerCase() } : null;
 }
 
 /**

@@ -16,19 +16,25 @@
 // further up the page is a delete that did not happen, and the operator finds out when the
 // bot is still using the proxy they thought was gone. «تست» is separate from all of it - it
 // tries the row and changes nothing.
+//
+// THERE ARE TWO «تست» BUTTONS AND THEY TRY DIFFERENT THINGS. The one on a row tries the proxy
+// as it is SAVED, with the password this page was never shown. The one in the form tries what
+// is in the boxes, password included, before any of it is saved - which is the only way to
+// find out that a password is wrong without first storing it.
 import {
     Activity,
     AlertTriangle,
     CircleCheck,
     CircleX,
     DatabaseBackup,
+    KeyRound,
     Plus,
     Radio,
     Save,
     Send,
     Trash2
 } from 'lucide-react';
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { client, failureText } from '../../../lib/api.ts';
 import {
@@ -102,6 +108,32 @@ function unchanged(proxy: TelegramProxyView): TelegramProxy {
     };
 }
 
+/**
+ * What a test found, or nothing while there is nothing to say. Said in words and an icon, not
+ * in colour alone. The element it sits in is always in the tree and has `role="status"`, so a
+ * result that arrives later is announced rather than only drawn.
+ */
+function TestResult(props: { result: TelegramProxyTest | null | undefined }): ReactNode {
+    const { result } = props;
+    if (result === null || result === undefined) {
+        return null;
+    }
+    return result.ok ? (
+        <>
+            <CircleCheck className="size-4 shrink-0 text-firouze" aria-hidden="true" />
+            <span className="font-bold text-firouze">سالم، {count(result.ms)} میلی‌ثانیه</span>
+        </>
+    ) : (
+        <>
+            <CircleX className="size-4 shrink-0 text-danger" aria-hidden="true" />
+            <span className="font-bold text-danger">ناموفق:</span>
+            <span dir="ltr" className="latin break-words text-danger">
+                {result.reason}
+            </span>
+        </>
+    );
+}
+
 export default function TelegramSettings(): ReactNode {
     const notify = useToasts();
     const session = useAdminSession();
@@ -125,6 +157,11 @@ export default function TelegramSettings(): ReactNode {
     const [savingProxy, setSavingProxy] = useState(false);
     // `null` while a test is in flight. A row that was never tested has no entry at all.
     const [tests, setTests] = useState<Record<string, TelegramProxyTest | null>>({});
+    // The same for the form, where `undefined` is "not tried as it now stands".
+    const [draftTest, setDraftTest] = useState<TelegramProxyTest | null | undefined>(undefined);
+    // Which try of the form is the current one. An answer to an earlier one is about boxes
+    // that have since been changed, and is dropped.
+    const draftTry = useRef(0);
 
     const load = useCallback(async (): Promise<void> => {
         setLoading(true);
@@ -250,37 +287,48 @@ export default function TelegramSettings(): ReactNode {
         }
     };
 
+    /** Shows the form as `next`. What was said about the form as it stood goes with it. */
     const openDraft = (next: ProxyDraft): void => {
+        draftTry.current += 1;
         setDraftError('');
+        setDraftTest(undefined);
         setDraft(next);
+    };
+
+    /** One box of the form, or several, changed. */
+    const edit = (fields: Partial<ProxyDraft>): void => {
+        if (draft !== null) {
+            openDraft({ ...draft, ...fields });
+        }
     };
 
     /** A pasted address fills the boxes under it. Anything else is left to be typed. */
     const pasteLink = (link: string): void => {
-        if (draft === null) {
+        const parsed = parseProxyUrl(link);
+        if (parsed === null) {
+            edit({ link });
             return;
         }
-        const parsed = parseProxyUrl(link);
-        setDraftError('');
-        setDraft(
-            parsed === null
-                ? { ...draft, link }
-                : {
-                      ...draft,
-                      link,
-                      protocol: parsed.protocol,
-                      server: parsed.server,
-                      port: String(parsed.port),
-                      username: parsed.username,
-                      password: parsed.password
-                  }
-        );
+        edit({
+            link,
+            protocol: parsed.protocol,
+            server: parsed.server,
+            port: String(parsed.port),
+            // An address with no login in it says where the proxy is and nothing about who
+            // signs in to it, so it must not empty two boxes somebody has just filled in.
+            ...(parsed.username === '' && parsed.password === ''
+                ? {}
+                : { username: parsed.username, password: parsed.password })
+        });
     };
 
-    const saveDraft = async (event: FormEvent): Promise<void> => {
-        event.preventDefault();
+    /**
+     * The form as a proxy, or null with the reason shown beside it. Saving and testing both
+     * start here, so what is tested is exactly what would be saved.
+     */
+    const readDraft = (): TelegramProxy | null => {
         if (draft === null) {
-            return;
+            return null;
         }
 
         // The same shape the server enforces, checked here first so the operator gets a
@@ -296,7 +344,7 @@ export default function TelegramSettings(): ReactNode {
             setDraftError(
                 'سرور، پورت یا نام کاربری درست نیست. سرور باید نام دامنه یا IP باشد و پورت عددی بین ۱ و ۶۵۵۳۵.'
             );
-            return;
+            return null;
         }
         const address = proxyAddress(parsed.data);
         const taken = proxies.some(
@@ -304,33 +352,61 @@ export default function TelegramSettings(): ReactNode {
         );
         if (taken) {
             setDraftError('این پراکسی از قبل در فهرست هست.');
-            return;
+            return null;
         }
 
         // A stored password belongs to the address it was typed for, and the server will not
         // carry it to another one. Said here, so the row does not quietly lose its password.
+        // Taking the username off is the one change that means the login is to go.
         const before = draft.index === null ? undefined : proxies[draft.index];
         if (
             before?.passwordSet === true &&
-            parsed.data.username !== '' &&
             parsed.data.password === '' &&
-            proxyAddress(before) !== address
+            proxyAddress(before) !== address &&
+            !(before.username !== '' && parsed.data.username === '')
         ) {
             setDraftError('نشانی یا نام کاربری پراکسی عوض شده است. رمز عبور را دوباره بنویسید.');
+            return null;
+        }
+        return parsed.data;
+    };
+
+    const saveDraft = async (event: FormEvent): Promise<void> => {
+        event.preventDefault();
+        const proxy = readDraft();
+        if (draft === null || proxy === null) {
             return;
         }
 
         const saved =
             draft.index === null
-                ? await saveProxies([...proxies.map(unchanged), parsed.data], 'پراکسی اضافه شد')
+                ? await saveProxies([...proxies.map(unchanged), proxy], 'پراکسی اضافه شد')
                 : await saveProxies(
-                      proxies.map((proxy, index) =>
-                          index === draft.index ? parsed.data : unchanged(proxy)
-                      ),
+                      proxies.map((old, index) => (index === draft.index ? proxy : unchanged(old))),
                       'پراکسی ذخیره شد'
                   );
         if (saved) {
             setDraft(null);
+        }
+    };
+
+    /** Tries the form as it stands, with the password in its box, and saves nothing. */
+    const testDraft = async (): Promise<void> => {
+        const proxy = readDraft();
+        if (proxy === null) {
+            return;
+        }
+        draftTry.current += 1;
+        const asked = draftTry.current;
+        setDraftTest(null);
+        let result: TelegramProxyTest;
+        try {
+            result = await client.admin.testTelegramProxy({ input: proxy });
+        } catch (failure) {
+            result = { ok: false, reason: failureText(failure, 'تست انجام نشد'), ms: 0 };
+        }
+        if (asked === draftTry.current) {
+            setDraftTest(result);
         }
     };
 
@@ -526,42 +602,24 @@ export default function TelegramSettings(): ReactNode {
                                                 >
                                                     {id}
                                                 </span>
-                                                {/* Always in the tree, so a result that
-                                                    arrives later is announced rather than
-                                                    only drawn. Said in words and an icon,
-                                                    not in colour alone. */}
+                                                {/* The password itself never comes back to
+                                                    this page. That one is stored does, and a
+                                                    row has to show it: without this there is
+                                                    nothing to say the password was taken. */}
+                                                {proxy.passwordSet && (
+                                                    <span className="flex items-center gap-1 text-caption text-muted">
+                                                        <KeyRound
+                                                            className="size-3.5 shrink-0"
+                                                            aria-hidden="true"
+                                                        />
+                                                        با رمز عبور
+                                                    </span>
+                                                )}
                                                 <span
                                                     role="status"
                                                     className="flex items-center gap-1 text-caption"
                                                 >
-                                                    {result?.ok === true && (
-                                                        <>
-                                                            <CircleCheck
-                                                                className="size-4 shrink-0 text-firouze"
-                                                                aria-hidden="true"
-                                                            />
-                                                            <span className="font-bold text-firouze">
-                                                                سالم، {count(result.ms)} میلی‌ثانیه
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                    {result?.ok === false && (
-                                                        <>
-                                                            <CircleX
-                                                                className="size-4 shrink-0 text-danger"
-                                                                aria-hidden="true"
-                                                            />
-                                                            <span className="font-bold text-danger">
-                                                                ناموفق:
-                                                            </span>
-                                                            <span
-                                                                dir="ltr"
-                                                                className="latin break-all text-danger"
-                                                            >
-                                                                {result.reason}
-                                                            </span>
-                                                        </>
-                                                    )}
+                                                    <TestResult result={result} />
                                                 </span>
                                             </div>
 
@@ -626,7 +684,13 @@ export default function TelegramSettings(): ReactNode {
                                     label="آدرس پراکسی"
                                     htmlFor="proxy-link"
                                     className="mt-4"
-                                    hint="آدرس کامل پراکسی را اینجا بچسبانید تا خانه‌های پایین پر شود. یا آن‌ها را دستی بنویسید."
+                                    hint="آدرس کامل پراکسی را اینجا بچسبانید تا خانه‌های پایین پر شود؛ به شکل host:port:user:pass هم خوانده می‌شود. یا آن‌ها را دستی بنویسید."
+                                    error={
+                                        draft.link.trim() !== '' &&
+                                        parseProxyUrl(draft.link) === null
+                                            ? 'این آدرس خوانده نشد. فقط پراکسی HTTP و HTTPS پشتیبانی می‌شود؛ خانه‌های پایین را دستی پر کنید.'
+                                            : ''
+                                    }
                                 >
                                     <TextInput
                                         id="proxy-link"
@@ -651,13 +715,11 @@ export default function TelegramSettings(): ReactNode {
                                             label="نوع اتصال به پراکسی"
                                             value={draft.protocol}
                                             options={PROTOCOL_OPTIONS}
-                                            onChange={(next) => {
-                                                setDraftError('');
-                                                setDraft({
-                                                    ...draft,
+                                            onChange={(next) =>
+                                                edit({
                                                     protocol: next as TelegramProxy['protocol']
-                                                });
-                                            }}
+                                                })
+                                            }
                                         />
                                     </Field>
                                     <Field label="سرور" htmlFor="proxy-server">
@@ -669,10 +731,7 @@ export default function TelegramSettings(): ReactNode {
                                             placeholder="proxy.example.com"
                                             invalid={draftError !== ''}
                                             value={draft.server}
-                                            onChange={(next) => {
-                                                setDraftError('');
-                                                setDraft({ ...draft, server: next });
-                                            }}
+                                            onChange={(next) => edit({ server: next })}
                                         />
                                     </Field>
                                     <Field label="پورت" htmlFor="proxy-port">
@@ -685,10 +744,7 @@ export default function TelegramSettings(): ReactNode {
                                             placeholder="8080"
                                             invalid={draftError !== ''}
                                             value={draft.port}
-                                            onChange={(next) => {
-                                                setDraftError('');
-                                                setDraft({ ...draft, port: next });
-                                            }}
+                                            onChange={(next) => edit({ port: next })}
                                         />
                                     </Field>
                                 </div>
@@ -697,7 +753,7 @@ export default function TelegramSettings(): ReactNode {
                                     <Field
                                         label="نام کاربری"
                                         htmlFor="proxy-username"
-                                        hint="اگر پراکسی نام کاربری و رمز ندارد، هر دو را خالی بگذارید."
+                                        hint="اگر پراکسی نام کاربری و رمز ندارد، هر دو را خالی بگذارید. هرچه در این دو خانه باشد برای پراکسی فرستاده می‌شود."
                                     >
                                         <TextInput
                                             id="proxy-username"
@@ -706,10 +762,7 @@ export default function TelegramSettings(): ReactNode {
                                             autoComplete="off"
                                             invalid={draftError !== ''}
                                             value={draft.username}
-                                            onChange={(next) => {
-                                                setDraftError('');
-                                                setDraft({ ...draft, username: next });
-                                            }}
+                                            onChange={(next) => edit({ username: next })}
                                         />
                                     </Field>
                                     <Field
@@ -733,15 +786,12 @@ export default function TelegramSettings(): ReactNode {
                                             }
                                             invalid={draftError !== ''}
                                             value={draft.password}
-                                            onChange={(next) => {
-                                                setDraftError('');
-                                                setDraft({ ...draft, password: next });
-                                            }}
+                                            onChange={(next) => edit({ password: next })}
                                         />
                                     </Field>
                                 </div>
 
-                                <div className="mt-5 flex gap-2">
+                                <div className="mt-5 flex flex-wrap gap-2">
                                     <Button
                                         type="submit"
                                         variant="primary"
@@ -751,8 +801,22 @@ export default function TelegramSettings(): ReactNode {
                                     >
                                         ذخیره
                                     </Button>
+                                    <Button
+                                        glyph={Activity}
+                                        busy={draftTest === null}
+                                        busyText="در حال تست..."
+                                        onClick={() => void testDraft()}
+                                    >
+                                        تست همین مقادیر
+                                    </Button>
                                     <Button onClick={() => setDraft(null)}>انصراف</Button>
                                 </div>
+                                <p
+                                    role="status"
+                                    className="mt-3 flex flex-wrap items-center gap-1 text-caption"
+                                >
+                                    <TestResult result={draftTest} />
+                                </p>
                             </form>
                         )}
                     </div>
