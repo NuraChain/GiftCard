@@ -28,7 +28,6 @@ The network is worked out from the address. There is no network field.
 
 | Network | Shape                                    | Check                                                                              |
 | ------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
-| `TRC20` | `T` + 33 base58 characters (34 in total) | Full base58check, so a mistyped character is refused **before** the code is spent. |
 | `ERC20` | `0x` + 40 hex characters                 | Shape only. EIP-55 is not verified here, so the letter case is kept as sent.       |
 
 Invisible characters (zero-width and bidi marks that come with text pasted from Telegram) are
@@ -80,11 +79,11 @@ Every error has the same envelope:
 Request:
 
 ```bash
-curl -X POST https://shop.example.com/api/redeem \
+curl -X POST https://ashbringer.org/api/redeem \
   -H 'Content-Type: application/json' \
   -d '{
         "code": "3f2b8c1e-9a4d-4e7b-8f21-6c5d0a9e7b14",
-        "wallet_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+        "wallet_address": "0x2Ef2D5A095Fd5Ecd686d99eD3cd1F9ff91fc3167"
       }'
 ```
 
@@ -93,8 +92,7 @@ Response, `200 OK`:
 ```json
 {
     "amount": 10,
-    "network": "TRC20",
-    "wallet": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    "wallet": "0x2Ef2D5A095Fd5Ecd686d99eD3cd1F9ff91fc3167",
     "at": "2026-10-20T15:42:07.318Z",
     "notified": true
 }
@@ -137,6 +135,3 @@ An unknown or unsold code, `404 Not Found`:
     }
 }
 ```
-
-The source of truth is `server/src/features/redeem/contract.ts` (shapes) and
-`server/src/features/redeem/routes.ts` (rules).
