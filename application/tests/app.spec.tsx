@@ -27,7 +27,7 @@ function catalogBody(overrides: { toman?: number | null } = {}): Record<string, 
                 amount: 10,
                 toman: 'toman' in overrides ? overrides.toman : TEN_DOLLAR_TOMAN,
                 available: 4,
-                title: 'کارت ده دلاری',
+                title: 'گیفت کارت نورا ۱۰ دلاری',
                 blurb: 'رایج‌ترین انتخاب.',
                 recommended: true
             }

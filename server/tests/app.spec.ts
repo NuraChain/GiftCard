@@ -372,7 +372,7 @@ describe('the shop', () => {
         expect(ten?.available).toBe(3);
         // The card's words come from the catalogue too, so a tier added at runtime is not a
         // blank card on the shop.
-        expect(ten?.title).toBe('کارت ده دلاری');
+        expect(ten?.title).toBe('گیفت کارت نورا ۱۰ دلاری');
         expect(ten?.recommended).toBe(true);
         expect(body.tiers.find((tier) => tier.amount === 5)?.available).toBe(0);
     });
@@ -1161,7 +1161,7 @@ describe('the catalogue', () => {
                 '/api/admin/tiers',
                 {
                     amount: 5,
-                    title: 'کارت پنج دلاری',
+                    title: 'گیفت کارت نورا ۵ دلاری',
                     blurb: 'x',
                     recommended: true,
                     active: true,
