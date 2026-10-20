@@ -21,6 +21,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { keepPasswords, telegramProxyList, type TelegramProxy } from '../../contract/shared.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
+import { smsConfigured } from '../checkout/panelsms.ts';
 import {
     DEFAULT_BACKUP_MINUTES,
     MAX_BACKUP_MINUTES,
@@ -97,7 +98,7 @@ export interface RuntimeSettings {
     zibalMerchant: string;
 
     /**
-     * The SMS panel's send-by-link address and what it is called with - see
+     * The SMS panel's send-by-link or web-service address and what it is called with - see
      * features/checkout/panelsms.ts. `smsApiKey` IS THE PANEL PASSWORD: the name predates
      * knowing that this panel signs a request with a username and a password, not a key.
      */
@@ -478,13 +479,13 @@ export function createSettings(options: SettingsOptions): Settings {
                 tetherToman: live.tetherToman,
                 tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,
-                smsReady: ![
-                    live.smsApiUrl,
-                    live.smsUsername,
-                    live.smsApiKey,
-                    live.smsDomain,
-                    live.smsSender
-                ].includes(''),
+                smsReady: smsConfigured({
+                    apiUrl: live.smsApiUrl,
+                    username: live.smsUsername,
+                    password: live.smsApiKey,
+                    domain: live.smsDomain,
+                    sender: live.smsSender
+                }),
                 callbackUrl,
                 keyRotated: options.store.getSetting('adminKeyHash') !== undefined
             };

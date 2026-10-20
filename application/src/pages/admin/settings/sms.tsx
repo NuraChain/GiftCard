@@ -112,9 +112,9 @@ export default function SmsSettings(): ReactNode {
                 پنل پیامک
             </h2>
             <p className="mt-2 text-small text-muted">
-                پس از تأیید پرداخت، کد خرید به شماره موبایل خریدار پیامک می‌شود. پیامک با «ارسال از
-                طریق لینک» پنل فرستاده می‌شود: همان آدرس sendsmslink.aspx با FROM، TO، TEXT،
-                USERNAME، PASSWORD و DOMAIN.
+                پس از تأیید پرداخت، کد خرید به شماره موبایل خریدار پیامک می‌شود. پیامک یا با «ارسال
+                از طریق لینک» پنل فرستاده می‌شود (آدرس sendsmslink.aspx) یا با وب‌سرویس پنل (آدرس
+                service.asmx)؛ کدام یک، از روی آدرسی که وارد می‌کنید تشخیص داده می‌شود.
             </p>
 
             <div className="mt-4">
@@ -133,9 +133,9 @@ export default function SmsSettings(): ReactNode {
                     >
                         <div className="grid gap-4 sm:grid-cols-2">
                             <Field
-                                label="آدرس لینک ارسال"
+                                label="آدرس ارسال"
                                 htmlFor="sms-api-url"
-                                hint="آدرس sendsmslink.aspx پنل. لینک نمونهٔ پنل را هم می‌توانید کامل بچسبانید؛ مقدارها از همین فرم جایگزین می‌شوند."
+                                hint="آدرس sendsmslink.aspx پنل (لینک نمونه را هم می‌توانید کامل بچسبانید)، یا آدرس وب‌سرویس: https://webservice.0098vip.com/service.asmx"
                             >
                                 <TextInput
                                     id="sms-api-url"
@@ -188,7 +188,7 @@ export default function SmsSettings(): ReactNode {
                             <Field
                                 label="دامنه (DOMAIN)"
                                 htmlFor="sms-domain"
-                                hint="همان مقداری که پنل شما برای DOMAIN در لینک نمونه می‌دهد."
+                                hint="همان مقداری که پنل شما برای DOMAIN در لینک نمونه می‌دهد. وب‌سرویس به آن نیازی ندارد."
                             >
                                 <TextInput
                                     id="sms-domain"

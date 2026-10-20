@@ -73,7 +73,7 @@ export const settingsView = z.object({
     zibalMerchantSet: z.boolean(),
 
     /**
-     * The SMS panel's send-by-link address, and the five things it is called with. The
+     * The SMS panel's send-by-link or web-service address, and what it is called with. The
      * password is write-only; it is stored under `smsApiKey`, a name from before it was known
      * that this panel has a username and a password rather than a key.
      */
@@ -93,7 +93,10 @@ export const settingsView = z.object({
     /** The markup over the tether rate, in percent. Every card's price rides on it. */
     marginPercent: z.number(),
 
-    /** Delivery runs when the address, username, password, domain and sender are all set. */
+    /**
+     * Delivery runs when the address, username, password and sender are all set - and the
+     * domain too, for the send-by-link page. The web service does not take one.
+     */
     smsReady: z.boolean(),
 
     /**
