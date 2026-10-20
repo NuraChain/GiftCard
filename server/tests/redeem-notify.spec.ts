@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SmsResult, SmsSender } from '../src/features/checkout/panelsms.ts';
-import { anyPayoutNotifier, createSmsPayoutNotifier } from '../src/features/redeem/notify.ts';
-import type { PayoutNotifier } from '../src/features/telegram/notify.ts';
+import {
+    anyPayoutNotifier,
+    createSmsPayoutNotifier,
+    createSmsSaleNotifier,
+    everySaleNotifier
+} from '../src/features/redeem/notify.ts';
+import type { PayoutNotifier, SaleNotifier } from '../src/features/telegram/notify.ts';
 
 const PAYOUT = {
     amount: 25,
@@ -11,6 +16,16 @@ const PAYOUT = {
     phone: '+989121234567',
     code: 'NC-1234-5678-9ABC',
     claimedAt: '2026-10-20T10:00:00.000Z'
+};
+
+const SALE = {
+    amount: 10,
+    toman: 1_000_000,
+    phone: '+989121234567',
+    refId: 123,
+    receipt: 'r-1',
+    remaining: 4,
+    codeDelivered: true
 };
 
 function sms(result: SmsResult = { ok: true }) {
@@ -22,30 +37,18 @@ function notifier(result: Awaited<ReturnType<PayoutNotifier['redeemed']>>): Payo
     return { redeemed: () => Promise.resolve(result) };
 }
 
+const OPERATOR = { operatorPhone: () => '0912 765 4321', appName: () => 'اشبرینگر' };
+
 describe('the payout ask by SMS', () => {
-    it("texts the operator's phone with the amount, the chain and the address", async () => {
+    it("texts the operator's phone that a code was redeemed", async () => {
         const sender = sms();
-        const payouts = createSmsPayoutNotifier({
-            sms: sender,
-            operatorPhone: () => '0912 765 4321',
-            appName: () => 'اشبرینگر'
-        });
+        const payouts = createSmsPayoutNotifier({ sms: sender, ...OPERATOR });
 
         expect(await payouts.redeemed(PAYOUT)).toEqual({ ok: true });
-        expect(sender.sendText).toHaveBeenCalledOnce();
-
-        const [phone, text] = sender.sendText.mock.calls[0];
         // Canonical, as every other number the panel is handed.
-        expect(phone).toBe('+989127654321');
-        expect(text.split('\n')).toEqual([
-            'برداشت 25 دلار USDT - اشبرینگر',
-            'شبکه: TRC20',
-            // A line of its own, so tapping it copies the address and nothing else.
-            PAYOUT.wallet,
-            'کد: NC-1234-...'
+        expect(sender.sendText.mock.calls).toEqual([
+            ['+989127654321', 'یک کد ثبت شد\n\nفروشگاه اشبرینگر']
         ]);
-        // Never the whole code: a text message is not where a spendable code belongs.
-        expect(text).not.toContain(PAYOUT.code);
     });
 
     it('sends nothing when no operator phone is set', async () => {
@@ -68,14 +71,72 @@ describe('the payout ask by SMS', () => {
     it('passes on why the panel refused', async () => {
         const payouts = createSmsPayoutNotifier({
             sms: sms({ ok: false, reason: 'PanelSMS returned code -19: not enough panel credit' }),
-            operatorPhone: () => '09127654321',
-            appName: () => 'اشبرینگر'
+            ...OPERATOR
         });
 
         expect(await payouts.redeemed(PAYOUT)).toEqual({
             ok: false,
             reason: 'PanelSMS returned code -19: not enough panel credit'
         });
+    });
+});
+
+describe('the sale ping by SMS', () => {
+    it("texts the operator's phone that a code was sold", () => {
+        const sender = sms();
+        createSmsSaleNotifier({ sms: sender, ...OPERATOR }).sold(SALE);
+
+        expect(sender.sendText.mock.calls).toEqual([
+            ['+989127654321', 'یک کد فروخته شد\n\nفروشگاه اشبرینگر']
+        ]);
+    });
+
+    it('says so when the money was taken with no code to give', () => {
+        const sender = sms();
+        createSmsSaleNotifier({ sms: sender, ...OPERATOR }).sold({ ...SALE, codeDelivered: false });
+
+        expect(sender.sendText.mock.calls[0][1]).toBe(
+            'یک فروش بدون کد ثبت شد. رسیدگی کنید\n\nفروشگاه اشبرینگر'
+        );
+    });
+
+    it('sends nothing when no operator phone is set', () => {
+        const sender = sms();
+        createSmsSaleNotifier({
+            sms: sender,
+            operatorPhone: () => '',
+            appName: () => 'اشبرینگر'
+        }).sold(SALE);
+
+        expect(sender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('logs a refusal instead of throwing it at the sale', async () => {
+        const warn = vi.fn<(...args: unknown[]) => void>();
+        createSmsSaleNotifier({
+            sms: sms({ ok: false, reason: 'PanelSMS is not configured' }),
+            ...OPERATOR,
+            log: { warn } as never
+        }).sold(SALE);
+
+        await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
+    });
+});
+
+describe('sending a sale down every road', () => {
+    it('tells every notifier, even after one of them throws', () => {
+        const told = vi.fn<SaleNotifier['sold']>();
+        const both = everySaleNotifier(
+            {
+                sold: () => {
+                    throw new Error('boom');
+                }
+            },
+            { sold: told }
+        );
+
+        expect(() => both.sold(SALE)).not.toThrow();
+        expect(told).toHaveBeenCalledWith(SALE);
     });
 });
 

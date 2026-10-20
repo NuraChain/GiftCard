@@ -205,7 +205,7 @@ export default function SmsSettings(): ReactNode {
                             <Field
                                 label="موبایل اپراتور"
                                 htmlFor="sms-operator-phone"
-                                hint="هر بار که کسی کدی را برداشت (redeem) می‌کند، مبلغ، شبکه و آدرس کیف پول به این شماره پیامک می‌شود. خالی بگذارید تا پیامکی فرستاده نشود."
+                                hint="هر خرید و هر برداشت (redeem) به این شماره پیامک می‌شود. جزئیات در کنسول و تلگرام است. خالی بگذارید تا پیامکی فرستاده نشود."
                             >
                                 <TextInput
                                     id="sms-operator-phone"

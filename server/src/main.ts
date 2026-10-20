@@ -35,7 +35,12 @@ import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings, DEFAULT_ADMIN_KEY } from './features/settings/settings.ts';
 import { createSms } from './features/checkout/panelsms.ts';
-import { anyPayoutNotifier, createSmsPayoutNotifier } from './features/redeem/notify.ts';
+import {
+    anyPayoutNotifier,
+    createSmsPayoutNotifier,
+    createSmsSaleNotifier,
+    everySaleNotifier
+} from './features/redeem/notify.ts';
 import { createStore } from './db/index.ts';
 
 // Redaction happens in the logger rather than at each call site, so no formatter and no
@@ -184,11 +189,20 @@ const sms = createSms({
         };
     }
 });
-const notifier = createSaleNotifier({
-    telegram,
-    appName: () => settings.current().appName,
-    log
-});
+// The sale ping, to the chat and by SMS to the operator's phone - see features/redeem/notify.ts.
+const notifier = everySaleNotifier(
+    createSaleNotifier({
+        telegram,
+        appName: () => settings.current().appName,
+        log
+    }),
+    createSmsSaleNotifier({
+        sms,
+        operatorPhone: () => settings.current().operatorPhone,
+        appName: () => settings.current().appName,
+        log
+    })
+);
 // The payout ask. Same chat as the sale pings, but its result is WAITED FOR: /api/redeem
 // records whether this got through, because a redemption nobody was told about is a person
 // waiting on money that is not coming.
