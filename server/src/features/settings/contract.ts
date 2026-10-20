@@ -194,6 +194,16 @@ export const rotateKeyInput = z.object({
 export const testSmsInput = z.object({ phone: phoneField });
 export const testSmsResult = z.object({ ok: z.boolean(), reason: z.string() });
 
+/**
+ * Proving the ACTIVE gateway takes payments without a buyer paying first: one payment is
+ * opened and left unpaid, which moves no money - an opened payment nobody pays just expires.
+ */
+export const testGatewayResult = z.object({
+    ok: z.boolean(),
+    reason: z.string(),
+    gateway: z.enum(GATEWAYS)
+});
+
 export type SettingsView = z.infer<typeof settingsView>;
 export type SettingsInput = z.infer<typeof settingsInput>;
 export type SettingsLogRow = z.infer<typeof settingsLogRow>;
@@ -204,5 +214,6 @@ export const settingsRoutes = {
     saveSettings: post('/admin/settings', { input: settingsInput, output: settingsView }),
     settingsLog: get('/admin/settings/log', { output: settingsLog }),
     rotateKey: post('/admin/key', { input: rotateKeyInput }),
-    testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult })
+    testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult }),
+    testGateway: post('/admin/test-gateway', { output: testGatewayResult })
 };

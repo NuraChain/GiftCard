@@ -374,7 +374,8 @@ export function buildApp(options: AppOptions): FastifyInstance {
             // Rotation takes the CURRENT key, so it is one more place a credential can be
             // guessed against - guarded and throttled.
             'admin.rotateKey': [requireAdmin, guard(throttle(10, 60_000))],
-            'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))]
+            'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))],
+            'admin.testGateway': [requireAdmin, guard(throttle(5, 60_000))]
         },
 
         // One line per feature. `mountApi` proves the union covers every route in the
@@ -386,7 +387,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
                 ...consoleHandlers({ store, admin }),
                 ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
-                ...settingsHandlers({ settings, admin, sms, callbackUrl, log }),
+                ...settingsHandlers({ settings, admin, sms, payment, callbackUrl, log }),
                 ...rateHandlers({ rate, settings }),
                 ...telegramHandlers({ telegram, backup, settings })
             }

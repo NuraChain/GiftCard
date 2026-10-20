@@ -30,7 +30,7 @@
 //
 // The gateway choice and the two merchants are the fields in the console that change WHERE THE
 // MONEY GOES, so they are the fields that ask a second question before saving.
-import { AlertTriangle, CreditCard, Save } from 'lucide-react';
+import { AlertTriangle, CreditCard, PlugZap, Save } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 import { client, failureText } from '../../../lib/api.ts';
@@ -75,6 +75,7 @@ export default function GatewaySettings(): ReactNode {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
 
     const [formPublicBase, setFormPublicBase] = useState('');
     const [formGateway, setFormGateway] = useState<GatewayName>('zarinpal');
@@ -166,6 +167,25 @@ export default function GatewaySettings(): ReactNode {
             notify.error(failureText(failure, 'ذخیره نشد'));
         } finally {
             setSaving(false);
+        }
+    };
+
+    // Tests what is SAVED, like the status lines below: a merchant typed but not saved is not
+    // what a buyer would be sent to.
+    const testGateway = async (): Promise<void> => {
+        setTesting(true);
+        try {
+            const result = await client.admin.testGateway();
+            const name = GATEWAY_LABELS[result.gateway];
+            if (result.ok) {
+                notify.success(`درگاه ${name} پاسخ داد و پرداخت آزمایشی را پذیرفت`);
+            } else {
+                notify.error(`درگاه ${name} پرداخت را نپذیرفت: ${result.reason}`);
+            }
+        } catch (failure) {
+            notify.error(failureText(failure, 'آزمایش درگاه انجام نشد'));
+        } finally {
+            setTesting(false);
         }
     };
 
@@ -345,16 +365,31 @@ export default function GatewaySettings(): ReactNode {
                             </div>
                         </dl>
 
-                        <Button
-                            type="submit"
-                            variant="primary"
-                            glyph={Save}
-                            className="mt-5"
-                            busy={saving}
-                            busyText="در حال ذخیره..."
-                        >
-                            ذخیره درگاه
-                        </Button>
+                        <div className="mt-5 flex flex-wrap items-center gap-3">
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                glyph={Save}
+                                busy={saving}
+                                busyText="در حال ذخیره..."
+                            >
+                                ذخیره درگاه
+                            </Button>
+                            <Button
+                                type="button"
+                                glyph={PlugZap}
+                                busy={testing}
+                                busyText="در حال آزمایش..."
+                                disabled={!ready}
+                                onClick={() => void testGateway()}
+                            >
+                                آزمایش درگاه
+                            </Button>
+                        </div>
+                        <p className="mt-2 text-caption text-muted">
+                            آزمایش، تنظیمات ذخیره‌شدهٔ درگاه فعال را می‌سنجد: یک پرداخت ۱۰٬۰۰۰ تومانی
+                            باز می‌شود و پرداخت نمی‌شود، پس پولی جابه‌جا نمی‌شود.
+                        </p>
                     </form>
                 </Async>
             </div>

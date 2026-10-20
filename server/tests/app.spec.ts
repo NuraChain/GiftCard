@@ -1502,12 +1502,45 @@ describe('runtime settings', () => {
                 .status
         ).toBe(401);
         expect((await post('/api/admin/test-sms', { phone: '+989121234567' })).status).toBe(401);
+        expect((await post('/api/admin/test-gateway', {})).status).toBe(401);
         // The backup route uploads the WHOLE DATABASE - every unsold code in it. If any route
         // in this file must never answer an anonymous caller, it is this one.
         expect((await get('/api/admin/telegram')).status).toBe(401);
         expect((await post('/api/admin/telegram/test', {})).status).toBe(401);
         expect((await post('/api/admin/telegram/proxy-test', {})).status).toBe(401);
         expect((await post('/api/admin/telegram/backup', {})).status).toBe(401);
+    });
+});
+
+describe('testing the gateway', () => {
+    async function signedIn(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return (response.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+
+    it('opens a payment at the active gateway and does not hand back its page', async () => {
+        const cookie = await signedIn();
+        const answer = await post('/api/admin/test-gateway', {}, { cookie });
+
+        expect(answer.status).toBe(200);
+        // No payUrl: paying it would take money for an order that does not exist.
+        expect(answer.json()).toEqual({ ok: true, reason: '', gateway: 'zarinpal' });
+        expect(fake.opened).toBe(1);
+        expect(fake.callbacks).toEqual([`${settings.current().publicBaseUrl}/api/pay/callback`]);
+        // And no order: a test is not a sale.
+        expect(store.recentOrders(10)).toHaveLength(0);
+    });
+
+    it('passes on why the gateway refused, naming the gateway that was asked', async () => {
+        const cookie = await signedIn();
+        await post('/api/admin/settings', { paymentGateway: 'zibal' }, { cookie });
+        fake.requestOverride = { ok: false, reason: 'zibal: merchant is not active (103)' };
+
+        expect((await post('/api/admin/test-gateway', {}, { cookie })).json()).toEqual({
+            ok: false,
+            reason: 'zibal: merchant is not active (103)',
+            gateway: 'zibal'
+        });
     });
 });
 

@@ -9,6 +9,7 @@ import { ConflictError, UnauthorizedError } from '../../platform/http.ts';
 import type { contract } from '../../contract/index.ts';
 import { normalizePhone } from '../../domain/phone.ts';
 import type { SmsSender } from '../checkout/panelsms.ts';
+import type { PaymentGateway } from '../checkout/zarinpal.ts';
 import { ADMIN_KEY_PATTERN, SESSION_COOKIE, type Admin } from '../console/session.ts';
 import type { Settings } from './settings.ts';
 
@@ -16,6 +17,7 @@ export interface SettingsOptions {
     settings: Settings;
     admin: Admin;
     sms: SmsSender;
+    payment: PaymentGateway;
 
     /** Derived from the public origin the console holds - see app.ts. */
     callbackUrl: () => string;
@@ -26,11 +28,17 @@ export interface SettingsOptions {
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type SettingsHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testSms'
+    'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testSms' | 'testGateway'
 >;
 
+/**
+ * @internal What the test payment is opened for. Above both gateways' minimums, and never
+ * charged: the payment is not paid, and nothing but paying it moves money.
+ */
+const TEST_TOMAN = 10_000;
+
 export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
-    const { settings, admin, sms, callbackUrl, log } = options;
+    const { settings, admin, sms, payment, callbackUrl, log } = options;
 
     return {
         // GET /api/admin/settings
@@ -78,6 +86,21 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             }
             const result = await sms.sendCode(phone, 'TEST-0000-0000', 0);
             return { ok: result.ok, reason: result.ok ? '' : result.reason };
+        },
+
+        // POST /api/admin/test-gateway
+        testGateway: async () => {
+            // Read before the call, so the answer names the gateway that was asked even when
+            // the console switches it in the meantime.
+            const gateway = settings.current().paymentGateway;
+            const result = await payment.request({
+                tomanAmount: TEST_TOMAN,
+                description: 'آزمایش درگاه از کنسول',
+                callbackUrl: callbackUrl()
+            });
+            // The payment page is NOT handed back. Paying it would take money for an order
+            // that does not exist - there is nothing to deliver and nobody to deliver it to.
+            return { ok: result.ok, reason: result.ok ? '' : result.reason, gateway };
         }
     };
 }
