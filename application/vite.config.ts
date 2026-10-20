@@ -19,7 +19,7 @@ export default defineConfig({
             // produces and proxies /api to the server itself. The two are the same
             // arrangement, and keeping the prefix identical is what lets `lib/api.ts`
             // name one base URL for both.
-            '/api': 'http://localhost:4201'
+            '/api': 'http://localhost:4600'
         }
     },
     test: {

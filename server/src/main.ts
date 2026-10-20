@@ -313,6 +313,6 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 //
 // The Docker image sets HOST=0.0.0.0, because loopback inside a container is unreachable from
 // outside it. The paragraph above then applies to the PUBLISHED port instead: publish it on
-// 127.0.0.1 only (`-p 127.0.0.1:4201:4201`) so nginx is still the only way in.
+// 127.0.0.1 only (`-p 127.0.0.1:4600:4600`) so nginx is still the only way in.
 await app.listen({ port: config.port, host: config.host });
 log.info({ host: config.host, port: config.port, env: config.env }, 'listening');

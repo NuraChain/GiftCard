@@ -35,7 +35,7 @@ try {
 }
 
 export const config = loadConfig({
-    port: num('PORT', { default: 4201 }),
+    port: num('PORT', { default: 4600 }),
 
     /**
      * The interface to listen on. LOOPBACK BY DEFAULT - see the note on `listen` in main.ts

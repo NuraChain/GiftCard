@@ -2,7 +2,7 @@
 #
 #   docker build -t ashbringer .
 #   docker run -d --name ashbringer --restart unless-stopped \
-#       -p 127.0.0.1:4201:4201 \
+#       -p 127.0.0.1:4600:4600 \
 #       -v ashbringer-data:/app/server/data \
 #       ashbringer
 #
@@ -37,7 +37,7 @@ FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=4201
+    PORT=4600
 
 # Only the server's runtime dependencies. The server has no build step: Node runs its
 # TypeScript as it is.
@@ -54,7 +54,7 @@ USER node
 
 WORKDIR /app/server
 VOLUME /app/server/data
-EXPOSE 4201
+EXPOSE 4600
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/api/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
