@@ -297,8 +297,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     });
 }
 
-// LOOPBACK ONLY. nginx runs on this machine (scripts/service-install.sh installs the unit
-// beside it) and proxies /api through, so nothing else has any business reaching this port.
+// LOOPBACK BY DEFAULT (`HOST`). nginx runs on this machine and proxies /api through, so
+// nothing else has any business reaching this port.
 //
 // THIS IS WHAT MAKES `TRUST_PROXY_HOPS` TRUE RATHER THAN DECORATIVE. The app trusts the last
 // address in `X-Forwarded-For` because it believes nginx wrote it. Bound to every interface,
@@ -311,8 +311,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 // It also keeps the shop off the network without TLS: this process speaks plain http, and the
 // only thing that makes the site https is the terminator in front of it.
 //
-// This used to bind 0.0.0.0 for a containerised deployment, where nginx was a separate
-// container and loopback would have been unreachable. There is no container now - if one ever
-// returns, this line changes back and the paragraph above is what it costs.
-await app.listen({ port: config.port, host: '127.0.0.1' });
-log.info({ host: '127.0.0.1', port: config.port, env: config.env }, 'listening');
+// The Docker image sets HOST=0.0.0.0, because loopback inside a container is unreachable from
+// outside it. The paragraph above then applies to the PUBLISHED port instead: publish it on
+// 127.0.0.1 only (`-p 127.0.0.1:4201:4201`) so nginx is still the only way in.
+await app.listen({ port: config.port, host: config.host });
+log.info({ host: config.host, port: config.port, env: config.env }, 'listening');

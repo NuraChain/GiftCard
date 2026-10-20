@@ -146,7 +146,8 @@ function mountClient(
         return null;
     }
 
-    // Relative to the process's working directory, which the systemd unit sets to `server/`.
+    // Relative to the process's working directory, which is `server/` - `npm start --workspace
+    // server` runs there, and so does the Docker image.
     const root = isAbsolute(clientDir) ? clientDir : resolve(process.cwd(), clientDir);
     if (!existsSync(join(root, 'index.html'))) {
         log?.warn(

@@ -36,6 +36,14 @@ try {
 
 export const config = loadConfig({
     port: num('PORT', { default: 4201 }),
+
+    /**
+     * The interface to listen on. LOOPBACK BY DEFAULT - see the note on `listen` in main.ts
+     * for what binding wider costs. The Docker image sets 0.0.0.0, because loopback inside a
+     * container is unreachable from outside it; there the published port is what must be
+     * kept to loopback or to the proxy.
+     */
+    host: str('HOST', { default: '127.0.0.1' }),
     env: oneOf('NODE_ENV', ['development', 'production', 'test'], { default: 'development' }),
 
     // --- Being behind a proxy ---
@@ -70,7 +78,7 @@ export const config = loadConfig({
      * The directory `npm run build` writes, served at `/`.
      *
      * The default is relative to the SERVER directory because that is the working directory
-     * the systemd unit sets (scripts/service-install.sh), and it points at the sibling
+     * the server runs in (locally and in the Docker image), and it points at the sibling
      * workspace - so a checkout that has been built needs no configuration at all.
      *
      * Set it to an empty string to serve nothing and answer JSON on every path, which is
