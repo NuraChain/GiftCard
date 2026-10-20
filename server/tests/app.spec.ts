@@ -1972,6 +1972,37 @@ describe('redeeming a code', () => {
         });
     });
 
+    it('lists every payout request in the console, the unnotified ones first', async () => {
+        const told = await bought(10);
+        await post('/api/redeem', { code: told, wallet: WALLET });
+        const untold = await bought(25);
+        fake.payoutResult = { ok: false, reason: 'telegram is not configured' };
+        await post('/api/redeem', { code: untold, wallet: WALLET });
+
+        const cookie = (
+            (await post('/api/admin/session', { key: ADMIN_KEY })).headers.get('set-cookie') ?? ''
+        ).split(';')[0];
+        const page = (await get('/api/admin/redemptions', { cookie })).json<{
+            rows: Array<{ code: string; amount: number; notified: boolean; phone: string }>;
+            total: number;
+        }>();
+
+        expect(page.total).toBe(2);
+        expect(page.rows.map((row) => [row.code, row.amount, row.notified])).toEqual([
+            [untold, 25, false],
+            [told, 10, true]
+        ]);
+        // Dialled the Iranian way, like the ledger's.
+        expect(page.rows[0].phone).toBe('09121234567');
+
+        const found = (
+            await get(`/api/admin/redemptions?search=${told.slice(0, 8)}`, { cookie })
+        ).json<{ rows: Array<{ code: string }> }>();
+        expect(found.rows.map((row) => row.code)).toEqual([told]);
+
+        expect((await get('/api/admin/redemptions')).status).toBe(401);
+    });
+
     it('REFUSES THE SECOND ATTEMPT ON THE SAME CODE', async () => {
         // The claim this whole feature rests on. A code is bearer value: whoever holds it can
         // spend it, so the only thing that can stop it being spent twice is the shop.

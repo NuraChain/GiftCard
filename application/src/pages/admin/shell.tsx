@@ -12,7 +12,8 @@ import {
     LogOut,
     Settings,
     Ticket,
-    Receipt
+    Receipt,
+    Wallet
 } from 'lucide-react';
 import {
     useEffect,
@@ -36,6 +37,7 @@ const TABS = [
     { to: '/admin', label: 'نمای کلی', glyph: Boxes },
     { to: '/admin/codes', label: 'کدها', glyph: Ticket },
     { to: '/admin/orders', label: 'سفارش‌ها', glyph: Receipt },
+    { to: '/admin/redemptions', label: 'برداشت‌ها', glyph: Wallet },
     { to: '/admin/settings', label: 'تنظیمات', glyph: Settings }
 ];
 

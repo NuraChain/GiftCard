@@ -350,6 +350,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
             // this guard.
             'admin.overview': [requireAdmin],
             'admin.orders': [requireAdmin],
+            'admin.redemptions': [requireAdmin],
             'admin.addCodes': [requireAdmin],
             'admin.codes': [requireAdmin],
             'admin.tiers': [requireAdmin],

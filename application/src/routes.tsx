@@ -13,6 +13,7 @@ import Landing from './pages/landing.tsx';
 import AdminOverview from './pages/admin/overview.tsx';
 import AdminCodes from './pages/admin/codes/index.tsx';
 import AdminOrders from './pages/admin/orders.tsx';
+import AdminRedemptions from './pages/admin/redemptions.tsx';
 import AdminSettings from './pages/admin/settings/index.tsx';
 
 export interface PageRoute {
@@ -30,5 +31,6 @@ export const routes: PageRoute[] = [
     { path: '/admin', Component: AdminOverview },
     { path: '/admin/codes', Component: AdminCodes },
     { path: '/admin/orders', Component: AdminOrders },
+    { path: '/admin/redemptions', Component: AdminRedemptions },
     { path: '/admin/settings', Component: AdminSettings }
 ];

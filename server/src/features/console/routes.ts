@@ -20,7 +20,7 @@ export interface ConsoleOptions {
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type ConsoleHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'signIn' | 'signOut' | 'overview' | 'orders'
+    'signIn' | 'signOut' | 'overview' | 'orders' | 'redemptions'
 >;
 
 export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
@@ -67,6 +67,25 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
                     refId: order.refId,
                     smsDelivered: order.smsDelivered,
                     createdAt: order.createdAt
+                })),
+                total: found.total,
+                page,
+                pageSize: PAGE_SIZE
+            };
+        },
+
+        // GET /api/admin/redemptions
+        redemptions: ({ query }) => {
+            const page = Math.max(1, query.page ?? 1);
+            const found = store.searchRedemptions({
+                search: query.search ?? '',
+                limit: PAGE_SIZE,
+                offset: (page - 1) * PAGE_SIZE
+            });
+            return {
+                rows: found.rows.map((redemption) => ({
+                    ...redemption,
+                    phone: displayPhone(redemption.phone)
                 })),
                 total: found.total,
                 page,

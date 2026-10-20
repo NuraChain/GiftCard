@@ -11,12 +11,36 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 import { shaped } from '../../platform/db.ts';
-import type { Amount, RedeemOutcome } from '../../db/types.ts';
+import { phoneSearchVariants } from '../../domain/phone.ts';
+import type { Amount, OrderQuery, RedeemOutcome, Redemption } from '../../db/types.ts';
 
 export interface RedemptionQueries {
     redeemCode(code: string, wallet: string, network: string): RedeemOutcome;
     markRedemptionNotified(code: string): void;
     unnotifiedRedemptions(): number;
+    searchRedemptions(query: OrderQuery): { rows: Redemption[]; total: number };
+}
+
+interface RedemptionRow {
+    code: string;
+    amount: number;
+    wallet: string;
+    network: string;
+    phone: string;
+    notified: number;
+    claimed_at: string;
+}
+
+function toRedemption(row: RedemptionRow): Redemption {
+    return {
+        code: row.code,
+        amount: row.amount as Amount,
+        wallet: row.wallet,
+        network: row.network,
+        phone: row.phone,
+        notified: row.notified === 1,
+        claimedAt: row.claimed_at
+    };
 }
 
 export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
@@ -38,6 +62,18 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
     const selectRedemption = db.prepare('SELECT claimed_at FROM redemptions WHERE code = ?');
     const setNotified = db.prepare('UPDATE redemptions SET notified = 1 WHERE code = ?');
     const countUnnotified = db.prepare('SELECT COUNT(*) AS n FROM redemptions WHERE notified = 0');
+
+    // One box, as on the ledger: part of the code, the address, or the buyer's number. An
+    // empty term matches every row. The ones nobody was told about come first - each is a
+    // person waiting on a transfer the operator may not know is owed.
+    const matching = `
+        FROM redemptions
+        WHERE ? = '' OR code LIKE ? OR lower(wallet) LIKE ? OR phone LIKE ? OR phone LIKE ?`;
+    const searchPage = db.prepare(`
+        SELECT code, amount, wallet, network, phone, notified, claimed_at ${matching}
+        ORDER BY notified ASC, claimed_at DESC
+        LIMIT ? OFFSET ?`);
+    const searchCount = db.prepare(`SELECT COUNT(*) AS n ${matching}`);
 
     return {
         redeemCode(code, wallet, network) {
@@ -102,6 +138,19 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
 
         unnotifiedRedemptions() {
             return shaped<{ n: number }>(countUnnotified.get()).n;
+        },
+
+        searchRedemptions(query) {
+            const term = query.search.trim();
+            const like = `%${term.toLowerCase()}%`;
+            const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);
+            const bind = [term, like, like, phoneLike[0] ?? like, phoneLike[1] ?? like];
+            return {
+                rows: shaped<RedemptionRow[]>(
+                    searchPage.all(...bind, query.limit, query.offset)
+                ).map(toRedemption),
+                total: shaped<{ n: number }>(searchCount.get(...bind)).n
+            };
         }
     };
 }

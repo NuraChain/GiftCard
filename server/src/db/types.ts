@@ -306,6 +306,9 @@ export interface Store extends SettingsStore {
     /** How many spent codes nobody has been told about. Somebody is waiting on each of these. */
     unnotifiedRedemptions(): number;
 
+    /** One page of the payout requests, unnotified first, then newest first. */
+    searchRedemptions(query: OrderQuery): { rows: Redemption[]; total: number };
+
     /**
      * Writes a CONSISTENT snapshot of the whole database to `file`.
      *

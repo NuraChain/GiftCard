@@ -67,15 +67,39 @@ export const ledgerPage = z.object({
     pageSize: z.number().int()
 });
 
+/**
+ * A payout request, as the operator works through them. The whole code is shown: it is
+ * spent, so it is worth nothing to whoever reads it - and it is what matches a holder's
+ * complaint to a row.
+ */
+export const redemptionRow = z.object({
+    code: z.string(),
+    amount: amountField,
+    wallet: z.string(),
+    network: z.string(),
+    phone: z.string(),
+    notified: z.boolean(),
+    claimedAt: z.string()
+});
+
+export const redemptionPage = z.object({
+    rows: z.array(redemptionRow),
+    total: z.number().int(),
+    page: z.number().int(),
+    pageSize: z.number().int()
+});
+
 export type AdminOverview = z.infer<typeof adminOverview>;
 export type StockLine = z.infer<typeof stockLine>;
 export type LedgerPage = z.infer<typeof ledgerPage>;
 export type LedgerRow = z.infer<typeof ledgerRow>;
+export type RedemptionRow = z.infer<typeof redemptionRow>;
 
 /** This feature's routes. They join the `admin` group in ../../contract/index.ts. */
 export const consoleRoutes = {
     signIn: post('/admin/session', { input: adminKeyInput }),
     signOut: del('/admin/session'),
     overview: get('/admin/overview', { output: adminOverview }),
-    orders: get('/admin/orders', { query: ledgerQuery, output: ledgerPage })
+    orders: get('/admin/orders', { query: ledgerQuery, output: ledgerPage }),
+    redemptions: get('/admin/redemptions', { query: ledgerQuery, output: redemptionPage })
 };
