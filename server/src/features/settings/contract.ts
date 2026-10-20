@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
 import { telegramProxyList } from '../../contract/shared.ts';
-import { phoneField } from '../../domain/phone.ts';
+import { normalizePhone, phoneField } from '../../domain/phone.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
 /**
@@ -84,6 +84,9 @@ export const settingsView = z.object({
     smsDomain: z.string(),
     smsSender: z.string(),
 
+    /** The operator's mobile, which every redemption is texted to. Empty means none. */
+    operatorPhone: z.string(),
+
     /** What one USDT costs in Toman, as the console last set it. Zero means never set. */
     tetherToman: z.number(),
 
@@ -136,6 +139,16 @@ export const settingsInput = z.object({
     smsApiKey: z.string().trim().max(500).optional(),
     smsDomain: z.string().trim().max(100).optional(),
     smsSender: z.string().trim().max(100).optional(),
+
+    /** Empty, to stop texting redemptions - or a mobile the shop can actually text. */
+    operatorPhone: z
+        .string()
+        .trim()
+        .max(20)
+        .refine((value) => value === '' || normalizePhone(value) !== null, {
+            message: 'شماره موبایل اپراتور معتبر نیست'
+        })
+        .optional(),
 
     /** The operations bot. The token is write-only; a blank one means "keep it". */
     telegramBotToken: z.string().trim().max(200).optional(),

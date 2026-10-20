@@ -23,6 +23,7 @@ export default function SmsSettings(): ReactNode {
     const [username, setUsername] = useState('');
     const [domain, setDomain] = useState('');
     const [apiKey, setApiKey] = useState('');
+    const [operatorPhone, setOperatorPhone] = useState('');
     const [testPhone, setTestPhone] = useState('');
 
     const load = useCallback(async (): Promise<void> => {
@@ -35,6 +36,7 @@ export default function SmsSettings(): ReactNode {
             setSender(view.smsSender);
             setUsername(view.smsUsername);
             setDomain(view.smsDomain);
+            setOperatorPhone(view.operatorPhone);
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات پیامک خوانده نشد'));
         } finally {
@@ -75,6 +77,7 @@ export default function SmsSettings(): ReactNode {
                         smsSender: sender,
                         smsUsername: username,
                         smsDomain: domain,
+                        operatorPhone,
                         smsApiKey: apiKey === '' ? undefined : apiKey
                     }
                 })
@@ -197,6 +200,22 @@ export default function SmsSettings(): ReactNode {
                                     placeholder="0098"
                                     value={domain}
                                     onChange={setDomain}
+                                />
+                            </Field>
+                            <Field
+                                label="موبایل اپراتور"
+                                htmlFor="sms-operator-phone"
+                                hint="هر بار که کسی کدی را برداشت (redeem) می‌کند، مبلغ، شبکه و آدرس کیف پول به این شماره پیامک می‌شود. خالی بگذارید تا پیامکی فرستاده نشود."
+                            >
+                                <TextInput
+                                    id="sms-operator-phone"
+                                    type="tel"
+                                    latin
+                                    inputMode="tel"
+                                    autoComplete="off"
+                                    placeholder="09123456789"
+                                    value={operatorPhone}
+                                    onChange={setOperatorPhone}
                                 />
                             </Field>
                         </div>

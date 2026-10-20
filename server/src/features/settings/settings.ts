@@ -43,6 +43,7 @@ export const SETTING_KEYS = [
     'smsApiKey',
     'smsDomain',
     'smsSender',
+    'operatorPhone',
     'telegramBotToken',
     'telegramChatId',
     'telegramBase',
@@ -107,6 +108,12 @@ export interface RuntimeSettings {
     smsApiKey: string;
     smsDomain: string;
     smsSender: string;
+
+    /**
+     * The operator's own mobile, which every redemption is texted to - see
+     * features/redeem/notify.ts. Empty means the payout ask goes by Telegram alone.
+     */
+    operatorPhone: string;
 
     /**
      * The operations bot: a ping on every sale, and the database on a timer. Empty means
@@ -187,6 +194,7 @@ const DEFAULTS = {
     smsApiKey: '',
     smsDomain: '0098',
     smsSender: '',
+    operatorPhone: '',
     telegramBotToken: '',
     telegramChatId: '',
     telegramBase: 'https://api.telegram.org',
@@ -255,6 +263,7 @@ export interface SettingsView {
     smsApiKeySet: boolean;
     smsDomain: string;
     smsSender: string;
+    operatorPhone: string;
     tetherToman: number;
     tetherSetAt: string;
     marginPercent: number;
@@ -434,6 +443,7 @@ export function createSettings(options: SettingsOptions): Settings {
                 smsApiKey: pick('smsApiKey', DEFAULTS.smsApiKey),
                 smsDomain: pick('smsDomain', DEFAULTS.smsDomain),
                 smsSender: pick('smsSender', DEFAULTS.smsSender),
+                operatorPhone: pick('operatorPhone', DEFAULTS.operatorPhone),
                 telegramBotToken: pick('telegramBotToken', DEFAULTS.telegramBotToken),
                 telegramChatId: pick('telegramChatId', DEFAULTS.telegramChatId),
                 telegramBase: pick('telegramBase', DEFAULTS.telegramBase),
@@ -476,6 +486,7 @@ export function createSettings(options: SettingsOptions): Settings {
                 smsApiKeySet: live.smsApiKey !== '',
                 smsDomain: live.smsDomain,
                 smsSender: live.smsSender,
+                operatorPhone: live.operatorPhone,
                 tetherToman: live.tetherToman,
                 tetherSetAt: live.tetherSetAt,
                 marginPercent: live.marginPercent,

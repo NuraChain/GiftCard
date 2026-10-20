@@ -35,6 +35,7 @@ import { rateLimit } from './platform/throttle.ts';
 import { seedTiers } from './domain/seed.ts';
 import { createSettings, DEFAULT_ADMIN_KEY } from './features/settings/settings.ts';
 import { createSms } from './features/checkout/panelsms.ts';
+import { anyPayoutNotifier, createSmsPayoutNotifier } from './features/redeem/notify.ts';
 import { createStore } from './db/index.ts';
 
 // Redaction happens in the logger rather than at each call site, so no formatter and no
@@ -169,6 +170,20 @@ const telegram = createTelegram({
         };
     }
 });
+// The SMS panel: the buyer's code, and the operator's payout ask below.
+const sms = createSms({
+    settings: () => {
+        const now = settings.current();
+        return {
+            apiUrl: now.smsApiUrl,
+            username: now.smsUsername,
+            password: now.smsApiKey,
+            domain: now.smsDomain,
+            sender: now.smsSender,
+            appName: now.appName
+        };
+    }
+});
 const notifier = createSaleNotifier({
     telegram,
     appName: () => settings.current().appName,
@@ -177,10 +192,20 @@ const notifier = createSaleNotifier({
 // The payout ask. Same chat as the sale pings, but its result is WAITED FOR: /api/redeem
 // records whether this got through, because a redemption nobody was told about is a person
 // waiting on money that is not coming.
-const payouts = createPayoutNotifier({
-    telegram,
-    appName: () => settings.current().appName
-});
+//
+// It goes by SMS to the operator's phone as well, and counts as told when either arrived - see
+// features/redeem/notify.ts.
+const payouts = anyPayoutNotifier(
+    createPayoutNotifier({
+        telegram,
+        appName: () => settings.current().appName
+    }),
+    createSmsPayoutNotifier({
+        sms,
+        operatorPhone: () => settings.current().operatorPhone,
+        appName: () => settings.current().appName
+    })
+);
 const backup = createBackupJob({
     store,
     telegram,
@@ -232,19 +257,7 @@ const app = buildApp({
             }
         })
     }),
-    sms: createSms({
-        settings: () => {
-            const now = settings.current();
-            return {
-                apiUrl: now.smsApiUrl,
-                username: now.smsUsername,
-                password: now.smsApiKey,
-                domain: now.smsDomain,
-                sender: now.smsSender,
-                appName: now.appName
-            };
-        }
-    }),
+    sms,
     admin: createAdmin({
         matches: (candidate) => settings.matchesAdminKey(candidate),
         secureCookie: config.cookieSecure

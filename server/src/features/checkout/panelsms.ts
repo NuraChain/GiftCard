@@ -43,6 +43,9 @@ export type SmsResult = { ok: true } | { ok: false; reason: string };
 
 export interface SmsSender {
     sendCode(phone: string, code: string, amountUsd: number): Promise<SmsResult>;
+
+    /** Any message, to any number. `sendCode` is this with the buyer's wording. */
+    sendText(phone: string, text: string): Promise<SmsResult>;
 }
 
 export interface SmsOptions {
@@ -201,15 +204,22 @@ export function createSms(options: SmsOptions): SmsSender {
         }
     }
 
+    function send(live: SmsSettings, phone: string, text: string): Promise<SmsResult> {
+        if (!smsConfigured(live)) {
+            return Promise.resolve({ ok: false, reason: 'PanelSMS is not configured' });
+        }
+        return isSoapUrl(live.apiUrl) ? viaSoap(live, phone, text) : viaLink(live, phone, text);
+    }
+
     return {
         // The amount is no longer in the message; the parameter stays for the callers.
-        async sendCode(phone, code) {
+        sendCode(phone, code) {
             const live = options.settings();
-            if (!smsConfigured(live)) {
-                return { ok: false, reason: 'PanelSMS is not configured' };
-            }
-            const text = `کد گیفت کارت شما\n\n${code}\n\nفروشگاه ${live.appName}\n`;
-            return isSoapUrl(live.apiUrl) ? viaSoap(live, phone, text) : viaLink(live, phone, text);
+            return send(live, phone, `کد گیفت کارت شما\n\n${code}\n\nفروشگاه ${live.appName}\n`);
+        },
+
+        sendText(phone, text) {
+            return send(options.settings(), phone, text);
         }
     };
 }

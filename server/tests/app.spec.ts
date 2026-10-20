@@ -190,7 +190,8 @@ function fakes(): Fakes {
             sendCode: (phone, code, amount) => {
                 state.smsSent.push({ phone, code, amount });
                 return Promise.resolve(state.smsResult);
-            }
+            },
+            sendText: () => Promise.resolve(state.smsResult)
         },
         // The notifier records SYNCHRONOUSLY, which is what makes it assertable: the real one
         // returns void and does its work in the background precisely so that nothing can put
@@ -1509,6 +1510,37 @@ describe('runtime settings', () => {
         expect((await post('/api/admin/telegram/test', {})).status).toBe(401);
         expect((await post('/api/admin/telegram/proxy-test', {})).status).toBe(401);
         expect((await post('/api/admin/telegram/backup', {})).status).toBe(401);
+    });
+});
+
+describe('the operator phone', () => {
+    async function signedIn(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return (response.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+
+    it('is saved, shown, and can be cleared', async () => {
+        const cookie = await signedIn();
+        const saved = await post(
+            '/api/admin/settings',
+            { operatorPhone: '09127654321' },
+            { cookie }
+        );
+
+        expect(saved.status).toBe(200);
+        expect(saved.json<{ operatorPhone: string }>().operatorPhone).toBe('09127654321');
+        expect(settings.current().operatorPhone).toBe('09127654321');
+
+        await post('/api/admin/settings', { operatorPhone: '' }, { cookie });
+        expect(settings.current().operatorPhone).toBe('');
+    });
+
+    it('refuses a number the shop could not text', async () => {
+        const cookie = await signedIn();
+        const refused = await post('/api/admin/settings', { operatorPhone: '12345' }, { cookie });
+
+        expect(refused.status).toBe(422);
+        expect(settings.current().operatorPhone).toBe('');
     });
 });
 
