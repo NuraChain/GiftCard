@@ -27,6 +27,9 @@
     --leading-small: 1.75;
     --leading-caption: 1.6;
 
+    /* The face the page is set in. Vazirmatn by default: Persian and Arabic. */
+    --font-body: 'Vazirmatn Variable', system-ui, sans-serif;
+
     /* The scrollbar is part of the page, not part of the OS. Both are derived from the
        palette above, so they follow light and dark without a second declaration. The
        track is transparent rather than a colour: a scrolling panel sits on --surface and
@@ -50,6 +53,24 @@
     --leading-h3: 1.4;
     --leading-small: 1.55;
     --leading-caption: 1.45;
+}
+
+/* THE LATIN, CYRILLIC, DEVANAGARI AND CHINESE PAGES ARE SET IN THE SYSTEM'S OWN FACE.
+   Vazirmatn is drawn for Arabic script: its ascent and descent leave room for marks above
+   and below the letters, so a Latin line set in it floats inside its line box - loose
+   between lines and off-centre in every button and badge, whatever the line-height says.
+   Vazirmatn stays last, for the Persian or Arabic word that turns up anyway. */
+:root:lang(en),
+:root:lang(es),
+:root:lang(pt),
+:root:lang(fr),
+:root:lang(ru),
+:root:lang(tr),
+:root:lang(hi),
+:root:lang(zh) {
+    --font-body:
+        system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial,
+        'Vazirmatn Variable', sans-serif;
 }
 
 /* An explicit choice overrides the system preference. Both selectors are needed so the
@@ -154,7 +175,7 @@
     html {
         background: var(--paper);
         color: var(--ink);
-        font-family: var(--font-fa);
+        font-family: var(--font-body);
         font-size: var(--text-body);
         line-height: var(--leading-body);
 
