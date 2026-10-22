@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS codes (
 CREATE INDEX IF NOT EXISTS codes_free ON codes (amount, order_id);
 
 -- lang on orders is which shop the buyer was in, and it decides three things: the gateway
--- (Zarinpal or Zibal for 'fa', Plisio for 'en'), whether toman or amount is the sum charged,
+-- (Zarinpal or Zibal for 'fa', NOWPayments for 'en'), whether toman or amount is the sum charged,
 -- and whether the code goes out by SMS or by email. phone holds the buyer's EMAIL on an
 -- 'en' order - the column has carried addresses before, see platform/migrate.ts.
 CREATE TABLE IF NOT EXISTS orders (
@@ -56,6 +56,17 @@ CREATE INDEX IF NOT EXISTS orders_owed ON orders (status, code);
 -- REQUEST, not a state flag. It has to say where the money was asked to go and on which
 -- network, and it has to survive the code row it points at - a restore, a re-import, an
 -- operator clearing old stock. A boolean could not be audited against a transfer.
+-- The payments NOWPayments has made under an invoice, by the order's stored handle. An invoice
+-- is the page; a payment is what the buyer sends once they pick a coin, and with nothing but
+-- the API key only a payment can be read back - so its id is kept here once NOWPayments has
+-- confirmed it belongs to the invoice (features/checkout/nowpayments.ts, rule 2). A table, not
+-- a column: one invoice can carry several payments.
+CREATE TABLE IF NOT EXISTS gateway_payments (
+    authority  TEXT NOT NULL,
+    payment_id TEXT NOT NULL,
+    PRIMARY KEY (authority, payment_id)
+);
+
 CREATE TABLE IF NOT EXISTS redemptions (
     code       TEXT    PRIMARY KEY,
     amount     INTEGER NOT NULL,

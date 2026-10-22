@@ -40,8 +40,9 @@ function stubs(store: Store) {
             sendCode: () => Promise.resolve({ ok: true as const }),
             sendText: () => Promise.resolve({ ok: true as const })
         },
-        plisio: {
+        nowpayments: {
             request: () => Promise.resolve({ ok: false as const, reason: 'not used' }),
+            learn: () => Promise.resolve(false),
             verify: () => Promise.resolve({ ok: false as const, reason: 'not used' })
         },
         mail: { sendCode: () => Promise.resolve({ ok: true as const }) },

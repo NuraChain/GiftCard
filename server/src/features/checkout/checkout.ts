@@ -22,7 +22,7 @@
 //      stored, and on the buyer's screen. The Persian shop texts it and the English shop
 //      emails it; either way the message is a convenience, the screen is the delivery.
 //   5. NOT YET IS NOT NO. A crypto payment can be seen and not yet confirmed, and a gateway
-//      can fail to answer at all - Plisio says `pending` for both. The order is then left
+//      can fail to answer at all - NOWPayments says `pending` for both. The order is then left
 //      EXACTLY as it was: still holding its code, still waiting. Settling it as a failure
 //      would put the code back on the shelf while the buyer's money is on its way.
 //

@@ -463,7 +463,7 @@ describe('the English shop', () => {
         expect(document.body.textContent).toContain('Enter a valid email address.');
     });
 
-    it('opens a Plisio checkout and keeps the receipt for the trip back', async () => {
+    it('opens a NOWPayments checkout and keeps the receipt for the trip back', async () => {
         const calls: Array<Record<string, unknown>> = [];
         vi.stubGlobal(
             'fetch',
@@ -474,7 +474,7 @@ describe('the English shop', () => {
                 if (String(input).includes('/api/pay/start-en')) {
                     calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
                     return Promise.resolve(
-                        json({ payUrl: 'https://plisio.test/invoice/x', receipt: 'r-123' })
+                        json({ payUrl: 'https://nowpayments.test/invoice/x', receipt: 'r-123' })
                     );
                 }
                 return Promise.resolve(json({}, 401));
@@ -497,7 +497,7 @@ describe('the English shop', () => {
         );
     });
 
-    it('will not sell while Plisio has no key', async () => {
+    it('will not sell while NOWPayments has no key', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
@@ -513,7 +513,7 @@ describe('the English shop', () => {
         expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
     });
 
-    it('picks the receipt back up on return from Plisio and waits for the chain', async () => {
+    it('picks the receipt back up on return from NOWPayments and waits for the chain', async () => {
         sessionStorage.setItem('ashbringer-pending-receipt', 'r-456');
         const asked: string[] = [];
         vi.stubGlobal(
@@ -541,10 +541,12 @@ describe('the English shop', () => {
             })
         );
 
-        render(<App url="/en?pay=return" />);
+        render(<App url="/en?pay=return&NP_id=5745459419" />);
 
         expect(await screen.findByText('Waiting for your payment to confirm')).not.toBeNull();
         expect(asked[0]).toContain('token=r-456');
+        // The payment id NOWPayments sent the buyer back with goes along, for the server to check.
+        expect(asked[0]).toContain('payment=5745459419');
         sessionStorage.clear();
     });
 
@@ -633,7 +635,7 @@ describe('every language', () => {
         await vi.waitFor(() => expect(document.title).toContain('Ashbringer'));
     });
 
-    it('sends Plisio back to the page the buyer started on', async () => {
+    it('sends NOWPayments back to the page the buyer started on', async () => {
         const calls: Array<Record<string, unknown>> = [];
         vi.stubGlobal(
             'fetch',
@@ -644,7 +646,7 @@ describe('every language', () => {
                 if (String(input).includes('/api/pay/start-en')) {
                     calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
                     return Promise.resolve(
-                        json({ payUrl: 'https://plisio.test/invoice/x', receipt: 'r-1' })
+                        json({ payUrl: 'https://nowpayments.test/invoice/x', receipt: 'r-1' })
                     );
                 }
                 return Promise.resolve(json({}, 401));

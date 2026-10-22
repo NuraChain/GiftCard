@@ -45,7 +45,7 @@ export type RequestResult =
     | { ok: false; reason: string };
 
 /**
- * `pending` is the answer only Plisio gives: a crypto payment that has been seen but not yet
+ * `pending` is the answer only NOWPayments gives: a crypto payment that has been seen but not yet
  * confirmed, or a gateway that could not be asked. It is NOT a refusal - see rule 5 in
  * ./checkout.ts - and the order is left exactly as it was.
  */
@@ -62,7 +62,7 @@ export interface PaymentGateway {
 
     /**
      * `amount` is what the order was charged, in the currency its gateway charges in: Toman
-     * for Zarinpal and Zibal, dollars for Plisio. It ALWAYS comes from the stored order.
+     * for Zarinpal and Zibal, dollars for NOWPayments. It ALWAYS comes from the stored order.
      */
     verify(authority: string, amount: number): Promise<VerifyResult>;
 }

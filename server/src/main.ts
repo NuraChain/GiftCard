@@ -21,10 +21,10 @@ import { pino } from 'pino';
 import { createAdmin } from './features/console/session.ts';
 import { buildApp } from './app.ts';
 import { config } from './config.ts';
-import { createGatewaySwitch } from './features/checkout/gateway.ts';
+import { createGatewaySwitch, NOWPAYMENTS_PREFIX } from './features/checkout/gateway.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createZibal } from './features/checkout/zibal.ts';
-import { createPlisio } from './features/checkout/plisio.ts';
+import { createNowPayments } from './features/checkout/nowpayments.ts';
 import { createMailer } from './features/checkout/mailer.ts';
 import { createTetherRate } from './features/rate/rate.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
@@ -68,7 +68,7 @@ const log = pino({
             'phone',
             'botToken',
             'telegramBotToken',
-            'plisioApiKey',
+            'nowPaymentsApiKey',
             'resendApiKey',
             'api_key',
             'email',
@@ -85,7 +85,7 @@ const log = pino({
             '*.trackId',
             '*.code',
             '*.phone',
-            '*.plisioApiKey',
+            '*.nowPaymentsApiKey',
             '*.resendApiKey',
             '*.api_key',
             '*.email',
@@ -274,12 +274,13 @@ if (!telegram.configured()) {
 }
 
 // The English shop's gateway. Built once and handed to the app twice: it opens invoices
-// directly, and verifies them through the switch below, which knows a `plisio:` handle.
-const plisio = createPlisio({
+// directly, and verifies them through the switch below, which knows a `nowpayments:` handle.
+const nowpayments = createNowPayments({
     settings: () => {
         const now = settings.current();
-        return { apiKey: now.plisioApiKey, baseUrl: now.plisioBase };
-    }
+        return { apiKey: now.nowPaymentsApiKey, baseUrl: now.nowPaymentsBase };
+    },
+    paymentsFor: (invoiceId) => store.paymentsFor(`${NOWPAYMENTS_PREFIX}${invoiceId}`)
 });
 
 const app = buildApp({
@@ -307,9 +308,9 @@ const app = buildApp({
                 return { merchant: now.zibalMerchant, baseUrl: now.zibalBase };
             }
         }),
-        plisio
+        nowpayments
     }),
-    plisio,
+    nowpayments,
     // The English shop's delivery - see features/checkout/mailer.ts.
     mail: createMailer({
         settings: () => {

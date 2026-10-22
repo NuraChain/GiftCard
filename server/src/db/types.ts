@@ -8,7 +8,7 @@ export type OrderStatus = 'pending' | 'paid' | 'cancelled' | 'failed';
 
 /**
  * Which shop an order was placed in. It is more than a language: `fa` is paid in Toman through
- * Zarinpal or Zibal and texted, `en` is paid in dollars through Plisio and emailed.
+ * Zarinpal or Zibal and texted, `en` is paid in dollars through NOWPayments and emailed.
  */
 export type OrderLang = 'fa' | 'en';
 
@@ -289,10 +289,19 @@ export interface Store extends SettingsStore {
 
     /**
      * Unsettled orders whose gateway handle starts with `prefix`, opened after `since` (ISO).
-     * What the Plisio reconciler re-checks - a crypto payment can confirm long after the buyer
+     * What the NOWPayments reconciler re-checks - a crypto payment can confirm long after the buyer
      * closed the tab.
      */
     pendingOrders(prefix: string, since: string): Order[];
+
+    /**
+     * Keeps a NOWPayments payment id against the order's stored handle. Only ever called once
+     * NOWPayments has said the payment is under that invoice. Repeating one is a no-op.
+     */
+    rememberPayment(authority: string, paymentId: string): void;
+
+    /** The payment ids kept for a handle, oldest first. */
+    paymentsFor(authority: string): string[];
 
     /**
      * Settles a verified payment: keeps the held code (or claims a fresh one if the hold

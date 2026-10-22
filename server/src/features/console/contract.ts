@@ -37,7 +37,7 @@ export const adminOverview = z.object({
 export const ledgerRow = z.object({
     id: z.string(),
     amount: amountField,
-    /** Zero on an English order, which was charged `amount` in dollars through Plisio. */
+    /** Zero on an English order, which was charged `amount` in dollars through NOWPayments. */
     toman: z.number().int(),
     lang: z.enum(['fa', 'en']),
 

@@ -1,5 +1,5 @@
 // The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt -
-// for both shops. The English one is paid through Plisio; see ./plisio.ts before its routes.
+// for both shops. The English one is paid through NOWPayments; see ./nowpayments.ts before its routes.
 import { shopName, type IntlLang } from '../../domain/langs.ts';
 import { randomInt } from 'node:crypto';
 
@@ -17,8 +17,8 @@ import { displayPhone, normalizePhone } from '../../domain/phone.ts';
 import { tomanPrice } from '../../domain/pricing.ts';
 import type { TetherRate } from '../rate/rate.ts';
 import type { PaymentGateway } from './zarinpal.ts';
-import type { Plisio } from './plisio.ts';
-import { PLISIO_PREFIX, readReturn } from './gateway.ts';
+import { ID_SHAPE, type NowPayments } from './nowpayments.ts';
+import { NOWPAYMENTS_PREFIX, readReturn } from './gateway.ts';
 import type { Checkout } from './checkout.ts';
 import type { Settings } from '../settings/settings.ts';
 
@@ -30,15 +30,14 @@ import type { Settings } from '../settings/settings.ts';
 const HOLD_MS = 30 * 60 * 1000;
 
 /**
- * The same for an English order, and the life of its Plisio invoice, which is set to match.
- * Longer, because a crypto transfer is a wallet app, a network fee and a wait for the chain,
+ * The same for an English order. Longer, because a crypto transfer is a wallet app, a network fee and a wait for the chain,
  * not a one-time password. A code held past this goes back to stock; a payment that confirms
  * afterwards is still honoured from whatever is free (see `settlePaid`).
  */
 export const HOLD_EN_MINUTES = 60;
 
 /**
- * How often one receipt may make the server go and ask Plisio. The English result page polls
+ * How often one receipt may make the server go and ask NOWPayments. The English result page polls
  * while a payment confirms, and every ask is an outbound call - so a tab left open, or a
  * stranger holding a token, costs one call per this long and no more.
  */
@@ -58,15 +57,15 @@ export interface PayOptions {
     payment: PaymentGateway;
 
     /** The English shop's gateway. Only OPENS invoices here; `payment` verifies them. */
-    plisio: Plisio;
+    nowpayments: NowPayments;
     checkout: Checkout;
 
     /** The absolute URL the gateway returns the buyer to. Read PER PAYMENT - see app.ts. */
     callbackUrl: () => string;
 
-    /** Where Plisio posts an invoice's state, and where its page sends the buyer back to. */
-    plisioCallbackUrl: () => string;
-    plisioReturnUrl: (lang: IntlLang) => string;
+    /** Where NOWPayments posts an invoice's state, and where its page sends the buyer back to. */
+    nowPaymentsCallbackUrl: () => string;
+    nowPaymentsReturnUrl: (lang: IntlLang) => string;
 
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath: string;
@@ -123,23 +122,64 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
 }
 
 /**
- * Plisio's callback: the invoice's state, posted by Plisio whenever it changes.
+ * Points an English order at one of its NOWPayments payments, then settles it.
  *
- * A NUDGE, NOT A WITNESS - rule 4 in ./plisio.ts. Only `txn_id` is read, to find the order;
- * whether it was paid is then asked of Plisio with our own key, through the same `settle`
- * every other payment goes through. So the HMAC Plisio signs this with is not checked: a
- * forged post can make the server look an invoice up, and nothing more.
- *
- * It answers 200 to everything, known order or not. A refusal would only teach Plisio to
- * retry, and teach a stranger which ids are real.
- *
- * Mounted in its OWN SCOPE, because Plisio may post a form rather than JSON and Fastify
- * refuses form bodies by default. Accepting forms app-wide would open every cookie-guarded
- * console route to a cross-site form post; accepting them here costs nothing, since this
- * route believes no body at all.
+ * The id comes from a stranger - the IPN body, or the address the buyer came back on - so it
+ * is kept only once NOWPayments, asked with our key, says the payment is under this order's
+ * invoice (`learn`). A forged or foreign id costs one lookup and is dropped. A known one is not
+ * asked about again; the settle that follows reads it anyway.
  */
-export function mountPlisioCallback(app: FastifyInstance, options: PayOptions): void {
-    const { store, checkout, log } = options;
+export async function pointAndSettle(
+    options: Pick<PayOptions, 'store' | 'nowpayments' | 'checkout'>,
+    order: Order,
+    paymentId: string
+): Promise<void> {
+    const { store, nowpayments, checkout } = options;
+    const authority = order.authority ?? '';
+    if (
+        order.status !== 'paid' &&
+        ID_SHAPE.test(paymentId) &&
+        authority.startsWith(NOWPAYMENTS_PREFIX)
+    ) {
+        const known = store.paymentsFor(authority).includes(paymentId);
+        if (
+            !known &&
+            (await nowpayments.learn(authority.slice(NOWPAYMENTS_PREFIX.length), paymentId))
+        ) {
+            store.rememberPayment(authority, paymentId);
+        }
+    }
+    await checkout.settle(store.orderById(order.id) ?? order, true);
+}
+
+/** @internal An id out of somebody else's JSON or form - a number or a string - as a string. */
+function idField(raw: unknown): string {
+    if (typeof raw === 'number' && Number.isSafeInteger(raw)) {
+        return String(raw);
+    }
+    return typeof raw === 'string' ? raw : '';
+}
+
+/**
+ * NOWPayments' IPN: a payment's state, posted whenever it changes.
+ *
+ * A NUDGE, NOT A WITNESS - rule 5 in ./nowpayments.ts. Only `invoice_id` and `payment_id` are
+ * read: the first finds the order, the second is checked with NOWPayments before it is kept,
+ * and whether anything was paid is then read with our own key through the same `settle`
+ * every other payment goes through. So the HMAC NOWPayments signs this with is not checked:
+ * a forged post can make the server look a payment up, and nothing more.
+ *
+ * IT ANSWERS AT ONCE AND SETTLES AFTER. NOWPayments gives the callback three seconds, and a
+ * settlement is an outbound read plus an email. Answering late would only make it retry.
+ * It answers 200 to everything, known order or not: a refusal would teach a stranger which
+ * ids are real.
+ *
+ * Mounted in its OWN SCOPE so that a form body is accepted here and nowhere else. Accepting
+ * forms app-wide would open every cookie-guarded console route to a cross-site form post;
+ * accepting them here costs nothing, since this route believes no body at all.
+ */
+export function mountNowPaymentsCallback(app: FastifyInstance, options: PayOptions): void {
+    const { store, log } = options;
     const limit = throttle(60, 60_000);
 
     app.register((scope, _opts, done) => {
@@ -152,7 +192,7 @@ export function mountPlisioCallback(app: FastifyInstance, options: PayOptions): 
         );
 
         scope.post(
-            '/api/pay/plisio',
+            '/api/pay/nowpayments',
             {
                 preHandler: async (request, reply) => {
                     await limit({ request, reply });
@@ -160,13 +200,18 @@ export function mountPlisioCallback(app: FastifyInstance, options: PayOptions): 
             },
             async (request, reply) => {
                 const body = request.body as Record<string, unknown> | null | undefined;
-                const txnId = typeof body?.txn_id === 'string' ? body.txn_id : '';
-                const order =
-                    txnId === '' ? undefined : store.orderByAuthority(`${PLISIO_PREFIX}${txnId}`);
+                const invoiceId = idField(body?.invoice_id);
+                const order = ID_SHAPE.test(invoiceId)
+                    ? store.orderByAuthority(`${NOWPAYMENTS_PREFIX}${invoiceId}`)
+                    : undefined;
                 if (order === undefined) {
-                    log?.warn('plisio callback for no known invoice');
+                    log?.warn('nowpayments callback for no known invoice');
                 } else {
-                    await checkout.settle(order, true);
+                    pointAndSettle(options, order, idField(body?.payment_id)).catch(
+                        (error: unknown) => {
+                            log?.error({ err: error }, 'nowpayments callback could not settle');
+                        }
+                    );
                 }
                 return reply.send({ ok: true });
             }
@@ -180,18 +225,20 @@ export function mountPlisioCallback(app: FastifyInstance, options: PayOptions): 
  * route and its handler is a compile error here rather than a runtime 500.
  */
 export function payHandlers(options: PayOptions): PayHandlers {
-    const { store, settings, rate, payment, plisio, checkout, callbackUrl, isOperator, log } =
-        options;
+    const { store, settings, rate, payment, nowpayments, callbackUrl, isOperator, log } = options;
 
-    /** When each English receipt last made us ask Plisio. Pruned as it is read. */
+    /** When each English receipt last made us ask NOWPayments. Pruned as it is read. */
     const asked = new Map<string, number>();
 
     /**
-     * The English receipt's fallback for a callback that never came: an unsettled Plisio
+     * The English receipt's fallback for a callback that never came: an unsettled NOWPayments
      * order is asked about once per `ASK_EVERY_MS`, and settled if the answer is in. A lost
      * callback then costs the buyer a few seconds rather than their code.
+     *
+     * `paymentId` is the one NOWPayments put on the address it sent the buyer back to, when
+     * the page has it - which is how an order whose IPN never arrived learns its payment.
      */
-    async function askPlisio(order: Order): Promise<Order> {
+    async function askNowPayments(order: Order, paymentId: string): Promise<Order> {
         const now = Date.now();
         for (const [id, at] of asked) {
             if (now - at >= ASK_EVERY_MS) {
@@ -202,7 +249,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             return order;
         }
         asked.set(order.id, now);
-        await checkout.settle(order, true);
+        await pointAndSettle(options, order, paymentId);
         return store.orderById(order.id) ?? order;
     }
 
@@ -235,7 +282,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
                         blurbEn: tier.blurbEn,
                         recommended: tier.recommended
                     })),
-                englishOpen: settings.current().plisioApiKey !== ''
+                englishOpen: settings.current().nowPaymentsApiKey !== ''
             };
         },
 
@@ -344,7 +391,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
         // The English shop's checkout. It follows `start` above step for step - the same
         // sellable-tier check, the same claim before the gateway, the same single exit when
         // the gateway fails - and differs where the English shop does: an email instead of a
-        // mobile, the face value in dollars instead of a Toman quote, and Plisio whichever
+        // mobile, the face value in dollars instead of a Toman quote, and NOWPayments whichever
         // gateway the Persian shop is on. Its refusals are in English, for the page that
         // shows them.
         startEn: async ({ input, request }) => {
@@ -356,7 +403,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             if (tier === undefined) {
                 throw new ConflictError('This card is not for sale');
             }
-            if (settings.current().plisioApiKey === '') {
+            if (settings.current().nowPaymentsApiKey === '') {
                 throw new HttpError(503, 'Payments are not open yet. Please try again later.', {
                     code: 'gateway-unavailable',
                     retryAfter: 60
@@ -376,24 +423,26 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 throw new ConflictError('This card is out of stock right now');
             }
 
-            const opened = await plisio.request({
+            const opened = await nowpayments.request({
                 usdAmount: tier.amount,
                 // Twelve digits: unique enough for one shop, and an exact integer on both ends.
                 orderNumber: randomInt(100_000_000_000, 999_999_999_999),
                 orderName: `${shopName('en', settings.current().appName, settings.current().appNames)} $${tier.amount} gift card`,
-                email,
-                callbackUrl: options.plisioCallbackUrl(),
-                returnUrl: options.plisioReturnUrl(input.lang),
-                expireMinutes: HOLD_EN_MINUTES
+                callbackUrl: options.nowPaymentsCallbackUrl(),
+                returnUrl: options.nowPaymentsReturnUrl(input.lang)
             });
 
             // The same single exit as `start`, for the same reasons.
             const tracked =
-                opened.ok && store.attachAuthority(order.id, `${PLISIO_PREFIX}${opened.authority}`);
+                opened.ok &&
+                store.attachAuthority(order.id, `${NOWPAYMENTS_PREFIX}${opened.authority}`);
             if (!tracked) {
                 const reason = opened.ok ? 'duplicate authority' : opened.reason;
                 store.abandonOrder(order.id);
-                log?.error({ amount: input.amount, reason }, 'could not open a Plisio invoice');
+                log?.error(
+                    { amount: input.amount, reason },
+                    'could not open a NOWPayments invoice'
+                );
                 throw new HttpError(
                     503,
                     'The payment gateway is unavailable. Please try again in a few minutes.',
@@ -413,9 +462,9 @@ export function payHandlers(options: PayOptions): PayHandlers {
             if (
                 order?.status === 'pending' &&
                 order.lang === 'en' &&
-                order.authority?.startsWith(PLISIO_PREFIX) === true
+                order.authority?.startsWith(NOWPAYMENTS_PREFIX) === true
             ) {
-                order = await askPlisio(order);
+                order = await askNowPayments(order, query.payment ?? '');
             }
 
             // A pending PERSIAN order is indistinguishable from no order here: until the bank

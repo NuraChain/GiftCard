@@ -2,11 +2,11 @@
 //
 // THE LANGUAGE IS IN THE ADDRESS, not in storage or a cookie: `/` is Persian and `/en`,
 // `/ar`, `/fr`... are the others. So a link can be shared in any of them, a refresh keeps it,
-// and Plisio's page can send a buyer back to their own language without this app remembering
+// and NOWPayments's page can send a buyer back to their own language without this app remembering
 // anything for them.
 //
 // A LANGUAGE IS NOT A SHOP (server: domain/langs.ts). Persian is the Toman shop - an Iranian
-// gateway, a mobile number, an SMS. Every other language is the one dollar shop - Plisio, an
+// gateway, a mobile number, an SMS. Every other language is the one dollar shop - NOWPayments, an
 // email, Resend - in other words. So the purchase code asks `shopOf`, the layout asks `dirOf`,
 // and neither ever asks "is this English".
 //

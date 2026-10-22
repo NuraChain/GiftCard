@@ -1,9 +1,9 @@
-// The English buyer's receipt token, kept for the trip to Plisio and back.
+// The English buyer's receipt token, kept for the trip to NOWPayments and back.
 //
 // The Persian gateways return the buyer through our own callback, which knows the order and
-// redirects with `?receipt=` on the address. Plisio's page sends the buyer to ONE fixed
+// redirects with `?receipt=` on the address. NOWPayments's page sends the buyer to ONE fixed
 // address for every invoice - and the token cannot be put in it, because the token reads the
-// code back and Plisio has no business holding it. So the browser keeps it instead, from the
+// code back and NOWPayments has no business holding it. So the browser keeps it instead, from the
 // moment the invoice opens to the moment the buyer lands on `/en?pay=return`.
 //
 // SESSION storage: it belongs to this tab's purchase, not to the device. And every access is

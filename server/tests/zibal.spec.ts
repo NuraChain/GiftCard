@@ -297,7 +297,7 @@ function wired(initial: 'zarinpal' | 'zibal') {
         active: () => state.active,
         zarinpal: zarinpal.gateway,
         zibal: zibalSide.gateway,
-        plisio: named('plisio').gateway
+        nowpayments: named('nowpayments').gateway
     });
     return { state, payment, zarinpal, zibal: zibalSide };
 }
@@ -356,7 +356,7 @@ describe('the gateway switch', () => {
             active: () => 'zibal',
             zarinpal: refusing,
             zibal: refusing,
-            plisio: refusing
+            nowpayments: refusing
         });
         expect(await payment.request(ORDER)).toEqual({
             ok: false,

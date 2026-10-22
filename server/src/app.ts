@@ -44,10 +44,14 @@ import { contract } from './contract/index.ts';
 import type { Store } from './db/index.ts';
 import { catalogueHandlers } from './features/catalogue/routes.ts';
 import { createCheckout } from './features/checkout/checkout.ts';
-import { mountPayCallback, mountPlisioCallback, payHandlers } from './features/checkout/routes.ts';
+import {
+    mountPayCallback,
+    mountNowPaymentsCallback,
+    payHandlers
+} from './features/checkout/routes.ts';
 import type { MailSender } from './features/checkout/mailer.ts';
 import type { SmsSender } from './features/checkout/panelsms.ts';
-import type { Plisio } from './features/checkout/plisio.ts';
+import type { NowPayments } from './features/checkout/nowpayments.ts';
 import { createReconciler } from './features/checkout/reconcile.ts';
 import type { PaymentGateway } from './features/checkout/zarinpal.ts';
 import { consoleHandlers } from './features/console/routes.ts';
@@ -70,14 +74,14 @@ export interface AppOptions {
     admin: Admin;
 
     /**
-     * The English shop: Plisio OPENS its invoices, and `payment` - which routes `plisio:`
+     * The English shop: NOWPayments OPENS its invoices, and `payment` - which routes `nowpayments:`
      * handles to the same client - verifies them. Resend emails its codes.
      */
-    plisio: Plisio;
+    nowpayments: NowPayments;
     mail: MailSender;
 
     /**
-     * How often unsettled Plisio orders are re-checked - see features/checkout/reconcile.ts.
+     * How often unsettled NOWPayments orders are re-checked - see features/checkout/reconcile.ts.
      * Absent means never, which is what a test wants: it drives settlement itself.
      */
     reconcileEveryMs?: number;
@@ -217,7 +221,7 @@ function mountClient(
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
-    const { store, payment, sms, mail, plisio, admin, settings, rate, log } = options;
+    const { store, payment, sms, mail, nowpayments, admin, settings, rate, log } = options;
     const { telegram, notifier, backup, payouts } = options;
     const resultPath = options.resultPath ?? '/';
 
@@ -231,13 +235,13 @@ export function buildApp(options: AppOptions): FastifyInstance {
      */
     const callbackUrl = (): string => `${settings.current().publicBaseUrl}/api/pay/callback`;
 
-    // The English shop's two addresses, by the same rule. `json=true` is how Plisio is asked
+    // The English shop's two addresses, by the same rule. `json=true` is how NOWPayments is asked
     // to post JSON rather than a PHP-shaped form; the route reads either. The return lands on
     // the buyer's own language's page - one of a fixed list, never a path the request wrote -
     // which knows from its own storage which receipt it is waiting for.
-    const plisioCallbackUrl = (): string =>
-        `${settings.current().publicBaseUrl}/api/pay/plisio?json=true`;
-    const plisioReturnUrl = (lang: IntlLang): string =>
+    const nowPaymentsCallbackUrl = (): string =>
+        `${settings.current().publicBaseUrl}/api/pay/nowpayments`;
+    const nowPaymentsReturnUrl = (lang: IntlLang): string =>
         `${settings.current().publicBaseUrl}/${lang}?pay=return#purchase`;
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
@@ -366,17 +370,17 @@ export function buildApp(options: AppOptions): FastifyInstance {
         settings,
         rate,
         payment,
-        plisio,
+        nowpayments,
         checkout,
         callbackUrl,
-        plisioCallbackUrl,
-        plisioReturnUrl,
+        nowPaymentsCallbackUrl,
+        nowPaymentsReturnUrl,
         resultPath,
         isOperator,
         log
     };
     mountPayCallback(app, pay);
-    mountPlisioCallback(app, pay);
+    mountNowPaymentsCallback(app, pay);
 
     const requireAdmin = guard(({ request }) => admin.require(request.cookies[SESSION_COOKIE]));
 
@@ -426,7 +430,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
             'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))],
             'admin.testGateway': [requireAdmin, guard(throttle(5, 60_000))],
             'admin.testEmail': [requireAdmin, guard(throttle(5, 60_000))],
-            'admin.testPlisio': [requireAdmin, guard(throttle(5, 60_000))]
+            'admin.testNowPayments': [requireAdmin, guard(throttle(5, 60_000))]
         },
 
         // One line per feature. `mountApi` proves the union covers every route in the
@@ -444,10 +448,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
                     sms,
                     mail,
                     payment,
-                    plisio,
+                    nowpayments,
                     callbackUrl,
-                    plisioCallbackUrl,
-                    plisioReturnUrl,
+                    nowPaymentsCallbackUrl,
+                    nowPaymentsReturnUrl,
                     log
                 }),
                 ...rateHandlers({ rate, settings }),

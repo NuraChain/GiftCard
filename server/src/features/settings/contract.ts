@@ -93,15 +93,15 @@ export const settingsView = z.object({
     zibalMerchantSet: z.boolean(),
 
     /** The English shop's gateway: host and secret key, masked like every other credential. */
-    plisioBase: z.string(),
-    plisioApiKeyMasked: z.string(),
-    plisioApiKeySet: z.boolean(),
+    nowPaymentsBase: z.string(),
+    nowPaymentsApiKeyMasked: z.string(),
+    nowPaymentsApiKeySet: z.boolean(),
 
     /**
-     * Where Plisio posts an invoice's state - the address to give Plisio's panel as the Status
-     * URL. Derived from `publicBaseUrl`, like `callbackUrl` below.
+     * Where NOWPayments posts a payment's state (the IPN). Every invoice carries it, so it is
+     * shown for reference. Derived from `publicBaseUrl`, like `callbackUrl` below.
      */
-    plisioCallbackUrl: z.string(),
+    nowPaymentsCallbackUrl: z.string(),
 
     /** The English shop's email delivery through Resend. The key is write-only. */
     resendBase: z.string(),
@@ -175,9 +175,9 @@ export const settingsInput = z.object({
     /** Zibal's merchant is write-only too: a blank one means "keep it", never "erase it". */
     zibalMerchant: z.string().trim().max(100).optional(),
 
-    /** Plisio's secret key and Resend's API key are write-only, like the merchants. */
-    plisioApiKey: z.string().trim().max(200).optional(),
-    plisioBase: z.string().trim().max(200).optional(),
+    /** NOWPayments' secret key and Resend's API key are write-only, like the merchants. */
+    nowPaymentsApiKey: z.string().trim().max(200).optional(),
+    nowPaymentsBase: z.string().trim().max(200).optional(),
     resendApiKey: z.string().trim().max(200).optional(),
 
     /** `codes@example.com`, or `Shop <codes@example.com>`. Checked by Resend, not here. */
@@ -284,6 +284,6 @@ export const settingsRoutes = {
     testGateway: post('/admin/test-gateway', { output: testGatewayResult }),
     testEmail: post('/admin/test-email', { input: testEmailInput, output: testSmsResult }),
 
-    /** The same proof for Plisio: one $1 invoice is opened and left unpaid. */
-    testPlisio: post('/admin/test-plisio', { output: testSmsResult })
+    /** The same proof for NOWPayments: one $1 invoice is opened and left unpaid. */
+    testNowPayments: post('/admin/test-nowpayments', { output: testSmsResult })
 };

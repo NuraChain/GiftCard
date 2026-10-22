@@ -8,7 +8,7 @@
 // WHAT THESE TESTS DO NOT PROVE: that Zarinpal and a real mail server behave as documented. Their
 // wire shapes here are transcribed from their published docs, not observed from a live
 // call. The first real payment is still the first real payment.
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 
 import { createAdmin } from '../src/features/console/session.ts';
 import { buildApp } from '../src/app.ts';
@@ -20,7 +20,7 @@ import type {
     VerifyResult
 } from '../src/features/checkout/zarinpal.ts';
 import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
-import type { Plisio, PlisioRequest } from '../src/features/checkout/plisio.ts';
+import type { NowPayments, NowPaymentsRequest } from '../src/features/checkout/nowpayments.ts';
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import { NO_SHOP_NAMES, shopName } from '../src/domain/langs.ts';
@@ -133,12 +133,16 @@ interface Fakes {
 
     /**
      * The English shop's gateway. It only OPENS invoices: verifying one goes through
-     * `payment` like every other order, carrying its `plisio:` handle - which is how the
+     * `payment` like every other order, carrying its `nowpayments:` handle - which is how the
      * real switch is wired too.
      */
-    plisio: Plisio;
-    plisioRequests: PlisioRequest[];
-    plisioOverride: RequestResult | null;
+    nowpayments: NowPayments;
+    nowPaymentsRequests: NowPaymentsRequest[];
+    nowPaymentsOverride: RequestResult | null;
+
+    /** Every payment the routes asked NOWPayments to vouch for, and what it says back. */
+    learnCalls: Array<{ invoiceId: string; paymentId: string }>;
+    learnAnswer: boolean;
 
     mail: MailSender;
     mailSent: Array<{ email: string; code: string; amount: number }>;
@@ -185,20 +189,26 @@ function fakes(): Fakes {
         opened: 0,
         verifyResult: { ok: true, refId: 987654, alreadyVerified: false },
         smsResult: { ok: true },
-        plisioRequests: [],
-        plisioOverride: null,
-        plisio: {
+        nowPaymentsRequests: [],
+        nowPaymentsOverride: null,
+        learnCalls: [],
+        learnAnswer: true,
+        nowpayments: {
             request: (input) => {
-                state.plisioRequests.push(input);
-                if (state.plisioOverride !== null) {
-                    return Promise.resolve(state.plisioOverride);
+                state.nowPaymentsRequests.push(input);
+                if (state.nowPaymentsOverride !== null) {
+                    return Promise.resolve(state.nowPaymentsOverride);
                 }
-                const txn = `tx${String(state.plisioRequests.length).padStart(6, '0')}`;
+                const iid = `45226${String(state.nowPaymentsRequests.length).padStart(5, '0')}`;
                 return Promise.resolve({
                     ok: true,
-                    authority: txn,
-                    payUrl: `https://plisio.test/invoice/${txn}`
+                    authority: iid,
+                    payUrl: `https://nowpayments.test/payment/?iid=${iid}`
                 });
+            },
+            learn: (invoiceId, paymentId) => {
+                state.learnCalls.push({ invoiceId, paymentId });
+                return Promise.resolve(state.learnAnswer);
             },
             verify: () => Promise.reject(new Error('verified through payment, never directly'))
         },
@@ -298,7 +308,7 @@ beforeEach(() => {
         settings,
         rate,
         payment: fake.payment,
-        plisio: fake.plisio,
+        nowpayments: fake.nowpayments,
         mail: fake.mail,
         sms: fake.sms,
         telegram: fake.telegram,
@@ -2269,7 +2279,7 @@ describe('the English shop', () => {
 
     beforeEach(() => {
         store.addCodes(10, uuids(2));
-        settings.save({ plisioApiKey: 'plisio-secret' });
+        settings.save({ nowPaymentsApiKey: 'nowpayments-secret' });
     });
 
     /** Starts an English checkout and hands back the receipt token and the stored handle. */
@@ -2280,32 +2290,44 @@ describe('the English shop', () => {
         return { token: receipt, authority: store.orderById(receipt)?.authority ?? '' };
     }
 
-    function nudge(txnId: string): Promise<Answer> {
-        return post('/api/pay/plisio?json=true', { txn_id: txnId, status: 'completed' });
+    /** The first invoice the fake opens, and a payment under it. */
+    const INVOICE = '4522600001';
+    const PAYMENT = '5000000001';
+
+    /**
+     * Posts an IPN and waits for the settlement it starts. The route answers BEFORE settling
+     * (NOWPayments allows it three seconds), so the answer alone says nothing has happened yet.
+     */
+    async function nudge(invoiceId: string, paymentId = PAYMENT): Promise<Answer> {
+        const asked = fake.verifyCalls.length;
+        const answer = await post('/api/pay/nowpayments', {
+            invoice_id: Number(invoiceId),
+            payment_id: Number(paymentId),
+            payment_status: 'finished'
+        });
+        await vi.waitFor(() => expect(fake.verifyCalls.length).toBeGreaterThan(asked));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return answer;
     }
 
-    it('opens a Plisio invoice at FACE VALUE in dollars, whatever the tether rate is', async () => {
+    it('opens a NOWPayments invoice at FACE VALUE in dollars, whatever the tether rate is', async () => {
         rate.set(null);
         const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
 
         expect(started.status).toBe(200);
         expect(started.json<{ payUrl: string }>().payUrl).toBe(
-            'https://plisio.test/invoice/tx000001'
+            'https://nowpayments.test/payment/?iid=4522600001'
         );
-        expect(fake.plisioRequests[0]).toMatchObject({
-            usdAmount: 10,
-            email: 'buyer@example.com',
-            expireMinutes: 60
-        });
-        // The receipt token reads the code back, so it is never handed to Plisio.
+        expect(fake.nowPaymentsRequests[0]).toMatchObject({ usdAmount: 10 });
+        // The receipt token reads the code back, so it is never handed to NOWPayments.
         const { receipt } = started.json<{ receipt: string }>();
-        expect(JSON.stringify(fake.plisioRequests[0])).not.toContain(receipt);
+        expect(JSON.stringify(fake.nowPaymentsRequests[0])).not.toContain(receipt);
 
         expect(store.orderById(receipt)).toMatchObject({
             lang: 'en',
             toman: 0,
             phone: 'buyer@example.com',
-            authority: 'plisio:tx000001',
+            authority: 'nowpayments:4522600001',
             status: 'pending'
         });
         // Nothing went through the Persian shop's gateway.
@@ -2315,18 +2337,22 @@ describe('the English shop', () => {
     it("sends the buyer back to their own language's page, and only to one of the list", async () => {
         settings.save({ publicBaseUrl: 'https://shop.test' });
         expect((await post('/api/pay/start-en', { amount: 10, email: EMAIL })).status).toBe(200);
-        expect(fake.plisioRequests[0]?.returnUrl).toBe('https://shop.test/en?pay=return#purchase');
+        expect(fake.nowPaymentsRequests[0]?.returnUrl).toBe(
+            'https://shop.test/en?pay=return#purchase'
+        );
 
         const arabic = await post('/api/pay/start-en', { amount: 10, email: EMAIL, lang: 'ar' });
         expect(arabic.status).toBe(200);
-        expect(fake.plisioRequests[1]?.returnUrl).toBe('https://shop.test/ar?pay=return#purchase');
+        expect(fake.nowPaymentsRequests[1]?.returnUrl).toBe(
+            'https://shop.test/ar?pay=return#purchase'
+        );
 
         // Persian is the other shop, and anything else is not a page at all.
         for (const lang of ['fa', 'xx', '//evil.test']) {
             const refused = await post('/api/pay/start-en', { amount: 10, email: EMAIL, lang });
             expect(refused.status, lang).toBe(422);
         }
-        expect(fake.plisioRequests).toHaveLength(2);
+        expect(fake.nowPaymentsRequests).toHaveLength(2);
     });
 
     it('names the shop per language, falling back to English and then to Ashbringer', async () => {
@@ -2342,7 +2368,7 @@ describe('the English shop', () => {
         expect(catalog.appNames).toMatchObject({ en: 'Shop', fr: 'Boutique', ar: '' });
 
         await post('/api/pay/start-en', { amount: 10, email: EMAIL });
-        expect(fake.plisioRequests[0]?.orderName).toBe('Shop $10 gift card');
+        expect(fake.nowPaymentsRequests[0]?.orderName).toBe('Shop $10 gift card');
     });
 
     it('never shows the Persian name on another language', () => {
@@ -2351,12 +2377,12 @@ describe('the English shop', () => {
         expect(shopName('fa', 'اشبرینگر', NO_SHOP_NAMES)).toBe('اشبرینگر');
     });
 
-    it('is closed until Plisio has a key', async () => {
-        settings.save({ plisioApiKey: '' });
+    it('is closed until NOWPayments has a key', async () => {
+        settings.save({ nowPaymentsApiKey: '' });
         const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
 
         expect(started.status).toBe(503);
-        expect(fake.plisioRequests).toHaveLength(0);
+        expect(fake.nowPaymentsRequests).toHaveLength(0);
         expect(store.availableFor(10)).toBe(2);
     });
 
@@ -2366,8 +2392,8 @@ describe('the English shop', () => {
         expect(started.text()).toContain('Enter a valid email address');
     });
 
-    it('puts the code back on the shelf when Plisio will not open the invoice', async () => {
-        fake.plisioOverride = { ok: false, reason: 'plisio: request failed (code 103)' };
+    it('puts the code back on the shelf when NOWPayments will not open the invoice', async () => {
+        fake.nowPaymentsOverride = { ok: false, reason: 'nowpayments: request failed (code 103)' };
         const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
 
         expect(started.status).toBe(503);
@@ -2381,9 +2407,12 @@ describe('the English shop', () => {
         const { token, authority } = await startEn();
         fake.verifyResult = { ok: true, refId: 123_456_789_012, alreadyVerified: false };
 
-        expect((await nudge('tx000001')).status).toBe(200);
+        expect((await nudge(INVOICE)).status).toBe(200);
 
         expect(fake.verifyCalls).toEqual([{ authority, toman: 10 }]);
+        // The payment was vouched for by NOWPayments before it was kept against the order.
+        expect(fake.learnCalls).toEqual([{ invoiceId: INVOICE, paymentId: PAYMENT }]);
+        expect(store.paymentsFor(authority)).toEqual([PAYMENT]);
         const order = store.orderById(token);
         expect(order?.status).toBe('paid');
         expect(fake.mailSent).toEqual([
@@ -2405,9 +2434,9 @@ describe('the English shop', () => {
 
     it('leaves a PENDING invoice holding its code, and says so on the receipt', async () => {
         const { token } = await startEn();
-        fake.verifyResult = { ok: false, pending: true, reason: 'plisio: invoice pending' };
+        fake.verifyResult = { ok: false, pending: true, reason: 'nowpayments: invoice pending' };
 
-        await nudge('tx000001');
+        await nudge(INVOICE);
 
         expect(store.orderById(token)?.status).toBe('pending');
         expect(store.availableFor(10)).toBe(1);
@@ -2427,9 +2456,9 @@ describe('the English shop', () => {
         expect(fake.mailSent).toHaveLength(1);
     });
 
-    it('asks Plisio at most once per window, however often the receipt is polled', async () => {
+    it('asks NOWPayments at most once per window, however often the receipt is polled', async () => {
         const { token } = await startEn();
-        fake.verifyResult = { ok: false, pending: true, reason: 'plisio: invoice pending' };
+        fake.verifyResult = { ok: false, pending: true, reason: 'nowpayments: invoice pending' };
 
         await get(`/api/pay/receipt?token=${token}`);
         await get(`/api/pay/receipt?token=${token}`);
@@ -2440,9 +2469,9 @@ describe('the English shop', () => {
 
     it('fails an expired invoice and frees its code', async () => {
         const { token } = await startEn();
-        fake.verifyResult = { ok: false, reason: 'plisio: invoice expired' };
+        fake.verifyResult = { ok: false, reason: 'nowpayments: invoice expired' };
 
-        await nudge('tx000001');
+        await nudge(INVOICE);
 
         expect(store.orderById(token)?.status).toBe('failed');
         expect(store.availableFor(10)).toBe(2);
@@ -2450,22 +2479,49 @@ describe('the English shop', () => {
 
     it('does nothing for a callback about an invoice that is not ours', async () => {
         await startEn();
-        const forged = await nudge('tx999999');
+        const forged = await post('/api/pay/nowpayments', {
+            invoice_id: 4_522_699_999,
+            payment_id: Number(PAYMENT)
+        });
 
         expect(forged.status).toBe(200);
         expect(fake.verifyCalls).toHaveLength(0);
+        expect(fake.learnCalls).toHaveLength(0);
+    });
+
+    it('never keeps a payment NOWPayments will not put under the invoice', async () => {
+        const { authority } = await startEn();
+        fake.learnAnswer = false;
+        fake.verifyResult = { ok: false, pending: true, reason: 'nowpayments: no payment yet' };
+
+        await nudge(INVOICE, '5000000777');
+
+        expect(fake.learnCalls).toEqual([{ invoiceId: INVOICE, paymentId: '5000000777' }]);
+        expect(store.paymentsFor(authority)).toEqual([]);
+    });
+
+    it('learns the payment from the address the buyer came back on', async () => {
+        const { token, authority } = await startEn();
+        fake.verifyResult = { ok: false, pending: true, reason: 'nowpayments: payment waiting' };
+
+        const receipt = await get(`/api/pay/receipt?token=${token}&payment=5000000002`);
+
+        expect(receipt.status).toBe(200);
+        expect(store.paymentsFor(authority)).toEqual(['5000000002']);
+        // Anything but digits is refused before it reaches the gateway.
+        expect((await get(`/api/pay/receipt?token=${token}&payment=../x`)).status).toBe(422);
     });
 
     it('takes the callback as a form post too, without opening forms to the console', async () => {
         const { token } = await startEn();
         const form = await app.inject({
             method: 'POST',
-            url: '/api/pay/plisio',
+            url: '/api/pay/nowpayments',
             headers: { 'content-type': 'application/x-www-form-urlencoded' },
-            payload: 'txn_id=tx000001&status=completed'
+            payload: `invoice_id=${INVOICE}&payment_id=${PAYMENT}&payment_status=finished`
         });
         expect(form.statusCode).toBe(200);
-        expect(store.orderById(token)?.status).toBe('paid');
+        await vi.waitFor(() => expect(store.orderById(token)?.status).toBe('paid'));
 
         // The parser lives in the callback's own scope: the rest of the API still refuses forms.
         const signIn = await app.inject({
@@ -2512,6 +2568,6 @@ describe('the English shop', () => {
 
     it('keeps the console guarded on the new test routes', async () => {
         expect((await post('/api/admin/test-email', { email: 'a@b.co' })).status).toBe(401);
-        expect((await post('/api/admin/test-plisio', {})).status).toBe(401);
+        expect((await post('/api/admin/test-nowpayments', {})).status).toBe(401);
     });
 });

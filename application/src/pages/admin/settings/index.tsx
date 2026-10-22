@@ -18,7 +18,7 @@
 // the database to Telegram asks before it does it, and rotating the key demands the current
 // one even though a session is already open.
 //
-// THE ENGLISH SHOP'S TWO CARDS - Plisio and Resend - sit after the Persian shop's gateway and
+// THE ENGLISH SHOP'S TWO CARDS - NOWPayments and Resend - sit after the Persian shop's gateway and
 // SMS panel, in the same order: how a buyer pays, then how their code reaches them.
 //
 // PRICING SITS SECOND, right under the catalogue. The cards above it no longer carry prices -
@@ -32,7 +32,7 @@ import PricingSettings from './pricing.tsx';
 import ShopSettings from './shop.tsx';
 import GatewaySettings from './gateway.tsx';
 import SmsSettings from './sms.tsx';
-import PlisioSettings from './plisio.tsx';
+import NowPaymentsSettings from './nowpayments.tsx';
 import EmailSettings from './email.tsx';
 import TelegramSettings from './telegram.tsx';
 import AdminKeySettings from './admin-key.tsx';
@@ -45,7 +45,7 @@ export default function AdminSettings(): ReactNode {
             <ShopSettings />
             <GatewaySettings />
             <SmsSettings />
-            <PlisioSettings />
+            <NowPaymentsSettings />
             <EmailSettings />
             <TelegramSettings />
             <AdminKeySettings />

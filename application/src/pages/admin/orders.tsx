@@ -198,10 +198,10 @@ export default function Orders(): ReactNode {
                                             className="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4"
                                         >
                                             {/* An English order was paid in dollars through
-                                                Plisio, and its Toman column is a zero. */}
+                                                NOWPayments, and its Toman column is a zero. */}
                                             {order.lang === 'en' ? (
                                                 <span dir="ltr" className="latin">
-                                                    {usd(order.amount)} · Plisio
+                                                    {usd(order.amount)} · NOWPayments
                                                 </span>
                                             ) : (
                                                 toman(order.toman)

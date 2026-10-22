@@ -31,7 +31,7 @@
 //
 // THE ENGLISH SHOP'S CARD IS A DIFFERENT PURCHASE, and is its own component at the bottom of
 // this file. It asks for an email, sells at the face value in dollars - so there is no moving
-// price and nothing above about pinning a quote applies - and pays through Plisio.
+// price and nothing above about pinning a quote applies - and pays through NOWPayments.
 import { ArrowRight, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
@@ -308,13 +308,13 @@ function TomanCard({ tier }: { tier: CatalogTier }): ReactNode {
 }
 
 /**
- * The English shop's card: an email, the face value in dollars, and Plisio.
+ * The English shop's card: an email, the face value in dollars, and NOWPayments.
  *
  * It keeps the Persian card's shape - the purchase inside the card, a confirm step that reads
  * the address back - because a mistyped email is exactly as expensive as a mistyped mobile:
  * the code goes somewhere nobody reads.
  *
- * THE RECEIPT TOKEN IS REMEMBERED BEFORE THE BUYER LEAVES. Plisio sends every buyer back to the
+ * THE RECEIPT TOKEN IS REMEMBERED BEFORE THE BUYER LEAVES. NOWPayments sends every buyer back to the
  * same address, so this tab is the only thing that knows which order it is waiting for - see
  * lib/pending-receipt.ts.
  */
@@ -359,7 +359,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Total',
         opening: 'Opening checkout...',
         pay: (price) => `Pay ${price}`,
-        note: "You pay in crypto on Plisio's checkout page. Your wallet keys never reach our server.",
+        note: "You pay in crypto on NOWPayments's checkout page. Your wallet keys never reach our server.",
         failed: 'The payment could not be started. Check your connection and try again.',
         soldOut: 'This card cannot be bought right now. Please choose another one.',
         closed: 'Payments are not available right now. Please try again later.'
@@ -380,7 +380,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'الإجمالي',
         opening: 'جارٍ فتح صفحة الدفع...',
         pay: (price) => `ادفع ${price}`,
-        note: 'تدفع بالعملات الرقمية على صفحة الدفع في Plisio. مفاتيح محفظتك لا تصل إلى خادمنا أبدًا.',
+        note: 'تدفع بالعملات الرقمية على صفحة الدفع في NOWPayments. مفاتيح محفظتك لا تصل إلى خادمنا أبدًا.',
         failed: 'تعذّر بدء الدفع. تحقّق من اتصالك وحاول مرة أخرى.',
         soldOut: 'لا يمكن شراء هذه البطاقة حاليًا. يُرجى اختيار بطاقة أخرى.',
         closed: 'الدفع غير متاح حاليًا. يُرجى المحاولة لاحقًا.'
@@ -401,7 +401,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Total',
         opening: 'Abriendo el pago...',
         pay: (price) => `Pagar ${price}`,
-        note: 'Pagas con criptomonedas en la página de pago de Plisio. Las claves de tu billetera nunca llegan a nuestro servidor.',
+        note: 'Pagas con criptomonedas en la página de pago de NOWPayments. Las claves de tu billetera nunca llegan a nuestro servidor.',
         failed: 'No se pudo iniciar el pago. Revisa tu conexión e inténtalo de nuevo.',
         soldOut: 'Esta tarjeta no se puede comprar ahora. Elige otra, por favor.',
         closed: 'Los pagos no están disponibles en este momento. Inténtalo más tarde.'
@@ -422,7 +422,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Total',
         opening: 'Abrindo o pagamento...',
         pay: (price) => `Pagar ${price}`,
-        note: 'Você paga em cripto na página de pagamento da Plisio. As chaves da sua carteira nunca chegam ao nosso servidor.',
+        note: 'Você paga em cripto na página de pagamento da NOWPayments. As chaves da sua carteira nunca chegam ao nosso servidor.',
         failed: 'Não foi possível iniciar o pagamento. Verifique sua conexão e tente novamente.',
         soldOut: 'Este cartão não pode ser comprado agora. Escolha outro, por favor.',
         closed: 'Os pagamentos não estão disponíveis no momento. Tente novamente mais tarde.'
@@ -443,7 +443,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'कुल',
         opening: 'भुगतान पेज खुल रहा है...',
         pay: (price) => `${price} का भुगतान करें`,
-        note: 'आप Plisio के भुगतान पेज पर क्रिप्टो में भुगतान करते हैं। आपके वॉलेट की कुंजियाँ कभी हमारे सर्वर तक नहीं पहुँचतीं।',
+        note: 'आप NOWPayments के भुगतान पेज पर क्रिप्टो में भुगतान करते हैं। आपके वॉलेट की कुंजियाँ कभी हमारे सर्वर तक नहीं पहुँचतीं।',
         failed: 'भुगतान शुरू नहीं हो सका। अपना कनेक्शन जाँचें और फिर से कोशिश करें।',
         soldOut: 'यह कार्ड अभी खरीदा नहीं जा सकता। कृपया कोई दूसरा कार्ड चुनें।',
         closed: 'भुगतान अभी उपलब्ध नहीं है। कृपया बाद में फिर से कोशिश करें।'
@@ -464,7 +464,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: '合计',
         opening: '正在打开支付页面...',
         pay: (price) => `支付 ${price}`,
-        note: '您将在 Plisio 的支付页面使用加密货币付款。您的钱包密钥绝不会经过我们的服务器。',
+        note: '您将在 NOWPayments 的支付页面使用加密货币付款。您的钱包密钥绝不会经过我们的服务器。',
         failed: '无法发起支付。请检查网络连接后重试。',
         soldOut: '此卡暂时无法购买，请选择其他卡。',
         closed: '暂时无法付款，请稍后再试。'
@@ -485,7 +485,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Итого',
         opening: 'Открываем страницу оплаты...',
         pay: (price) => `Оплатить ${price}`,
-        note: 'Оплата криптовалютой проходит на странице Plisio. Ключи вашего кошелька никогда не попадают на наш сервер.',
+        note: 'Оплата криптовалютой проходит на странице NOWPayments. Ключи вашего кошелька никогда не попадают на наш сервер.',
         failed: 'Не удалось начать оплату. Проверьте подключение и попробуйте снова.',
         soldOut: 'Эту карту сейчас нельзя купить. Пожалуйста, выберите другую.',
         closed: 'Оплата сейчас недоступна. Пожалуйста, попробуйте позже.'
@@ -506,7 +506,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Total',
         opening: 'Ouverture du paiement...',
         pay: (price) => `Payer ${price}`,
-        note: 'Vous payez en cryptomonnaie sur la page de paiement de Plisio. Les clés de votre portefeuille ne transitent jamais par notre serveur.',
+        note: 'Vous payez en cryptomonnaie sur la page de paiement de NOWPayments. Les clés de votre portefeuille ne transitent jamais par notre serveur.',
         failed: 'Impossible de lancer le paiement. Vérifiez votre connexion et réessayez.',
         soldOut: 'Cette carte ne peut pas être achetée pour le moment. Choisissez-en une autre.',
         closed: 'Les paiements sont indisponibles pour le moment. Réessayez plus tard.'
@@ -527,7 +527,7 @@ const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
         total: 'Toplam',
         opening: 'Ödeme sayfası açılıyor...',
         pay: (price) => `${price} öde`,
-        note: "Ödemeyi Plisio'nun ödeme sayfasında kripto ile yaparsınız. Cüzdan anahtarlarınız sunucumuza asla ulaşmaz.",
+        note: "Ödemeyi NOWPayments'ın ödeme sayfasında kripto ile yaparsınız. Cüzdan anahtarlarınız sunucumuza asla ulaşmaz.",
         failed: 'Ödeme başlatılamadı. Bağlantınızı kontrol edip tekrar deneyin.',
         soldOut: 'Bu kart şu anda satın alınamıyor. Lütfen başka bir kart seçin.',
         closed: 'Ödemeler şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.'
@@ -562,17 +562,17 @@ function DollarCard({ tier }: { tier: CatalogTier }): ReactNode {
                 input: {
                     amount: tier.amount,
                     email: form.values.email,
-                    // Which page Plisio sends the buyer back to.
+                    // Which page NOWPayments sends the buyer back to.
                     lang: lang === 'fa' ? 'en' : lang
                 }
             });
             rememberReceipt(opened.receipt);
-            // Leaving the page is the success case: Plisio owns the next screen.
+            // Leaving the page is the success case: NOWPayments owns the next screen.
             window.location.assign(opened.payUrl);
         } catch (error) {
             setPaying(false);
             logFailure(error);
-            // The checkout's own refusals - a 409 (sold out) or a 503 (Plisio closed) - get
+            // The checkout's own refusals - a 409 (sold out) or a 503 (NOWPayments closed) - get
             // their own sentence in the reader's language; the server words them in English
             // only. Anything else gets the general one: a throttle, a proxy's page, a dropped
             // connection, and a 422, whose headline is the shared validator's Persian one (the

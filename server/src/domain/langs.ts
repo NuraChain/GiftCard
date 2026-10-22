@@ -2,7 +2,7 @@
 //
 // TWO DIFFERENT THINGS, kept apart on purpose. A LANGUAGE is what the page is written in; a
 // SHOP is how it is paid. Persian is the Toman shop - an Iranian gateway, a mobile number,
-// an SMS. Every other language is the same dollar shop - Plisio, an email, Resend - in other
+// an SMS. Every other language is the same dollar shop - NOWPayments, an email, Resend - in other
 // words. So an order records its shop (`Order.lang`, 'fa' | 'en'), never the language, and
 // everything on the server that branches on how a payment is settled keeps two cases.
 //

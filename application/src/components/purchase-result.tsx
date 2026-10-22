@@ -5,12 +5,12 @@
 // the GATEWAY rather than from a click, carrying a token in the URL. It is the one part of
 // the purchase that is about a journey already finished.
 //
-// THE DOLLAR-SHOP BUYER ARRIVES WITHOUT A TOKEN. Plisio sends them back to their own
+// THE DOLLAR-SHOP BUYER ARRIVES WITHOUT A TOKEN. NOWPayments sends them back to their own
 // language's page, `/<lang>?pay=return` (the server builds it from a fixed list), so the token
 // comes out of this tab's storage instead (lib/pending-receipt.ts) and is put on the address,
 // after which the panel behaves exactly as it does for a Persian buyer. And such a receipt can
 // be `pending` - a crypto payment confirming - which is polled until it is not: the server
-// asks Plisio on each poll, so this is also how a lost callback is caught.
+// asks NOWPayments on each poll, so this is also how a lost callback is caught.
 //
 // It renders NOTHING when there is no token and no stray callback, so an ordinary visit does
 // not carry an empty panel around. The router's search params are the source of truth -
@@ -450,6 +450,20 @@ const COPY: Record<Lang, ResultCopy> = {
     }
 };
 
+/** What a NOWPayments payment id looks like. Anything else is not sent. */
+const PAYMENT_ID = /^\d{1,20}$/;
+
+/**
+ * The payment id NOWPayments sent the buyer back with, or ''. It is read from the query, and
+ * from after the `#` too: the return address ends in `#purchase`, and a parameter appended
+ * to it lands there.
+ */
+function returnedPaymentId(params: URLSearchParams): string {
+    const fromHash = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('NP_id');
+    const found = params.get('NP_id') ?? fromHash ?? '';
+    return PAYMENT_ID.test(found) ? found : '';
+}
+
 export default function PurchaseResult(): ReactNode {
     const [params, setParams] = useSearchParams();
     const notify = useToasts();
@@ -459,10 +473,16 @@ export default function PurchaseResult(): ReactNode {
     const token = params.get('receipt') ?? '';
     const strayCallback = params.get('pay') === 'unknown';
 
-    // Back from Plisio, with the token in storage rather than on the address. `lost` is the
+    // Back from NOWPayments, with the token in storage rather than on the address. `lost` is the
     // same return when storage had nothing - another device, a private window.
     const returned = shopOf(lang) === 'dollar' && params.get('pay') === 'return';
     const [lost, setLost] = useState(false);
+
+    // NOWPayments puts the buyer's payment id on the way back as `NP_id`. It is carried along
+    // as `payment` and handed to the server with the receipt, which checks it with NOWPayments
+    // before it believes it - the way an order whose IPN never arrived still finds its payment.
+    const payment = params.get('payment') ?? '';
+    const paymentHint = PAYMENT_ID.test(payment) ? payment : '';
 
     useEffect(() => {
         if (!returned || token !== '') {
@@ -473,8 +493,14 @@ export default function PurchaseResult(): ReactNode {
             setLost(true);
             return;
         }
-        setParams({ receipt: recalled }, { replace: true });
-    }, [returned, token, setParams]);
+        const returnedWith = returnedPaymentId(params);
+        setParams(
+            returnedWith === ''
+                ? { receipt: recalled }
+                : { receipt: recalled, payment: returnedWith },
+            { replace: true }
+        );
+    }, [returned, token, params, setParams]);
 
     // undefined while unknown, null once we know there is nothing to show.
     const [receipt, setReceipt] = useState<Receipt | null | undefined>(undefined);
@@ -497,7 +523,9 @@ export default function PurchaseResult(): ReactNode {
 
         const read = (): void => {
             client.pay
-                .receipt({ query: { token } })
+                .receipt({
+                    query: paymentHint === '' ? { token } : { token, payment: paymentHint }
+                })
                 .then((value) => {
                     if (!current) {
                         return;
@@ -523,7 +551,7 @@ export default function PurchaseResult(): ReactNode {
             current = false;
             clearTimeout(poll);
         };
-    }, [token]);
+    }, [token, paymentHint]);
 
     const startOver = (): void => {
         setReceipt(undefined);

@@ -28,7 +28,7 @@ export function count(value: number, lang: Lang = 'fa'): string {
 
 /**
  * A dollar price: `$10.00` in English, `10,00 US$` in Portuguese. The dollar shop's only
- * currency - its cards sell at face value. Cents are always shown, because the invoice Plisio
+ * currency - its cards sell at face value. Cents are always shown, because the invoice NOWPayments
  * opens is for exactly this sum.
  */
 export function usd(value: number, lang: Lang = 'en'): string {

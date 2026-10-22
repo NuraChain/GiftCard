@@ -8,7 +8,7 @@
 // What stays here is copy that describes the SERVICE rather than the products: the steps, the
 // promises, the questions, and the contact details - in every language, keyed by `Lang`.
 // Persian and English are NOT word-for-word translations of each other: every language but
-// Persian is the dollar shop, paid in crypto through Plisio with its codes emailed, so its
+// Persian is the dollar shop, paid in crypto through NOWPayments with its codes emailed, so its
 // steps and answers say that. The other languages translate the ENGLISH copy, never the
 // Persian one.
 //
@@ -66,7 +66,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Pay with crypto',
-            body: "You pay on Plisio's secure checkout page, in the coin you prefer. Your wallet keys never come near our server."
+            body: "You pay on NOWPayments's secure checkout page, in the coin you prefer. Your wallet keys never come near our server."
         },
         {
             glyph: MessageSquareText,
@@ -83,7 +83,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'ادفع بالعملات الرقمية',
-            body: 'تدفع على صفحة الدفع الآمنة في Plisio، بالعملة التي تفضّلها. مفاتيح محفظتك لا تقترب من خادمنا أبدًا.'
+            body: 'تدفع على صفحة الدفع الآمنة في NOWPayments، بالعملة التي تفضّلها. مفاتيح محفظتك لا تقترب من خادمنا أبدًا.'
         },
         {
             glyph: MessageSquareText,
@@ -100,7 +100,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Paga con criptomonedas',
-            body: 'Pagas en la página de pago segura de Plisio, con la moneda que prefieras. Las claves de tu billetera nunca se acercan a nuestro servidor.'
+            body: 'Pagas en la página de pago segura de NOWPayments, con la moneda que prefieras. Las claves de tu billetera nunca se acercan a nuestro servidor.'
         },
         {
             glyph: MessageSquareText,
@@ -117,7 +117,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Pague com cripto',
-            body: 'Você paga na página de pagamento segura da Plisio, na moeda que preferir. As chaves da sua carteira nunca chegam perto do nosso servidor.'
+            body: 'Você paga na página de pagamento segura da NOWPayments, na moeda que preferir. As chaves da sua carteira nunca chegam perto do nosso servidor.'
         },
         {
             glyph: MessageSquareText,
@@ -134,7 +134,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'क्रिप्टो से भुगतान करें',
-            body: 'आप Plisio के सुरक्षित चेकआउट पेज पर, अपनी पसंद के कॉइन में भुगतान करते हैं। आपके वॉलेट की कुंजियाँ कभी हमारे सर्वर तक नहीं पहुँचतीं।'
+            body: 'आप NOWPayments के सुरक्षित चेकआउट पेज पर, अपनी पसंद के कॉइन में भुगतान करते हैं। आपके वॉलेट की कुंजियाँ कभी हमारे सर्वर तक नहीं पहुँचतीं।'
         },
         {
             glyph: MessageSquareText,
@@ -151,7 +151,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: '用加密货币支付',
-            body: '您在 Plisio 的安全支付页面上，用您喜欢的币种付款。您的钱包密钥绝不会接触我们的服务器。'
+            body: '您在 NOWPayments 的安全支付页面上，用您喜欢的币种付款。您的钱包密钥绝不会接触我们的服务器。'
         },
         {
             glyph: MessageSquareText,
@@ -168,7 +168,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Оплатите криптовалютой',
-            body: 'Вы платите на защищённой странице оплаты Plisio в удобной вам монете. Ключи вашего кошелька никогда не попадают на наш сервер.'
+            body: 'Вы платите на защищённой странице оплаты NOWPayments в удобной вам монете. Ключи вашего кошелька никогда не попадают на наш сервер.'
         },
         {
             glyph: MessageSquareText,
@@ -185,7 +185,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Payez en crypto',
-            body: "Vous payez sur la page de paiement sécurisée de Plisio, dans la cryptomonnaie de votre choix. Les clés de votre portefeuille n'approchent jamais notre serveur."
+            body: "Vous payez sur la page de paiement sécurisée de NOWPayments, dans la cryptomonnaie de votre choix. Les clés de votre portefeuille n'approchent jamais notre serveur."
         },
         {
             glyph: MessageSquareText,
@@ -202,7 +202,7 @@ export const STEPS: Record<Lang, Step[]> = {
         {
             glyph: ShieldCheck,
             title: 'Kriptoyla ödeyin',
-            body: "Ödemeyi Plisio'nun güvenli ödeme sayfasında, istediğiniz coin ile yaparsınız. Cüzdan anahtarlarınız sunucumuza asla yaklaşmaz."
+            body: "Ödemeyi NOWPayments'ın güvenli ödeme sayfasında, istediğiniz coin ile yaparsınız. Cüzdan anahtarlarınız sunucumuza asla yaklaşmaz."
         },
         {
             glyph: MessageSquareText,
@@ -236,43 +236,43 @@ export const ASSURANCES: Record<Lang, Assurance[]> = {
     en: [
         { glyph: Zap, label: 'Instant delivery', detail: 'On screen and by email' },
         { glyph: RefreshCw, label: 'Money-back promise', detail: 'If the code does not work' },
-        { glyph: Lock, label: 'Nothing stored', detail: 'You pay on Plisio only' },
+        { glyph: Lock, label: 'Nothing stored', detail: 'You pay on NOWPayments only' },
         { glyph: InfinityIcon, label: 'No expiry date', detail: 'Redeem whenever you like' }
     ],
     ar: [
         { glyph: Zap, label: 'تسليم فوري', detail: 'على الشاشة وبالبريد الإلكتروني' },
         { glyph: RefreshCw, label: 'ضمان استرداد المال', detail: 'إذا لم يعمل الرمز' },
-        { glyph: Lock, label: 'لا نحفظ شيئًا', detail: 'الدفع عبر Plisio فقط' },
+        { glyph: Lock, label: 'لا نحفظ شيئًا', detail: 'الدفع عبر NOWPayments فقط' },
         { glyph: InfinityIcon, label: 'بلا تاريخ انتهاء', detail: 'استخدمه متى شئت' }
     ],
     es: [
         { glyph: Zap, label: 'Entrega inmediata', detail: 'En pantalla y por correo' },
         { glyph: RefreshCw, label: 'Garantía de reembolso', detail: 'Si el código no funciona' },
-        { glyph: Lock, label: 'No guardamos nada', detail: 'Solo pagas en Plisio' },
+        { glyph: Lock, label: 'No guardamos nada', detail: 'Solo pagas en NOWPayments' },
         { glyph: InfinityIcon, label: 'Sin caducidad', detail: 'Canjéalo cuando quieras' }
     ],
     pt: [
         { glyph: Zap, label: 'Entrega imediata', detail: 'Na tela e por e-mail' },
         { glyph: RefreshCw, label: 'Garantia de reembolso', detail: 'Se o código não funcionar' },
-        { glyph: Lock, label: 'Nada armazenado', detail: 'Você paga só na Plisio' },
+        { glyph: Lock, label: 'Nada armazenado', detail: 'Você paga só na NOWPayments' },
         { glyph: InfinityIcon, label: 'Sem validade', detail: 'Resgate quando quiser' }
     ],
     hi: [
         { glyph: Zap, label: 'तुरंत डिलीवरी', detail: 'स्क्रीन पर और ईमेल से' },
         { glyph: RefreshCw, label: 'पैसे वापसी का वादा', detail: 'अगर कोड काम न करे' },
-        { glyph: Lock, label: 'कुछ भी सेव नहीं', detail: 'भुगतान केवल Plisio पर' },
+        { glyph: Lock, label: 'कुछ भी सेव नहीं', detail: 'भुगतान केवल NOWPayments पर' },
         { glyph: InfinityIcon, label: 'कोई समाप्ति तिथि नहीं', detail: 'जब चाहें रिडीम करें' }
     ],
     zh: [
         { glyph: Zap, label: '即时交付', detail: '屏幕显示并邮件发送' },
         { glyph: RefreshCw, label: '退款承诺', detail: '兑换码无效可退款' },
-        { glyph: Lock, label: '不存储任何信息', detail: '仅在 Plisio 付款' },
+        { glyph: Lock, label: '不存储任何信息', detail: '仅在 NOWPayments 付款' },
         { glyph: InfinityIcon, label: '永不过期', detail: '随时兑换' }
     ],
     ru: [
         { glyph: Zap, label: 'Мгновенная выдача', detail: 'На экране и по почте' },
         { glyph: RefreshCw, label: 'Гарантия возврата', detail: 'Если код не работает' },
-        { glyph: Lock, label: 'Ничего не храним', detail: 'Оплата только в Plisio' },
+        { glyph: Lock, label: 'Ничего не храним', detail: 'Оплата только в NOWPayments' },
         { glyph: InfinityIcon, label: 'Без срока действия', detail: 'Активируйте когда угодно' }
     ],
     fr: [
@@ -282,7 +282,7 @@ export const ASSURANCES: Record<Lang, Assurance[]> = {
             label: 'Satisfait ou remboursé',
             detail: 'Si le code ne fonctionne pas'
         },
-        { glyph: Lock, label: 'Rien de stocké', detail: 'Paiement sur Plisio uniquement' },
+        { glyph: Lock, label: 'Rien de stocké', detail: 'Paiement sur NOWPayments uniquement' },
         {
             glyph: InfinityIcon,
             label: "Sans date d'expiration",
@@ -292,7 +292,7 @@ export const ASSURANCES: Record<Lang, Assurance[]> = {
     tr: [
         { glyph: Zap, label: 'Anında teslimat', detail: 'Ekranda ve e-postayla' },
         { glyph: RefreshCw, label: 'Para iade garantisi', detail: 'Kod çalışmazsa' },
-        { glyph: Lock, label: 'Hiçbir şey saklanmaz', detail: "Ödeme yalnızca Plisio'da" },
+        { glyph: Lock, label: 'Hiçbir şey saklanmaz', detail: "Ödeme yalnızca NOWPayments'ta" },
         {
             glyph: InfinityIcon,
             label: 'Son kullanma tarihi yok',
@@ -360,7 +360,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'How do I pay?',
-            answer: "With cryptocurrency, on Plisio's checkout page. You choose the coin there; the price is the card's face value in US dollars, and Plisio shows the exact amount to send."
+            answer: "With cryptocurrency, on NOWPayments's checkout page. You choose the coin there; the price is the card's face value in US dollars, and NOWPayments shows the exact amount to send."
         },
         {
             id: 'closed-tab',
@@ -397,7 +397,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'كيف أدفع؟',
-            answer: 'بالعملات الرقمية، على صفحة الدفع في Plisio. تختار العملة هناك؛ والسعر هو القيمة الاسمية للبطاقة بالدولار الأمريكي، ويعرض Plisio المبلغ الدقيق الذي عليك إرساله.'
+            answer: 'بالعملات الرقمية، على صفحة الدفع في NOWPayments. تختار العملة هناك؛ والسعر هو القيمة الاسمية للبطاقة بالدولار الأمريكي، ويعرض NOWPayments المبلغ الدقيق الذي عليك إرساله.'
         },
         {
             id: 'closed-tab',
@@ -434,7 +434,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: '¿Cómo pago?',
-            answer: 'Con criptomonedas, en la página de pago de Plisio. Allí eliges la moneda; el precio es el valor nominal de la tarjeta en dólares estadounidenses, y Plisio te muestra el importe exacto que debes enviar.'
+            answer: 'Con criptomonedas, en la página de pago de NOWPayments. Allí eliges la moneda; el precio es el valor nominal de la tarjeta en dólares estadounidenses, y NOWPayments te muestra el importe exacto que debes enviar.'
         },
         {
             id: 'closed-tab',
@@ -471,7 +471,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'Como eu pago?',
-            answer: 'Com criptomoeda, na página de pagamento da Plisio. Você escolhe a moeda lá; o preço é o valor de face do cartão em dólares americanos, e a Plisio mostra o valor exato a enviar.'
+            answer: 'Com criptomoeda, na página de pagamento da NOWPayments. Você escolhe a moeda lá; o preço é o valor de face do cartão em dólares americanos, e a NOWPayments mostra o valor exato a enviar.'
         },
         {
             id: 'closed-tab',
@@ -508,7 +508,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'मैं भुगतान कैसे करूँ?',
-            answer: 'क्रिप्टोकरेंसी से, Plisio के चेकआउट पेज पर। कॉइन आप वहीं चुनते हैं; कीमत अमेरिकी डॉलर में कार्ड का अंकित मूल्य है, और Plisio भेजी जाने वाली सटीक राशि दिखाता है।'
+            answer: 'क्रिप्टोकरेंसी से, NOWPayments के चेकआउट पेज पर। कॉइन आप वहीं चुनते हैं; कीमत अमेरिकी डॉलर में कार्ड का अंकित मूल्य है, और NOWPayments भेजी जाने वाली सटीक राशि दिखाता है।'
         },
         {
             id: 'closed-tab',
@@ -545,7 +545,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: '如何付款？',
-            answer: '在 Plisio 的支付页面上使用加密货币付款。您在那里选择币种；价格为礼品卡的美元面值，Plisio 会显示需要发送的准确金额。'
+            answer: '在 NOWPayments 的支付页面上使用加密货币付款。您在那里选择币种；价格为礼品卡的美元面值，NOWPayments 会显示需要发送的准确金额。'
         },
         {
             id: 'closed-tab',
@@ -582,7 +582,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'Как оплатить?',
-            answer: 'Криптовалютой, на странице оплаты Plisio. Монету вы выбираете там; цена - номинал карты в долларах США, а Plisio показывает точную сумму к отправке.'
+            answer: 'Криптовалютой, на странице оплаты NOWPayments. Монету вы выбираете там; цена - номинал карты в долларах США, а NOWPayments показывает точную сумму к отправке.'
         },
         {
             id: 'closed-tab',
@@ -619,7 +619,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'Comment payer ?',
-            answer: 'En cryptomonnaie, sur la page de paiement de Plisio. Vous y choisissez la monnaie ; le prix correspond à la valeur faciale de la carte en dollars américains, et Plisio affiche le montant exact à envoyer.'
+            answer: 'En cryptomonnaie, sur la page de paiement de NOWPayments. Vous y choisissez la monnaie ; le prix correspond à la valeur faciale de la carte en dollars américains, et NOWPayments affiche le montant exact à envoyer.'
         },
         {
             id: 'closed-tab',
@@ -656,7 +656,7 @@ export const FAQS: Record<Lang, Faq[]> = {
         {
             id: 'pay',
             question: 'Nasıl ödeme yaparım?',
-            answer: "Kripto parayla, Plisio'nun ödeme sayfasında. Coin'i orada seçersiniz; fiyat, kartın ABD doları cinsinden nominal değeridir ve Plisio göndermeniz gereken tam tutarı gösterir."
+            answer: "Kripto parayla, NOWPayments'ın ödeme sayfasında. Coin'i orada seçersiniz; fiyat, kartın ABD doları cinsinden nominal değeridir ve NOWPayments göndermeniz gereken tam tutarı gösterir."
         },
         {
             id: 'closed-tab',

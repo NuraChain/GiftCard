@@ -18,6 +18,8 @@ export interface OrderQueries {
     orderById(id: string): Order | undefined;
     orderByAuthority(authority: string): Order | undefined;
     pendingOrders(prefix: string, since: string): Order[];
+    rememberPayment(authority: string, paymentId: string): void;
+    paymentsFor(authority: string): string[];
     settlePaid(orderId: string, refId: number): string | null;
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
     markSmsDelivered(orderId: string, delivered: boolean): void;
@@ -39,6 +41,12 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         SELECT * FROM orders
         WHERE status = 'pending' AND substr(authority, 1, ?) = ? AND created_at >= ?
         ORDER BY created_at`);
+    const insertPayment = db.prepare(
+        'INSERT OR IGNORE INTO gateway_payments (authority, payment_id) VALUES (?, ?)'
+    );
+    const selectPayments = db.prepare(
+        'SELECT payment_id FROM gateway_payments WHERE authority = ? ORDER BY rowid'
+    );
     const setPaid = db.prepare(
         "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
     );
@@ -132,6 +140,16 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
 
         pendingOrders(prefix, since) {
             return shaped<OrderRow[]>(selectPending.all(prefix.length, prefix, since)).map(toOrder);
+        },
+
+        rememberPayment(authority, paymentId) {
+            insertPayment.run(authority, paymentId);
+        },
+
+        paymentsFor(authority) {
+            return shaped<Array<{ payment_id: string }>>(selectPayments.all(authority)).map(
+                (row) => row.payment_id
+            );
         },
 
         settlePaid(orderId, refId) {

@@ -11,7 +11,7 @@ import { normalizeEmail } from '../../domain/email.ts';
 import { normalizePhone } from '../../domain/phone.ts';
 import type { MailSender } from '../checkout/mailer.ts';
 import type { SmsSender } from '../checkout/panelsms.ts';
-import type { Plisio } from '../checkout/plisio.ts';
+import type { NowPayments } from '../checkout/nowpayments.ts';
 import type { PaymentGateway } from '../checkout/zarinpal.ts';
 import { ADMIN_KEY_PATTERN, SESSION_COOKIE, type Admin } from '../console/session.ts';
 import type { Settings } from './settings.ts';
@@ -22,12 +22,12 @@ export interface SettingsOptions {
     sms: SmsSender;
     mail: MailSender;
     payment: PaymentGateway;
-    plisio: Plisio;
+    nowpayments: NowPayments;
 
     /** Derived from the public origin the console holds - see app.ts. */
     callbackUrl: () => string;
-    plisioCallbackUrl: () => string;
-    plisioReturnUrl: (lang: 'en') => string;
+    nowPaymentsCallbackUrl: () => string;
+    nowPaymentsReturnUrl: (lang: 'en') => string;
 
     log?: Logger;
 }
@@ -42,7 +42,7 @@ type SettingsHandlers = Pick<
     | 'testSms'
     | 'testGateway'
     | 'testEmail'
-    | 'testPlisio'
+    | 'testNowPayments'
 >;
 
 /**
@@ -52,12 +52,12 @@ type SettingsHandlers = Pick<
 const TEST_TOMAN = 10_000;
 
 export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
-    const { settings, admin, sms, mail, payment, plisio, callbackUrl, log } = options;
+    const { settings, admin, sms, mail, payment, nowpayments, callbackUrl, log } = options;
 
     /** The masked settings, with the two addresses that are derived rather than stored. */
     const view = () => ({
         ...settings.view(callbackUrl()),
-        plisioCallbackUrl: options.plisioCallbackUrl()
+        nowPaymentsCallbackUrl: options.nowPaymentsCallbackUrl()
     });
 
     return {
@@ -133,18 +133,16 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             return { ok: result.ok, reason: result.ok ? '' : result.reason };
         },
 
-        // POST /api/admin/test-plisio
-        testPlisio: async () => {
-            // An invoice nobody pays expires on its own. Its page is not handed back, for the
+        // POST /api/admin/test-nowpayments
+        testNowPayments: async () => {
+            // An invoice nobody pays costs nothing and is simply never paid. Its page is not handed back, for the
             // reason given in `testGateway`; the order number is a throwaway one.
-            const result = await plisio.request({
+            const result = await nowpayments.request({
                 usdAmount: 1,
                 orderNumber: Date.now(),
                 orderName: 'Console gateway test',
-                email: '',
-                callbackUrl: options.plisioCallbackUrl(),
-                returnUrl: options.plisioReturnUrl('en'),
-                expireMinutes: 10
+                callbackUrl: options.nowPaymentsCallbackUrl(),
+                returnUrl: options.nowPaymentsReturnUrl('en')
             });
             return { ok: result.ok, reason: result.ok ? '' : result.reason };
         }

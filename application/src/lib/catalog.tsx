@@ -85,7 +85,7 @@ export interface CatalogStore {
     appName: string;
     appNames: ShopNames;
 
-    /** Whether the English shop can take a payment - Plisio has a key. See the contract. */
+    /** Whether the English shop can take a payment - NOWPayments has a key. See the contract. */
     englishOpen: boolean;
 
     loading: boolean;

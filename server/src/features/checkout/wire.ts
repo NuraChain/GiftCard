@@ -1,5 +1,5 @@
-// The one call every gateway client makes - a POST for the two Iranian gateways, a GET for
-// Plisio - and, when it goes wrong, enough said about HOW for the log line to be acted on.
+// The one call every gateway client makes - a POST to open a payment, a GET for NOWPayments to
+// read one back - and, when it goes wrong, enough said about HOW for the log line to be acted on.
 //
 // A gateway that will not open a payment is the shop being closed, and "request failed" does
 // not tell the operator whether to fix a merchant id, top up a wallet, or call their host. So
@@ -63,14 +63,15 @@ export function postJson<Body>(
     call: Fetch,
     url: string,
     body: Record<string, unknown>,
-    timeoutMs: number
+    timeoutMs: number,
+    headers: Record<string, string> = {}
 ): Promise<Answer<Body>> {
     return exchange<Body>(
         call,
         url,
         {
             method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            headers: { ...headers, 'content-type': 'application/json', accept: 'application/json' },
             body: JSON.stringify(body)
         },
         timeoutMs
@@ -78,14 +79,21 @@ export function postJson<Body>(
 }
 
 /**
- * {@link postJson} for a gateway that is spoken to with GET - Plisio, whose every endpoint
- * takes its arguments, the API key among them, in the query string. NEVER THROWS either.
- *
- * THE URL CARRIES THE KEY, so nothing that builds a reason from this answer may repeat it.
- * Nothing here does: a reason is built from the status, the body and the transport's error.
+ * {@link postJson} for a read - NOWPayments' payment status. NEVER THROWS either. `headers`
+ * carries the API key, and like the POST body it is never repeated in a reason.
  */
-export function getJson<Body>(call: Fetch, url: string, timeoutMs: number): Promise<Answer<Body>> {
-    return exchange<Body>(call, url, { headers: { accept: 'application/json' } }, timeoutMs);
+export function getJson<Body>(
+    call: Fetch,
+    url: string,
+    timeoutMs: number,
+    headers: Record<string, string> = {}
+): Promise<Answer<Body>> {
+    return exchange<Body>(
+        call,
+        url,
+        { headers: { ...headers, accept: 'application/json' } },
+        timeoutMs
+    );
 }
 
 /** @internal The one round trip both of the above make. */

@@ -41,8 +41,8 @@ export const SETTING_KEYS = [
     'merchantId',
     'zibalBase',
     'zibalMerchant',
-    'plisioApiKey',
-    'plisioBase',
+    'nowPaymentsApiKey',
+    'nowPaymentsBase',
     'resendApiKey',
     'mailFrom',
     'resendBase',
@@ -69,7 +69,7 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 const SECRETS = new Set<SettingKey>([
     'merchantId',
     'zibalMerchant',
-    'plisioApiKey',
+    'nowPaymentsApiKey',
     'resendApiKey',
     'smsApiKey',
     'telegramBotToken',
@@ -115,11 +115,11 @@ export interface RuntimeSettings {
     zibalMerchant: string;
 
     /**
-     * The English shop's gateway - see features/checkout/plisio.ts. Its SECRET key, which
-     * Plisio calls `api_key`. Empty means the English cards cannot be bought.
+     * The English shop's gateway - see features/checkout/nowpayments.ts. Its API key, sent as
+     * `x-api-key`. Empty means the English cards cannot be bought.
      */
-    plisioApiKey: string;
-    plisioBase: string;
+    nowPaymentsApiKey: string;
+    nowPaymentsBase: string;
 
     /**
      * The English shop's delivery: Resend's API key, the From address on a domain verified in
@@ -222,8 +222,8 @@ const DEFAULTS = {
     merchantId: '',
     zibalBase: 'https://gateway.zibal.ir',
     zibalMerchant: '',
-    plisioApiKey: '',
-    plisioBase: 'https://api.plisio.net',
+    nowPaymentsApiKey: '',
+    nowPaymentsBase: 'https://api.nowpayments.io',
     resendApiKey: '',
     mailFrom: '',
     resendBase: 'https://api.resend.com',
@@ -300,9 +300,9 @@ export interface SettingsView {
     zibalBase: string;
     zibalMerchantMasked: string;
     zibalMerchantSet: boolean;
-    plisioBase: string;
-    plisioApiKeyMasked: string;
-    plisioApiKeySet: boolean;
+    nowPaymentsBase: string;
+    nowPaymentsApiKeyMasked: string;
+    nowPaymentsApiKeySet: boolean;
     resendBase: string;
     resendApiKeyMasked: string;
     resendApiKeySet: boolean;
@@ -510,8 +510,8 @@ export function createSettings(options: SettingsOptions): Settings {
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
                 zibalBase: pick('zibalBase', DEFAULTS.zibalBase),
                 zibalMerchant: pick('zibalMerchant', DEFAULTS.zibalMerchant),
-                plisioApiKey: pick('plisioApiKey', DEFAULTS.plisioApiKey),
-                plisioBase: pick('plisioBase', DEFAULTS.plisioBase),
+                nowPaymentsApiKey: pick('nowPaymentsApiKey', DEFAULTS.nowPaymentsApiKey),
+                nowPaymentsBase: pick('nowPaymentsBase', DEFAULTS.nowPaymentsBase),
                 resendApiKey: pick('resendApiKey', DEFAULTS.resendApiKey),
                 mailFrom: pick('mailFrom', DEFAULTS.mailFrom),
                 resendBase: pick('resendBase', DEFAULTS.resendBase),
@@ -558,9 +558,9 @@ export function createSettings(options: SettingsOptions): Settings {
                 zibalBase: live.zibalBase,
                 zibalMerchantMasked: mask(live.zibalMerchant),
                 zibalMerchantSet: live.zibalMerchant !== '',
-                plisioBase: live.plisioBase,
-                plisioApiKeyMasked: mask(live.plisioApiKey),
-                plisioApiKeySet: live.plisioApiKey !== '',
+                nowPaymentsBase: live.nowPaymentsBase,
+                nowPaymentsApiKeyMasked: mask(live.nowPaymentsApiKey),
+                nowPaymentsApiKeySet: live.nowPaymentsApiKey !== '',
                 resendBase: live.resendBase,
                 resendApiKeyMasked: mask(live.resendApiKey),
                 resendApiKeySet: live.resendApiKey !== '',

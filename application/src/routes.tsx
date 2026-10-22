@@ -25,7 +25,7 @@ export interface PageRoute {
 
 export const routes: PageRoute[] = [
     // Every language's landing page: `/` for Persian, `/en`, `/ar`... for the rest. The same
-    // page in each; Persian is paid in Toman, the others in dollars through Plisio and
+    // page in each; Persian is paid in Toman, the others in dollars through NOWPayments and
     // delivered by email. See lib/lang.ts - the address is what says which shop this is.
     ...LANGS.map((lang) => ({ path: homeOf(lang), Component: Landing })),
 

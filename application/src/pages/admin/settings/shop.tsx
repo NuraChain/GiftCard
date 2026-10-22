@@ -11,7 +11,7 @@
 //
 // THE OTHER LANGUAGES' NAMES sit under it. Each is optional: an empty one shows the English
 // name, and an empty English one shows DEFAULT_ENGLISH_NAME (server: domain/langs.ts).
-// The English name is also the one in the email and on the Plisio invoice.
+// The English name is also the one in the email and on the NOWPayments invoice.
 import { Save, Store } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -134,8 +134,8 @@ export default function ShopSettings(): ReactNode {
                         <h3 className="mt-6 font-bold">نام در زبان‌های دیگر</h3>
                         <p className="mt-1 text-caption text-muted">
                             اختیاری. اگر خالی بماند، نام انگلیسی نمایش داده می‌شود؛ و اگر نام انگلیسی
-                            هم خالی باشد، Ashbringer. نام انگلیسی در ایمیل کد و فاکتور Plisio هم
-                            می‌آید.
+                            هم خالی باشد، Ashbringer. نام انگلیسی در ایمیل کد و فاکتور NOWPayments
+                            هم می‌آید.
                         </p>
                         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {INTL_LANGS.map((lang) => (

@@ -59,14 +59,14 @@ export const payStartOutput = z.object({ payUrl: z.string() });
  * What starts a purchase in the ENGLISH shop. A separate route rather than a flag on the one
  * above, because almost nothing is shared: the buyer gives an email rather than a mobile, the
  * price is the face value in dollars - so there is no quote to assert, nothing moves it - and
- * the gateway is always Plisio, whichever one the Persian shop is using.
+ * the gateway is always NOWPayments, whichever one the Persian shop is using.
  */
 export const payStartEnInput = z.object({
     amount: amountField,
     email: emailField,
 
     /**
-     * Which page Plisio sends the buyer back to. One of a fixed list, so the request can pick
+     * Which page NOWPayments sends the buyer back to. One of a fixed list, so the request can pick
      * a language but never write the address. Absent means English - a page loaded before
      * there were other languages does not send it.
      */
@@ -77,8 +77,8 @@ export const payStartEnInput = z.object({
 export const purchaseEnFormInput = z.object({ email: emailField });
 
 /**
- * As above, plus the receipt token. Plisio's page sends the buyer back to a fixed address
- * that cannot name the order (the token is not given to Plisio - it reads the code back), so
+ * As above, plus the receipt token. NOWPayments' page sends the buyer back to a fixed address
+ * that cannot name the order (the token is not given to NOWPayments - it reads the code back), so
  * the browser keeps the token for the trip and asks about it on return. It is the buyer's own
  * receipt, going to the buyer's own browser.
  */
@@ -133,7 +133,7 @@ export const catalog = z.object({
     ),
 
     /**
-     * Whether the English shop can take a payment: Plisio has a key. The English cards are
+     * Whether the English shop can take a payment: NOWPayments has a key. The English cards are
      * priced at face value, so this - not the tether rate - is what closes them.
      */
     englishOpen: z.boolean()
@@ -144,7 +144,19 @@ export const catalog = z.object({
  * itself never travels as a query parameter, so it stays out of browser history, out of
  * shoulder-view in the address bar, and out of any referrer header the page emits.
  */
-export const receiptQuery = z.object({ token: z.string().trim().max(40) });
+export const receiptQuery = z.object({
+    token: z.string().trim().max(40),
+
+    /**
+     * The NOWPayments payment id the buyer came back with (`NP_id` on the return address),
+     * when there was one. A hint, never believed: see `pointAndSettle` in ./routes.ts.
+     */
+    payment: z
+        .string()
+        .trim()
+        .regex(/^\d{1,20}$/)
+        .optional()
+});
 
 /**
  * The outcome, in the shapes a buyer can actually land in.

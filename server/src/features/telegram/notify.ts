@@ -50,7 +50,7 @@ export interface Sale {
     /** Zero on an English sale, which was paid in dollars - see `lang`. */
     toman: number;
 
-    /** `en` was paid through Plisio at face value; `phone` is then the buyer's email. */
+    /** `en` was paid through NOWPayments at face value; `phone` is then the buyer's email. */
     lang: 'fa' | 'en';
     phone: string;
     refId: number | null;
@@ -99,7 +99,7 @@ export function createSaleNotifier(options: SaleNotifierOptions): SaleNotifier {
                 '',
                 `کارت: ${sale.amount} دلاری`,
                 sale.lang === 'en'
-                    ? `مبلغ: ${sale.amount} دلار (Plisio، فروشگاه انگلیسی)`
+                    ? `مبلغ: ${sale.amount} دلار (NOWPayments، فروشگاه انگلیسی)`
                     : `مبلغ: ${sale.toman.toLocaleString('en-US')} تومان`,
                 `خریدار: ${sale.phone}`,
                 `پیگیری: ${sale.refId ?? '-'}`,
