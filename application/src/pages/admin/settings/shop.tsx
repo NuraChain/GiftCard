@@ -10,7 +10,7 @@
 // which is why saving it tells the storefront to re-read rather than waiting for a reload.
 //
 // THE OTHER LANGUAGES' NAMES sit under it. Each is optional: an empty one shows the English
-// name, and an empty English one shows the Persian name (server: domain/langs.ts).
+// name, and an empty English one shows DEFAULT_ENGLISH_NAME (server: domain/langs.ts).
 // The English name is also the one in the email and on the Plisio invoice.
 import { Save, Store } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
@@ -19,7 +19,11 @@ import { client, failureText } from '../../../lib/api.ts';
 import { useToasts } from '../../../ui/toast.tsx';
 import { useCatalog } from '../../../lib/catalog.tsx';
 import { INTL_LANGS, LANG_INFO } from '../../../lib/lang.ts';
-import { NO_SHOP_NAMES, type ShopNames } from '../../../../../server/src/contract/index.ts';
+import {
+    DEFAULT_ENGLISH_NAME,
+    NO_SHOP_NAMES,
+    type ShopNames
+} from '../../../../../server/src/contract/index.ts';
 import Async from '../../../ui/async.tsx';
 import Button from '../../../ui/button.tsx';
 import Field from '../../../ui/field.tsx';
@@ -130,7 +134,7 @@ export default function ShopSettings(): ReactNode {
                         <h3 className="mt-6 font-bold">نام در زبان‌های دیگر</h3>
                         <p className="mt-1 text-caption text-muted">
                             اختیاری. اگر خالی بماند، نام انگلیسی نمایش داده می‌شود؛ و اگر نام انگلیسی
-                            هم خالی باشد، همین نام فارسی. نام انگلیسی در ایمیل کد و فاکتور Plisio هم
+                            هم خالی باشد، Ashbringer. نام انگلیسی در ایمیل کد و فاکتور Plisio هم
                             می‌آید.
                         </p>
                         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -143,11 +147,9 @@ export default function ShopSettings(): ReactNode {
                                     <TextInput
                                         id={`app-name-${lang}`}
                                         placeholder={
-                                            lang === 'en'
-                                                ? formAppName
-                                                : formNames.en.trim() === ''
-                                                  ? formAppName
-                                                  : formNames.en
+                                            lang === 'en' || formNames.en.trim() === ''
+                                                ? DEFAULT_ENGLISH_NAME
+                                                : formNames.en
                                         }
                                         value={formNames[lang]}
                                         onChange={(value) =>

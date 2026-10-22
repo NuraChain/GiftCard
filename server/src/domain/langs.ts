@@ -33,9 +33,12 @@ export const NO_SHOP_NAMES: ShopNames = {
     tr: ''
 };
 
+/** The English name when the admin has set none: a Persian name on a Latin page reads as a bug. */
+export const DEFAULT_ENGLISH_NAME = 'Ashbringer';
+
 /**
  * What the shop is called in a language: its own name if one is set, else the English one,
- * else the Persian one - which is always set, and is the brand the shop started with.
+ * else `DEFAULT_ENGLISH_NAME`. Only the Persian page shows the Persian name.
  */
 export function shopName(lang: Lang, persian: string, names: ShopNames): string {
     if (lang === 'fa') {
@@ -46,5 +49,5 @@ export function shopName(lang: Lang, persian: string, names: ShopNames): string 
         return own;
     }
     const english = names.en.trim();
-    return english === '' ? persian : english;
+    return english === '' ? DEFAULT_ENGLISH_NAME : english;
 }

@@ -23,6 +23,7 @@ import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts'
 import type { Plisio, PlisioRequest } from '../src/features/checkout/plisio.ts';
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
+import { NO_SHOP_NAMES, shopName } from '../src/domain/langs.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
 import type {
     BackupJob,
@@ -2328,7 +2329,7 @@ describe('the English shop', () => {
         expect(fake.plisioRequests).toHaveLength(2);
     });
 
-    it('names the shop per language, falling back to English and then to Persian', async () => {
+    it('names the shop per language, falling back to English and then to Ashbringer', async () => {
         settings.save({ appName: 'فروشگاه', appNames: { fr: 'Boutique' } });
         // A later save of one language keeps the others.
         settings.save({ appNames: { en: 'Shop' } });
@@ -2342,6 +2343,12 @@ describe('the English shop', () => {
 
         await post('/api/pay/start-en', { amount: 10, email: EMAIL });
         expect(fake.plisioRequests[0]?.orderName).toBe('Shop $10 gift card');
+    });
+
+    it('never shows the Persian name on another language', () => {
+        expect(shopName('en', 'اشبرینگر', NO_SHOP_NAMES)).toBe('Ashbringer');
+        expect(shopName('ar', 'اشبرینگر', NO_SHOP_NAMES)).toBe('Ashbringer');
+        expect(shopName('fa', 'اشبرینگر', NO_SHOP_NAMES)).toBe('اشبرینگر');
     });
 
     it('is closed until Plisio has a key', async () => {
