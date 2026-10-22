@@ -18,8 +18,14 @@
     --danger: light-dark(#a32820, #f39189);
 
     /* Persian needs more leading than Latin: descenders and diacritics collide at
-       Latin line-heights. */
-    --leading-fa: 1.85;
+       Latin line-heights. Every role's leading is a variable here, not a number in the
+       type scale, so a Latin-script page can tighten all of them in one place (below). */
+    --leading-body: 1.85;
+    --leading-display: 1.35;
+    --leading-h2: 1.45;
+    --leading-h3: 1.55;
+    --leading-small: 1.75;
+    --leading-caption: 1.6;
 
     /* The scrollbar is part of the page, not part of the OS. Both are derived from the
        palette above, so they follow light and dark without a second declaration. The
@@ -27,6 +33,23 @@
        the page sits on --paper, and transparent is correct on both. */
     --scroll-thumb: color-mix(in srgb, var(--muted) 45%, transparent);
     --scroll-track: transparent;
+}
+
+/* Latin and Cyrillic have no diacritics stacked above and below the line, so the Persian
+   leading reads as double-spaced. Arabic keeps the Persian values; Hindi and Chinese keep
+   them too, as both scripts are taller than Latin. */
+:root:lang(en),
+:root:lang(es),
+:root:lang(pt),
+:root:lang(fr),
+:root:lang(ru),
+:root:lang(tr) {
+    --leading-body: 1.6;
+    --leading-display: 1.15;
+    --leading-h2: 1.25;
+    --leading-h3: 1.4;
+    --leading-small: 1.55;
+    --leading-caption: 1.45;
 }
 
 /* An explicit choice overrides the system preference. Both selectors are needed so the
@@ -58,20 +81,20 @@
        large enough that h1 still leads on a desktop.
 
        Leading is set per role, not globally: Persian body needs the generous
-       --leading-fa, but a heading at that leading looks unset, and the Latin
+       --leading-body, but a heading at that leading looks unset, and the Latin
        monospace needs tighter still. */
     --text-display: clamp(1.75rem, 1.35rem + 2vw, 3rem);
-    --text-display--line-height: 1.35;
+    --text-display--line-height: var(--leading-display);
     --text-h2: clamp(1.375rem, 1.2rem + 0.9vw, 1.875rem);
-    --text-h2--line-height: 1.45;
+    --text-h2--line-height: var(--leading-h2);
     --text-h3: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
-    --text-h3--line-height: 1.55;
+    --text-h3--line-height: var(--leading-h3);
     --text-body: 1rem;
-    --text-body--line-height: 1.85;
+    --text-body--line-height: var(--leading-body);
     --text-small: 0.9375rem;
-    --text-small--line-height: 1.75;
+    --text-small--line-height: var(--leading-small);
     --text-caption: 0.8125rem;
-    --text-caption--line-height: 1.6;
+    --text-caption--line-height: var(--leading-caption);
 
     /* SPACING RHYTHM - two tokens do the whole page. `section` is the vertical air
        around a band, `stack` is the gap between blocks inside one. Both are single
@@ -133,7 +156,7 @@
         color: var(--ink);
         font-family: var(--font-fa);
         font-size: var(--text-body);
-        line-height: var(--leading-fa);
+        line-height: var(--leading-body);
 
         /* Anchor jumps GLIDE rather than teleport - the nav links, the hero's two
            buttons, and the return from the bank to #purchase.
@@ -150,17 +173,17 @@
        heading can still be quiet where the design wants it quiet. */
     h1 {
         font-size: var(--text-display);
-        line-height: var(--text-display--line-height);
+        line-height: var(--leading-display);
     }
 
     h2 {
         font-size: var(--text-h2);
-        line-height: var(--text-h2--line-height);
+        line-height: var(--leading-h2);
     }
 
     h3 {
         font-size: var(--text-h3);
-        line-height: var(--text-h3--line-height);
+        line-height: var(--leading-h3);
     }
 
     /* Persian letterforms JOIN. Any tracking breaks the joins and renders a word as
