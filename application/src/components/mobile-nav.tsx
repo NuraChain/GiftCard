@@ -12,11 +12,27 @@
 import { Menu, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { useCopy, type Lang } from '../lib/lang.ts';
+
+const COPY: Record<Lang, { open: string; close: string }> = {
+    fa: { open: 'باز کردن منو', close: 'بستن منو' },
+    en: { open: 'Open menu', close: 'Close menu' },
+    ar: { open: 'فتح القائمة', close: 'إغلاق القائمة' },
+    es: { open: 'Abrir menú', close: 'Cerrar menú' },
+    pt: { open: 'Abrir menu', close: 'Fechar menu' },
+    hi: { open: 'मेनू खोलें', close: 'मेनू बंद करें' },
+    zh: { open: '打开菜单', close: '关闭菜单' },
+    ru: { open: 'Открыть меню', close: 'Закрыть меню' },
+    fr: { open: 'Ouvrir le menu', close: 'Fermer le menu' },
+    tr: { open: 'Menüyü aç', close: 'Menüyü kapat' }
+};
+
 export interface MobileNavProps {
     links: Array<{ href: string; label: string }>;
 }
 
 export default function MobileNav({ links }: MobileNavProps): ReactNode {
+    const t = useCopy(COPY);
     const [open, setOpen] = useState(false);
 
     // The trigger, so Escape can hand focus back to it. Losing focus to <body> on close is
@@ -73,7 +89,7 @@ export default function MobileNav({ links }: MobileNavProps): ReactNode {
                 className="flex size-tap items-center justify-center rounded-xl border border-line text-ink"
                 aria-expanded={open ? 'true' : 'false'}
                 aria-controls="mobile-nav-panel"
-                aria-label={open ? 'بستن منو' : 'باز کردن منو'}
+                aria-label={open ? t.close : t.open}
                 onClick={() => setOpen((current) => !current)}
             >
                 {open ? (

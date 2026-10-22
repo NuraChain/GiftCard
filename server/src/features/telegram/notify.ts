@@ -46,7 +46,12 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 /** What sold, in the terms an operator reads on their phone. */
 export interface Sale {
     amount: number;
+
+    /** Zero on an English sale, which was paid in dollars - see `lang`. */
     toman: number;
+
+    /** `en` was paid through Plisio at face value; `phone` is then the buyer's email. */
+    lang: 'fa' | 'en';
     phone: string;
     refId: number | null;
 
@@ -93,7 +98,9 @@ export function createSaleNotifier(options: SaleNotifierOptions): SaleNotifier {
                     : `فروش بدون کد - ${options.appName()}`,
                 '',
                 `کارت: ${sale.amount} دلاری`,
-                `مبلغ: ${sale.toman.toLocaleString('en-US')} تومان`,
+                sale.lang === 'en'
+                    ? `مبلغ: ${sale.amount} دلار (Plisio، فروشگاه انگلیسی)`
+                    : `مبلغ: ${sale.toman.toLocaleString('en-US')} تومان`,
                 `خریدار: ${sale.phone}`,
                 `پیگیری: ${sale.refId ?? '-'}`,
                 `رسید: ${sale.receipt}`,

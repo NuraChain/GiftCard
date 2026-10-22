@@ -12,11 +12,15 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 
 import { createAdmin } from '../src/features/console/session.ts';
 import { buildApp } from '../src/app.ts';
+import { createCheckout } from '../src/features/checkout/checkout.ts';
+import { createReconciler } from '../src/features/checkout/reconcile.ts';
 import type {
     PaymentGateway,
     RequestResult,
     VerifyResult
 } from '../src/features/checkout/zarinpal.ts';
+import type { MailResult, MailSender } from '../src/features/checkout/mailer.ts';
+import type { Plisio, PlisioRequest } from '../src/features/checkout/plisio.ts';
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import type { RateSnapshot, TetherRate } from '../src/features/rate/rate.ts';
@@ -125,6 +129,20 @@ interface Fakes {
     callbacks: string[];
 
     opened: number;
+
+    /**
+     * The English shop's gateway. It only OPENS invoices: verifying one goes through
+     * `payment` like every other order, carrying its `plisio:` handle - which is how the
+     * real switch is wired too.
+     */
+    plisio: Plisio;
+    plisioRequests: PlisioRequest[];
+    plisioOverride: RequestResult | null;
+
+    mail: MailSender;
+    mailSent: Array<{ email: string; code: string; amount: number }>;
+    mailResult: MailResult;
+
     sms: SmsSender;
     smsSent: Array<{ phone: string; code: string; amount: number }>;
     smsResult: SmsResult;
@@ -166,6 +184,31 @@ function fakes(): Fakes {
         opened: 0,
         verifyResult: { ok: true, refId: 987654, alreadyVerified: false },
         smsResult: { ok: true },
+        plisioRequests: [],
+        plisioOverride: null,
+        plisio: {
+            request: (input) => {
+                state.plisioRequests.push(input);
+                if (state.plisioOverride !== null) {
+                    return Promise.resolve(state.plisioOverride);
+                }
+                const txn = `tx${String(state.plisioRequests.length).padStart(6, '0')}`;
+                return Promise.resolve({
+                    ok: true,
+                    authority: txn,
+                    payUrl: `https://plisio.test/invoice/${txn}`
+                });
+            },
+            verify: () => Promise.reject(new Error('verified through payment, never directly'))
+        },
+        mailSent: [],
+        mailResult: { ok: true },
+        mail: {
+            sendCode: (email, code, amount) => {
+                state.mailSent.push({ email, code, amount });
+                return Promise.resolve(state.mailResult);
+            }
+        },
         payment: {
             request: (input) => {
                 state.descriptions.push(input.description);
@@ -254,6 +297,8 @@ beforeEach(() => {
         settings,
         rate,
         payment: fake.payment,
+        plisio: fake.plisio,
+        mail: fake.mail,
         sms: fake.sms,
         telegram: fake.telegram,
         notifier: fake.notifier,
@@ -677,6 +722,7 @@ describe('the callback', () => {
                     amount: 10,
                     toman: PRICES[10],
                     phone: '+989171234567',
+                    lang: 'fa',
                     createdAt: new Date().toISOString()
                 },
                 60_000
@@ -884,6 +930,7 @@ describe('the callback', () => {
                     amount: 10,
                     toman: PRICES[10],
                     phone: '+989171234567',
+                    lang: 'fa',
                     createdAt: new Date().toISOString()
                 },
                 60_000
@@ -1044,6 +1091,7 @@ describe('the console', () => {
                     amount: 3,
                     toman: PRICES[3],
                     phone: '+989121234567',
+                    lang: 'fa',
                     createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()
                 },
                 60_000
@@ -2212,5 +2260,251 @@ describe('redeeming a code', () => {
         const agreed = await post('/api/redeem', { code, wallet_address: WALLET, wallet: WALLET });
         expect(agreed.status).toBe(200);
         expect(fake.payoutsAsked).toHaveLength(1);
+    });
+});
+
+describe('the English shop', () => {
+    const EMAIL = 'Buyer@Example.com';
+
+    beforeEach(() => {
+        store.addCodes(10, uuids(2));
+        settings.save({ plisioApiKey: 'plisio-secret' });
+    });
+
+    /** Starts an English checkout and hands back the receipt token and the stored handle. */
+    async function startEn(amount = 10): Promise<{ token: string; authority: string }> {
+        const started = await post('/api/pay/start-en', { amount, email: EMAIL });
+        expect(started.status).toBe(200);
+        const { receipt } = started.json<{ receipt: string }>();
+        return { token: receipt, authority: store.orderById(receipt)?.authority ?? '' };
+    }
+
+    function nudge(txnId: string): Promise<Answer> {
+        return post('/api/pay/plisio?json=true', { txn_id: txnId, status: 'completed' });
+    }
+
+    it('opens a Plisio invoice at FACE VALUE in dollars, whatever the tether rate is', async () => {
+        rate.set(null);
+        const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
+
+        expect(started.status).toBe(200);
+        expect(started.json<{ payUrl: string }>().payUrl).toBe(
+            'https://plisio.test/invoice/tx000001'
+        );
+        expect(fake.plisioRequests[0]).toMatchObject({
+            usdAmount: 10,
+            email: 'buyer@example.com',
+            expireMinutes: 60
+        });
+        // The receipt token reads the code back, so it is never handed to Plisio.
+        const { receipt } = started.json<{ receipt: string }>();
+        expect(JSON.stringify(fake.plisioRequests[0])).not.toContain(receipt);
+
+        expect(store.orderById(receipt)).toMatchObject({
+            lang: 'en',
+            toman: 0,
+            phone: 'buyer@example.com',
+            authority: 'plisio:tx000001',
+            status: 'pending'
+        });
+        // Nothing went through the Persian shop's gateway.
+        expect(fake.opened).toBe(0);
+    });
+
+    it("sends the buyer back to their own language's page, and only to one of the list", async () => {
+        settings.save({ publicBaseUrl: 'https://shop.test' });
+        expect((await post('/api/pay/start-en', { amount: 10, email: EMAIL })).status).toBe(200);
+        expect(fake.plisioRequests[0]?.returnUrl).toBe('https://shop.test/en?pay=return#purchase');
+
+        const arabic = await post('/api/pay/start-en', { amount: 10, email: EMAIL, lang: 'ar' });
+        expect(arabic.status).toBe(200);
+        expect(fake.plisioRequests[1]?.returnUrl).toBe('https://shop.test/ar?pay=return#purchase');
+
+        // Persian is the other shop, and anything else is not a page at all.
+        for (const lang of ['fa', 'xx', '//evil.test']) {
+            const refused = await post('/api/pay/start-en', { amount: 10, email: EMAIL, lang });
+            expect(refused.status, lang).toBe(422);
+        }
+        expect(fake.plisioRequests).toHaveLength(2);
+    });
+
+    it('names the shop per language, falling back to English and then to Persian', async () => {
+        settings.save({ appName: 'فروشگاه', appNames: { fr: 'Boutique' } });
+        // A later save of one language keeps the others.
+        settings.save({ appNames: { en: 'Shop' } });
+
+        const catalog = (await get('/api/pay/catalog')).json<{
+            appName: string;
+            appNames: Record<string, string>;
+        }>();
+        expect(catalog.appName).toBe('فروشگاه');
+        expect(catalog.appNames).toMatchObject({ en: 'Shop', fr: 'Boutique', ar: '' });
+
+        await post('/api/pay/start-en', { amount: 10, email: EMAIL });
+        expect(fake.plisioRequests[0]?.orderName).toBe('Shop $10 gift card');
+    });
+
+    it('is closed until Plisio has a key', async () => {
+        settings.save({ plisioApiKey: '' });
+        const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
+
+        expect(started.status).toBe(503);
+        expect(fake.plisioRequests).toHaveLength(0);
+        expect(store.availableFor(10)).toBe(2);
+    });
+
+    it('refuses a malformed email in English', async () => {
+        const started = await post('/api/pay/start-en', { amount: 10, email: 'buyer@example' });
+        expect(started.status).toBe(422);
+        expect(started.text()).toContain('Enter a valid email address');
+    });
+
+    it('puts the code back on the shelf when Plisio will not open the invoice', async () => {
+        fake.plisioOverride = { ok: false, reason: 'plisio: request failed (code 103)' };
+        const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
+
+        expect(started.status).toBe(503);
+        expect(started.json<{ error: { message: string } }>().error.message).toContain(
+            'payment gateway is unavailable'
+        );
+        expect(store.availableFor(10)).toBe(2);
+    });
+
+    it('settles a paid invoice, verifying the DOLLAR amount, and emails the code', async () => {
+        const { token, authority } = await startEn();
+        fake.verifyResult = { ok: true, refId: 123_456_789_012, alreadyVerified: false };
+
+        expect((await nudge('tx000001')).status).toBe(200);
+
+        expect(fake.verifyCalls).toEqual([{ authority, toman: 10 }]);
+        const order = store.orderById(token);
+        expect(order?.status).toBe('paid');
+        expect(fake.mailSent).toEqual([
+            { email: 'buyer@example.com', code: order?.code, amount: 10 }
+        ]);
+        expect(fake.smsSent).toHaveLength(0);
+        expect(fake.sales[0]).toMatchObject({ lang: 'en', toman: 0, amount: 10 });
+
+        const receipt = await get(`/api/pay/receipt?token=${token}`);
+        expect(receipt.json()).toMatchObject({
+            outcome: 'paid',
+            lang: 'en',
+            phone: 'buyer@example.com',
+            code: order?.code,
+            refId: 123_456_789_012,
+            smsDelivered: true
+        });
+    });
+
+    it('leaves a PENDING invoice holding its code, and says so on the receipt', async () => {
+        const { token } = await startEn();
+        fake.verifyResult = { ok: false, pending: true, reason: 'plisio: invoice pending' };
+
+        await nudge('tx000001');
+
+        expect(store.orderById(token)?.status).toBe('pending');
+        expect(store.availableFor(10)).toBe(1);
+        expect(fake.mailSent).toHaveLength(0);
+
+        const receipt = await get(`/api/pay/receipt?token=${token}`);
+        expect(receipt.status).toBe(200);
+        expect(receipt.json()).toMatchObject({ outcome: 'pending', code: null });
+    });
+
+    it('settles from the receipt when the callback never came', async () => {
+        const { token } = await startEn();
+
+        const receipt = await get(`/api/pay/receipt?token=${token}`);
+
+        expect(receipt.json()).toMatchObject({ outcome: 'paid' });
+        expect(fake.mailSent).toHaveLength(1);
+    });
+
+    it('asks Plisio at most once per window, however often the receipt is polled', async () => {
+        const { token } = await startEn();
+        fake.verifyResult = { ok: false, pending: true, reason: 'plisio: invoice pending' };
+
+        await get(`/api/pay/receipt?token=${token}`);
+        await get(`/api/pay/receipt?token=${token}`);
+        await get(`/api/pay/receipt?token=${token}`);
+
+        expect(fake.verifyCalls).toHaveLength(1);
+    });
+
+    it('fails an expired invoice and frees its code', async () => {
+        const { token } = await startEn();
+        fake.verifyResult = { ok: false, reason: 'plisio: invoice expired' };
+
+        await nudge('tx000001');
+
+        expect(store.orderById(token)?.status).toBe('failed');
+        expect(store.availableFor(10)).toBe(2);
+    });
+
+    it('does nothing for a callback about an invoice that is not ours', async () => {
+        await startEn();
+        const forged = await nudge('tx999999');
+
+        expect(forged.status).toBe(200);
+        expect(fake.verifyCalls).toHaveLength(0);
+    });
+
+    it('takes the callback as a form post too, without opening forms to the console', async () => {
+        const { token } = await startEn();
+        const form = await app.inject({
+            method: 'POST',
+            url: '/api/pay/plisio',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            payload: 'txn_id=tx000001&status=completed'
+        });
+        expect(form.statusCode).toBe(200);
+        expect(store.orderById(token)?.status).toBe('paid');
+
+        // The parser lives in the callback's own scope: the rest of the API still refuses forms.
+        const signIn = await app.inject({
+            method: 'POST',
+            url: '/api/admin/session',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            payload: `key=${ADMIN_KEY}`
+        });
+        expect(signIn.statusCode).toBe(415);
+    });
+
+    it('lists the English copy and whether the English shop is open', async () => {
+        const body = (await get('/api/pay/catalog')).json<{
+            englishOpen: boolean;
+            tiers: Array<{ amount: number; titleEn: string }>;
+        }>();
+        expect(body.englishOpen).toBe(true);
+        expect(body.tiers.find((tier) => tier.amount === 10)?.titleEn).toBe('Nura $10 gift card');
+    });
+
+    it('keeps reporting a pending PERSIAN order as nothing to report', async () => {
+        expect(await buy(10)).toBe(200);
+        const { token } = lastOrder();
+        expect((await get(`/api/pay/receipt?token=${token}`)).status).toBe(404);
+    });
+
+    it('re-checks unsettled invoices on a timer, so a closed tab still gets its code', async () => {
+        const { token } = await startEn();
+        const reconciler = createReconciler({
+            store,
+            checkout: createCheckout({
+                store,
+                payment: fake.payment,
+                sms: fake.sms,
+                mail: fake.mail
+            })
+        });
+
+        await reconciler.runOnce();
+
+        expect(store.orderById(token)?.status).toBe('paid');
+        expect(fake.mailSent).toHaveLength(1);
+    });
+
+    it('keeps the console guarded on the new test routes', async () => {
+        expect((await post('/api/admin/test-email', { email: 'a@b.co' })).status).toBe(401);
+        expect((await post('/api/admin/test-plisio', {})).status).toBe(401);
     });
 });

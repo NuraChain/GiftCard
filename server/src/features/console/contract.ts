@@ -37,7 +37,11 @@ export const adminOverview = z.object({
 export const ledgerRow = z.object({
     id: z.string(),
     amount: amountField,
+    /** Zero on an English order, which was charged `amount` in dollars through Plisio. */
     toman: z.number().int(),
+    lang: z.enum(['fa', 'en']),
+
+    /** The mobile number, or on an English order the email address. */
     phone: z.string(),
     status: z.enum(['pending', 'paid', 'cancelled', 'failed']),
     code: z.string().nullable(),

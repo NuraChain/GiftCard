@@ -24,6 +24,7 @@
 // Nothing here reads config or touches the network by itself, so the whole flow - including
 // the forged-callback, replay and sold-out paths - is exercised by handing `buildApp` an
 // in-memory database and two fakes.
+import type { IntlLang } from './domain/langs.ts';
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
@@ -43,8 +44,11 @@ import { contract } from './contract/index.ts';
 import type { Store } from './db/index.ts';
 import { catalogueHandlers } from './features/catalogue/routes.ts';
 import { createCheckout } from './features/checkout/checkout.ts';
-import { mountPayCallback, payHandlers } from './features/checkout/routes.ts';
+import { mountPayCallback, mountPlisioCallback, payHandlers } from './features/checkout/routes.ts';
+import type { MailSender } from './features/checkout/mailer.ts';
 import type { SmsSender } from './features/checkout/panelsms.ts';
+import type { Plisio } from './features/checkout/plisio.ts';
+import { createReconciler } from './features/checkout/reconcile.ts';
 import type { PaymentGateway } from './features/checkout/zarinpal.ts';
 import { consoleHandlers } from './features/console/routes.ts';
 import { SESSION_COOKIE, type Admin } from './features/console/session.ts';
@@ -64,6 +68,19 @@ export interface AppOptions {
     payment: PaymentGateway;
     sms: SmsSender;
     admin: Admin;
+
+    /**
+     * The English shop: Plisio OPENS its invoices, and `payment` - which routes `plisio:`
+     * handles to the same client - verifies them. Resend emails its codes.
+     */
+    plisio: Plisio;
+    mail: MailSender;
+
+    /**
+     * How often unsettled Plisio orders are re-checked - see features/checkout/reconcile.ts.
+     * Absent means never, which is what a test wants: it drives settlement itself.
+     */
+    reconcileEveryMs?: number;
 
     /** Runtime configuration: credentials and hosts the console can change without a deploy. */
     settings: Settings;
@@ -200,7 +217,7 @@ function mountClient(
 }
 
 export function buildApp(options: AppOptions): FastifyInstance {
-    const { store, payment, sms, admin, settings, rate, log } = options;
+    const { store, payment, sms, mail, plisio, admin, settings, rate, log } = options;
     const { telegram, notifier, backup, payouts } = options;
     const resultPath = options.resultPath ?? '/';
 
@@ -213,6 +230,15 @@ export function buildApp(options: AppOptions): FastifyInstance {
      * in settings, so there is one spelling of it and no second copy to drift.
      */
     const callbackUrl = (): string => `${settings.current().publicBaseUrl}/api/pay/callback`;
+
+    // The English shop's two addresses, by the same rule. `json=true` is how Plisio is asked
+    // to post JSON rather than a PHP-shaped form; the route reads either. The return lands on
+    // the buyer's own language's page - one of a fixed list, never a path the request wrote -
+    // which knows from its own storage which receipt it is waiting for.
+    const plisioCallbackUrl = (): string =>
+        `${settings.current().publicBaseUrl}/api/pay/plisio?json=true`;
+    const plisioReturnUrl = (lang: IntlLang): string =>
+        `${settings.current().publicBaseUrl}/${lang}?pay=return#purchase`;
 
     // Fastify's published types allow a boolean, a string, a list or a function here, but
     // proxy-addr - the library actually behind it - also documents a NUMBER, meaning "trust
@@ -305,7 +331,23 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
     // The gateway's return is a browser REDIRECT, not a typed call, so checkout mounts it
     // itself rather than through the contract.
-    const checkout = createCheckout({ store, payment, sms, notifier, log });
+    const checkout = createCheckout({ store, payment, sms, mail, notifier, log });
+
+    if (options.reconcileEveryMs !== undefined) {
+        const reconciler = createReconciler({
+            store,
+            checkout,
+            everyMs: options.reconcileEveryMs,
+            log
+        });
+        let stop: (() => void) | undefined;
+        app.addHook('onReady', () => {
+            stop = reconciler.start();
+        });
+        app.addHook('onClose', () => {
+            stop?.();
+        });
+    }
 
     // The same question the admin guard asks, as a yes or no instead of a refusal. Checkout is
     // PUBLIC and stays public: this never turns anybody away, it only decides whether a failed
@@ -324,13 +366,17 @@ export function buildApp(options: AppOptions): FastifyInstance {
         settings,
         rate,
         payment,
+        plisio,
         checkout,
         callbackUrl,
+        plisioCallbackUrl,
+        plisioReturnUrl,
         resultPath,
         isOperator,
         log
     };
     mountPayCallback(app, pay);
+    mountPlisioCallback(app, pay);
 
     const requireAdmin = guard(({ request }) => admin.require(request.cookies[SESSION_COOKIE]));
 
@@ -340,6 +386,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
         guards: {
             // Money or credentials: one call here costs a gateway request, an SMS, or a guess.
             'pay.start': [guard(throttle(8, 60_000))],
+            'pay.startEn': [guard(throttle(8, 60_000))],
 
             // Tighter than checkout, for two reasons at once: every call is one guess at a
             // code, and every SUCCESS makes the shop send a chat message. A code is 122 bits
@@ -377,7 +424,9 @@ export function buildApp(options: AppOptions): FastifyInstance {
             // guessed against - guarded and throttled.
             'admin.rotateKey': [requireAdmin, guard(throttle(10, 60_000))],
             'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))],
-            'admin.testGateway': [requireAdmin, guard(throttle(5, 60_000))]
+            'admin.testGateway': [requireAdmin, guard(throttle(5, 60_000))],
+            'admin.testEmail': [requireAdmin, guard(throttle(5, 60_000))],
+            'admin.testPlisio': [requireAdmin, guard(throttle(5, 60_000))]
         },
 
         // One line per feature. `mountApi` proves the union covers every route in the
@@ -389,7 +438,18 @@ export function buildApp(options: AppOptions): FastifyInstance {
                 ...consoleHandlers({ store, admin }),
                 ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
-                ...settingsHandlers({ settings, admin, sms, payment, callbackUrl, log }),
+                ...settingsHandlers({
+                    settings,
+                    admin,
+                    sms,
+                    mail,
+                    payment,
+                    plisio,
+                    callbackUrl,
+                    plisioCallbackUrl,
+                    plisioReturnUrl,
+                    log
+                }),
                 ...rateHandlers({ rate, settings }),
                 ...telegramHandlers({ telegram, backup, settings })
             }

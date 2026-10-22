@@ -28,6 +28,7 @@ const SETTINGS = {
 const SALE: Sale = {
     amount: 10,
     toman: 1_309_000,
+    lang: 'fa',
     phone: '+989121234567',
     refId: 987654,
     receipt: 'r1',

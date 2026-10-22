@@ -8,12 +8,18 @@
 //
 // It is the only setting on this tab that changes something the BUYER sees on every page,
 // which is why saving it tells the storefront to re-read rather than waiting for a reload.
+//
+// THE OTHER LANGUAGES' NAMES sit under it. Each is optional: an empty one shows the English
+// name, and an empty English one shows the Persian name (server: domain/langs.ts).
+// The English name is also the one in the email and on the Plisio invoice.
 import { Save, Store } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 import { client, failureText } from '../../../lib/api.ts';
 import { useToasts } from '../../../ui/toast.tsx';
 import { useCatalog } from '../../../lib/catalog.tsx';
+import { INTL_LANGS, LANG_INFO } from '../../../lib/lang.ts';
+import { NO_SHOP_NAMES, type ShopNames } from '../../../../../server/src/contract/index.ts';
 import Async from '../../../ui/async.tsx';
 import Button from '../../../ui/button.tsx';
 import Field from '../../../ui/field.tsx';
@@ -31,6 +37,7 @@ export default function ShopSettings(): ReactNode {
     const [saving, setSaving] = useState(false);
 
     const [formAppName, setFormAppName] = useState('');
+    const [formNames, setFormNames] = useState<ShopNames>(NO_SHOP_NAMES);
 
     const load = useCallback(async (): Promise<void> => {
         setLoading(true);
@@ -38,6 +45,7 @@ export default function ShopSettings(): ReactNode {
         try {
             const view = await client.admin.settings();
             setFormAppName(view.appName);
+            setFormNames({ ...NO_SHOP_NAMES, ...view.appNames });
             setLoaded(true);
         } catch (failure) {
             setError(failureText(failure, 'تنظیمات خوانده نشد'));
@@ -71,7 +79,9 @@ export default function ShopSettings(): ReactNode {
         try {
             // ONLY this panel's field is sent. An absent field keeps its value, so a save here
             // cannot touch the gateway or SMS settings - which is the point of the split.
-            await client.admin.saveSettings({ input: { appName: formAppName } });
+            await client.admin.saveSettings({
+                input: { appName: formAppName, appNames: formNames }
+            });
             // The name is on every page of the shop, so it is told to re-read rather than left
             // showing the old one until somebody reloads.
             void catalog.load();
@@ -116,6 +126,37 @@ export default function ShopSettings(): ReactNode {
                                 onChange={setFormAppName}
                             />
                         </Field>
+
+                        <h3 className="mt-6 font-bold">نام در زبان‌های دیگر</h3>
+                        <p className="mt-1 text-caption text-muted">
+                            اختیاری. اگر خالی بماند، نام انگلیسی نمایش داده می‌شود؛ و اگر نام انگلیسی
+                            هم خالی باشد، همین نام فارسی. نام انگلیسی در ایمیل کد و فاکتور Plisio هم
+                            می‌آید.
+                        </p>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {INTL_LANGS.map((lang) => (
+                                <Field
+                                    key={lang}
+                                    label={LANG_INFO[lang].name}
+                                    htmlFor={`app-name-${lang}`}
+                                >
+                                    <TextInput
+                                        id={`app-name-${lang}`}
+                                        placeholder={
+                                            lang === 'en'
+                                                ? formAppName
+                                                : formNames.en.trim() === ''
+                                                  ? formAppName
+                                                  : formNames.en
+                                        }
+                                        value={formNames[lang]}
+                                        onChange={(value) =>
+                                            setFormNames((names) => ({ ...names, [lang]: value }))
+                                        }
+                                    />
+                                </Field>
+                            ))}
+                        </div>
 
                         <Button
                             type="submit"

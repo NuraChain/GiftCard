@@ -57,7 +57,9 @@ describe('the schema migration', () => {
 
         const applied = migrate(db);
 
-        expect(applied).toHaveLength(3);
+        // The three renames, and the `lang` column every order before the English shop lacks.
+        expect(applied).toHaveLength(4);
+        expect(applied).toContain('orders.lang');
         expect(columns(db).has('phone')).toBe(true);
         expect(columns(db).has('email')).toBe(false);
         expect(columns(db).has('sms_delivered')).toBe(true);
@@ -91,36 +93,63 @@ describe('the schema migration', () => {
         db.exec(EMAIL_REDEMPTIONS);
         db.exec(SCHEMA);
 
-        expect(migrate(db)).toHaveLength(3);
+        expect(migrate(db)).toHaveLength(4);
         // Idempotent BY CONSTRUCTION: each migration asks the database what shape it is in
         // rather than trusting a stored version number that a restore can make wrong.
         expect(migrate(db)).toEqual([]);
         db.close();
     });
 
-    it('removes obsolete Resend credentials from settings and their audit rows', () => {
+    it('marks every order from before the English shop as Persian', () => {
+        const db = new DatabaseSync(':memory:');
+        db.exec(EMAIL_ORDERS);
+        db.exec(
+            'INSERT INTO orders (id, amount, toman, email, status, mail_delivered, created_at)' +
+                " VALUES ('o1', 10, 1000, 'buyer@example.com', 'paid', 1, '2026-01-01')"
+        );
+        db.exec(SCHEMA);
+        migrate(db);
+
+        expect(db.prepare('SELECT lang FROM orders').get()).toEqual({ lang: 'fa' });
+        db.close();
+    });
+
+    it('adds the English copy columns to an existing catalogue', () => {
+        const db = new DatabaseSync(':memory:');
+        db.exec(`CREATE TABLE tiers (
+            amount INTEGER PRIMARY KEY, toman INTEGER NOT NULL, title TEXT NOT NULL,
+            blurb TEXT NOT NULL, recommended INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec("INSERT INTO tiers (amount, toman, title, blurb) VALUES (10, 0, 't', 'b')");
+        db.exec(SCHEMA);
+
+        expect(migrate(db)).toContain('tiers.title_en, tiers.blurb_en');
+        expect(db.prepare('SELECT title_en, blurb_en FROM tiers').get()).toEqual({
+            title_en: '',
+            blurb_en: ''
+        });
+        db.close();
+    });
+
+    it('leaves the Resend settings alone now that the English shop emails codes', () => {
+        // A migration that used to delete these ran on every boot. It must not come back:
+        // it would wipe the credentials an operator had just saved.
         const db = new DatabaseSync(':memory:');
         db.exec(SCHEMA);
         db.exec(
-            "INSERT INTO settings (key, value) VALUES ('resendApiKey', 'old-secret'), ('mailFrom', 'shop@example.test'), ('resendBase', 'https://mail.example.test')"
-        );
-        db.exec(
-            "INSERT INTO settings_log (key, before, after, changed_at) VALUES ('resendApiKey', '••••', '••••', '2026-01-01')"
+            "INSERT INTO settings (key, value) VALUES ('resendApiKey', 're_secret'), ('mailFrom', 'shop@example.test')"
         );
 
-        expect(migrate(db)).toContain('remove obsolete email delivery settings');
+        migrate(db);
+
         expect(
             db
                 .prepare(
-                    "SELECT COUNT(*) AS count FROM settings WHERE key LIKE 'resend%' OR key = 'mailFrom'"
+                    "SELECT COUNT(*) AS count FROM settings WHERE key IN ('resendApiKey', 'mailFrom')"
                 )
                 .get()
-        ).toEqual({ count: 0 });
-        expect(
-            db
-                .prepare("SELECT COUNT(*) AS count FROM settings_log WHERE key = 'resendApiKey'")
-                .get()
-        ).toEqual({ count: 0 });
+        ).toEqual({ count: 2 });
         db.close();
     });
 });

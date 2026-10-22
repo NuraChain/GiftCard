@@ -11,6 +11,21 @@
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useCopy, type Lang } from '../lib/lang.ts';
+
+const COPY: Record<Lang, { retry: string; loading: string; empty: string }> = {
+    fa: { retry: 'تلاش دوباره', loading: 'در حال بارگذاری...', empty: 'چیزی برای نمایش نیست.' },
+    en: { retry: 'Try again', loading: 'Loading...', empty: 'Nothing to show.' },
+    ar: { retry: 'حاول مرة أخرى', loading: 'جارٍ التحميل...', empty: 'لا يوجد ما يُعرض.' },
+    es: { retry: 'Reintentar', loading: 'Cargando...', empty: 'No hay nada que mostrar.' },
+    pt: { retry: 'Tentar novamente', loading: 'Carregando...', empty: 'Nada para mostrar.' },
+    hi: { retry: 'फिर से कोशिश करें', loading: 'लोड हो रहा है...', empty: 'दिखाने के लिए कुछ नहीं है।' },
+    zh: { retry: '重试', loading: '加载中...', empty: '暂无内容。' },
+    ru: { retry: 'Повторить', loading: 'Загрузка...', empty: 'Здесь пока ничего нет.' },
+    fr: { retry: 'Réessayer', loading: 'Chargement...', empty: 'Rien à afficher.' },
+    tr: { retry: 'Tekrar dene', loading: 'Yükleniyor...', empty: 'Gösterilecek bir şey yok.' }
+};
+
 export interface AsyncProps {
     /** True while a request is in flight. */
     loading: boolean;
@@ -38,6 +53,8 @@ export interface AsyncProps {
 }
 
 export default function Async(props: AsyncProps): ReactNode {
+    const t = useCopy(COPY);
+
     // Failure first: a stale success underneath must never be what the reader sees while an
     // error is true.
     if (props.error !== '') {
@@ -53,7 +70,7 @@ export default function Async(props: AsyncProps): ReactNode {
                     onClick={props.onRetry}
                 >
                     <RefreshCw className="size-4" aria-hidden="true" />
-                    تلاش دوباره
+                    {t.retry}
                 </button>
             </div>
         );
@@ -62,7 +79,7 @@ export default function Async(props: AsyncProps): ReactNode {
     if (props.loading) {
         return (
             <div aria-busy="true" aria-live="polite">
-                <span className="sr-only">در حال بارگذاری...</span>
+                <span className="sr-only">{t.loading}</span>
                 {props.skeleton ?? (
                     <div className="anim-pulse h-24 rounded-2xl border border-line bg-surface"></div>
                 )}
@@ -73,7 +90,7 @@ export default function Async(props: AsyncProps): ReactNode {
     if (props.empty === true) {
         return (
             <p className="rounded-2xl border border-line bg-surface p-5 text-small text-muted">
-                {props.emptyText ?? 'چیزی برای نمایش نیست.'}
+                {props.emptyText ?? t.empty}
             </p>
         );
     }

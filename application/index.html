@@ -27,6 +27,27 @@
             } catch (error) {
                 // No storage access: fall through to the system preference.
             }
+
+            // Every language but Persian lives under its own prefix - /en, /ar, /fr... - and
+            // all but Arabic read left to right. Set BEFORE first paint for the same reason as
+            // the theme: the bundle would otherwise paint the page right-to-left and then flip
+            // it. The list mirrors LANG_INFO in src/lib/lang.ts.
+            var locales = {
+                en: 'en-US',
+                ar: 'ar',
+                es: 'es',
+                pt: 'pt-BR',
+                hi: 'hi-IN',
+                zh: 'zh-CN',
+                ru: 'ru',
+                fr: 'fr',
+                tr: 'tr'
+            };
+            var prefix = location.pathname.split('/')[1];
+            if (Object.prototype.hasOwnProperty.call(locales, prefix)) {
+                document.documentElement.setAttribute('lang', locales[prefix]);
+                document.documentElement.setAttribute('dir', prefix === 'ar' ? 'rtl' : 'ltr');
+            }
         </script>
     </head>
     <body>

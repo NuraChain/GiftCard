@@ -25,7 +25,16 @@ import { useAdminSession } from '../session.tsx';
 
 /** A blank card, ready to be filled in. */
 function emptyTier(sort: number): TierInput {
-    return { amount: 0, title: '', blurb: '', recommended: false, active: true, sort };
+    return {
+        amount: 0,
+        title: '',
+        blurb: '',
+        titleEn: '',
+        blurbEn: '',
+        recommended: false,
+        active: true,
+        sort
+    };
 }
 
 /**
@@ -37,6 +46,8 @@ function toDraft(tier: TierRow): TierInput {
         amount: tier.amount,
         title: tier.title,
         blurb: tier.blurb,
+        titleEn: tier.titleEn,
+        blurbEn: tier.blurbEn,
         recommended: tier.recommended,
         active: tier.active,
         sort: tier.sort
@@ -248,6 +259,36 @@ export default function TierSettings(): ReactNode {
                         className="mt-2 w-full rounded-xl border border-line bg-paper p-4 text-small outline-none focus:border-firouze"
                         value={draft.blurb}
                         onChange={(event) => setDraft({ ...draft, blurb: event.target.value })}
+                    ></textarea>
+
+                    {/* The dollar shop's copy, shown on EVERY non-Persian page. Left empty, each
+                        page titles the card from its amount in its own language ("$10 gift
+                        card", "Carte cadeau de 10 $") and shows no description. */}
+                    <Field
+                        label="عنوان انگلیسی"
+                        htmlFor="tier-title-en"
+                        className="mt-4"
+                        hint="در همهٔ زبان‌های غیر فارسی نمایش داده می‌شود. اگر خالی بماند، هر زبان عنوان کارت را از مبلغ و به زبان خودش می‌سازد."
+                    >
+                        <TextInput
+                            id="tier-title-en"
+                            latin
+                            placeholder={draft.amount > 0 ? `$${draft.amount} gift card` : ''}
+                            value={draft.titleEn}
+                            onChange={(next) => setDraft({ ...draft, titleEn: next })}
+                        />
+                    </Field>
+
+                    <label className="mt-4 block text-small font-bold" htmlFor="tier-blurb-en">
+                        توضیح انگلیسی روی کارت
+                    </label>
+                    <textarea
+                        id="tier-blurb-en"
+                        rows={3}
+                        dir="ltr"
+                        className="mt-2 w-full rounded-xl border border-line bg-paper p-4 text-small outline-none focus:border-firouze"
+                        value={draft.blurbEn}
+                        onChange={(event) => setDraft({ ...draft, blurbEn: event.target.value })}
                     ></textarea>
 
                     <div className="mt-4 flex flex-wrap gap-4">

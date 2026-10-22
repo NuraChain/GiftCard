@@ -27,7 +27,13 @@ import {
 } from 'react';
 
 import { client } from './api.ts';
-import type { Catalog } from '../../../server/src/contract/index.ts';
+import {
+    NO_SHOP_NAMES,
+    shopName,
+    type Catalog,
+    type ShopNames
+} from '../../../server/src/contract/index.ts';
+import { useLang } from './lang.ts';
 
 /** One card, exactly as the server describes it. */
 export type CatalogTier = Catalog['tiers'][number];
@@ -62,9 +68,25 @@ function rememberedName(): string {
     }
 }
 
+/** The other languages' names, remembered for the same first paint. */
+function rememberedNames(): ShopNames {
+    try {
+        const held = JSON.parse(localStorage.getItem('ashbringer-app-names') ?? '{}') as unknown;
+        return { ...NO_SHOP_NAMES, ...(typeof held === 'object' && held !== null ? held : {}) };
+    } catch {
+        return NO_SHOP_NAMES;
+    }
+}
+
 export interface CatalogStore {
     tiers: CatalogTier[];
+
+    /** The Persian name. Every other page reads `useShopName`, which falls back for them. */
     appName: string;
+    appNames: ShopNames;
+
+    /** Whether the English shop can take a payment - Plisio has a key. See the contract. */
+    englishOpen: boolean;
 
     loading: boolean;
     error: string;
@@ -77,11 +99,16 @@ export interface CatalogStore {
     refresh: () => Promise<void>;
 }
 
+/** What `error` holds when the catalogue could not be read. */
+export const CATALOG_UNAVAILABLE = 'catalog-unavailable';
+
 const CatalogContext = createContext<CatalogStore | null>(null);
 
 export function CatalogProvider({ children }: { children: ReactNode }): ReactNode {
     const [tiers, setTiers] = useState<CatalogTier[]>([]);
     const [appName, setAppName] = useState(rememberedName);
+    const [appNames, setAppNames] = useState(rememberedNames);
+    const [englishOpen, setEnglishOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [loaded, setLoaded] = useState(false);
@@ -95,14 +122,19 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
             const result = await client.pay.catalog();
             setTiers(result.tiers);
             setAppName(result.appName);
+            // Spread over the empty set for an older server mid-deploy, which has none yet.
+            setAppNames({ ...NO_SHOP_NAMES, ...result.appNames });
+            // `=== true`: an older server mid-deploy answers without the field, and that
+            // shop has no English checkout to open.
+            setEnglishOpen(result.englishOpen === true);
             setLoaded(true);
             setError('');
 
-            // The title is in a built file, so a rebrand would leave it stale. Setting it
-            // here is what makes the name in the console the name in the browser tab.
-            document.title = `${result.appName} - خرید گیفت کارت`;
+            // The TAB TITLE is set by the shell, which knows which shop's words to use - see
+            // App.tsx. It follows `appName`, so a rebrand still reaches the browser tab.
             try {
                 localStorage.setItem('ashbringer-app-name', result.appName);
+                localStorage.setItem('ashbringer-app-names', JSON.stringify(result.appNames));
             } catch {
                 // No storage: the name is still right for this visit.
             }
@@ -116,7 +148,9 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
             // either fixes it or the buyer meets the server's price check, which is exactly
             // the backstop that exists for this.
             if (!quiet) {
-                setError('فهرست کارت‌ها بارگذاری نشد. اتصال اینترنت را بررسی کنید.');
+                // A KEY, not a sentence: this provider sits above the router and cannot know
+                // which shop's words to use. The shop page turns it into the reader's language.
+                setError(CATALOG_UNAVAILABLE);
             }
         } finally {
             if (!quiet) {
@@ -153,8 +187,8 @@ export function CatalogProvider({ children }: { children: ReactNode }): ReactNod
     }, []);
 
     const store = useMemo(
-        () => ({ tiers, appName, loading, error, loaded, load, refresh }),
-        [tiers, appName, loading, error, loaded, load, refresh]
+        () => ({ tiers, appName, appNames, englishOpen, loading, error, loaded, load, refresh }),
+        [tiers, appName, appNames, englishOpen, loading, error, loaded, load, refresh]
     );
 
     return <CatalogContext value={store}>{children}</CatalogContext>;
@@ -166,4 +200,13 @@ export function useCatalog(): CatalogStore {
         throw new Error('useCatalog was called outside <CatalogProvider>');
     }
     return store;
+}
+
+/**
+ * What the shop is called on the reader's page: the name set for that language, else the
+ * English one, else the Persian one. Must be used under the router.
+ */
+export function useShopName(): string {
+    const { appName, appNames } = useCatalog();
+    return shopName(useLang(), appName, appNames);
 }

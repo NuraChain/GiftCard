@@ -1,14 +1,17 @@
 // The shop's half of the contract: the catalogue, starting a purchase, and reading the
 // receipt. Pairs with ./routes.ts - the shapes here, the handlers there.
 //
-// Scope note: no route here accepts card details. The buyer types a mobile number, the
-// gateway takes the money on its own page, and this server never sees a card number.
+// Scope note: no route here accepts card details. The buyer types a mobile number (or, in
+// the English shop, an email address), the gateway takes the money on its own page, and this
+// server never sees a card number or a wallet key.
 //
 // CLIENT-SAFE. Like every features/*/contract.ts, this may import only
 // `platform/contract.ts`, `zod` and `domain/`.
+import { INTL_LANGS, type IntlLang } from '../../domain/langs.ts';
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
+import { emailField } from '../../domain/email.ts';
 import { phoneField } from '../../domain/phone.ts';
 import { amountField } from '../../contract/shared.ts';
 
@@ -53,6 +56,35 @@ export const purchaseFormInput = z.object({ phone: phoneField });
 export const payStartOutput = z.object({ payUrl: z.string() });
 
 /**
+ * What starts a purchase in the ENGLISH shop. A separate route rather than a flag on the one
+ * above, because almost nothing is shared: the buyer gives an email rather than a mobile, the
+ * price is the face value in dollars - so there is no quote to assert, nothing moves it - and
+ * the gateway is always Plisio, whichever one the Persian shop is using.
+ */
+export const payStartEnInput = z.object({
+    amount: amountField,
+    email: emailField,
+
+    /**
+     * Which page Plisio sends the buyer back to. One of a fixed list, so the request can pick
+     * a language but never write the address. Absent means English - a page loaded before
+     * there were other languages does not send it.
+     */
+    lang: z.enum(INTL_LANGS).default('en')
+});
+
+/** The English card's form: the one field a human types. */
+export const purchaseEnFormInput = z.object({ email: emailField });
+
+/**
+ * As above, plus the receipt token. Plisio's page sends the buyer back to a fixed address
+ * that cannot name the order (the token is not given to Plisio - it reads the code back), so
+ * the browser keeps the token for the trip and asks about it on return. It is the buyer's own
+ * receipt, going to the buyer's own browser.
+ */
+export const payStartEnOutput = z.object({ payUrl: z.string(), receipt: z.string() });
+
+/**
  * The live shop. Two things here cannot be baked into a built page: the Toman price (the
  * operator moves it with the tether rate) and the availability (it is whatever is left in
  * the code inventory this second).
@@ -60,6 +92,14 @@ export const payStartOutput = z.object({ payUrl: z.string() });
 export const catalog = z.object({
     /** What the shop calls itself. Public: it is the page title and the brand on every page. */
     appName: z.string(),
+
+    /** The name in each dollar-shop language, empty where unset. See `shopName`. */
+    appNames: z.object(
+        Object.fromEntries(INTL_LANGS.map((lang) => [lang, z.string()])) as Record<
+            IntlLang,
+            z.ZodString
+        >
+    ),
 
     // NO RATE HERE, DELIBERATELY. The shop used to publish the tether rate it priced from,
     // back when that rate was read live off two exchanges and the number was a fact the buyer
@@ -84,9 +124,19 @@ export const catalog = z.object({
             // so a tier added this afternoon arrives with its copy rather than as a blank card.
             title: z.string(),
             blurb: z.string(),
+
+            /** The English shop's copy. Empty means the page words the card from its amount. */
+            titleEn: z.string(),
+            blurbEn: z.string(),
             recommended: z.boolean()
         })
-    )
+    ),
+
+    /**
+     * Whether the English shop can take a payment: Plisio has a key. The English cards are
+     * priced at face value, so this - not the tether rate - is what closes them.
+     */
+    englishOpen: z.boolean()
 });
 
 /**
@@ -97,16 +147,25 @@ export const catalog = z.object({
 export const receiptQuery = z.object({ token: z.string().trim().max(40) });
 
 /**
- * The outcome, in the three shapes a buyer can actually land in.
+ * The outcome, in the shapes a buyer can actually land in.
  * `cancelled` is a person changing their mind at the gateway, which is not an error and
- * must not be dressed as one; `failed` is money that did not verify.
+ * must not be dressed as one; `failed` is money that did not verify. `pending` is reported
+ * for an ENGLISH order only: a crypto payment confirming on the chain is a state worth showing,
+ * whereas a Persian order that has not come back from the bank is still nothing to report.
  */
 export const receipt = z.object({
-    outcome: z.enum(['paid', 'cancelled', 'failed']),
+    outcome: z.enum(['paid', 'cancelled', 'failed', 'pending']),
     amount: amountField,
+
+    /** Zero on an English order, which was charged `amount` in dollars. */
     toman: z.number().int(),
 
-    /** The mobile number the code was sent to, so the buyer recognises what they typed. */
+    lang: z.enum(['fa', 'en']),
+
+    /**
+     * Where the code was sent, so the buyer recognises what they typed: the mobile number,
+     * or on an English order the email address.
+     */
     phone: z.string(),
 
     /** The gift code. Non-null only when `outcome` is `paid`. */
@@ -115,12 +174,13 @@ export const receipt = z.object({
     /** The gateway's transaction reference, quoted in support. */
     refId: z.number().int().nullable(),
 
-    /** False means the SMS did not go out. It never means the code is invalid. */
+    /** False means the SMS (or email) did not go out. It never means the code is invalid. */
     smsDelivered: z.boolean()
 });
 
 export type PayStartInput = z.infer<typeof payStartInput>;
 export type PurchaseFormInput = z.infer<typeof purchaseFormInput>;
+export type PayStartEnInput = z.infer<typeof payStartEnInput>;
 export type Catalog = z.infer<typeof catalog>;
 export type Receipt = z.infer<typeof receipt>;
 
@@ -128,5 +188,6 @@ export type Receipt = z.infer<typeof receipt>;
 export const checkoutRoutes = {
     catalog: get('/pay/catalog', { output: catalog }),
     start: post('/pay/start', { input: payStartInput, output: payStartOutput }),
+    startEn: post('/pay/start-en', { input: payStartEnInput, output: payStartEnOutput }),
     receipt: get('/pay/receipt', { query: receiptQuery, output: receipt })
 };

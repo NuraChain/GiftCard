@@ -19,8 +19,10 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { keepPasswords, telegramProxyList, type TelegramProxy } from '../../contract/shared.ts';
+import { INTL_LANGS, NO_SHOP_NAMES, type ShopNames } from '../../domain/langs.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 import type { SettingsStore } from '../../db/index.ts';
+import { mailConfigured } from '../checkout/mailer.ts';
 import { smsConfigured } from '../checkout/panelsms.ts';
 import {
     DEFAULT_BACKUP_MINUTES,
@@ -32,12 +34,18 @@ import {
 /** Every key this module owns. Anything not listed is not settable from the browser. */
 export const SETTING_KEYS = [
     'appName',
+    'appNames',
     'publicBaseUrl',
     'paymentGateway',
     'zarinpalBase',
     'merchantId',
     'zibalBase',
     'zibalMerchant',
+    'plisioApiKey',
+    'plisioBase',
+    'resendApiKey',
+    'mailFrom',
+    'resendBase',
     'smsApiUrl',
     'smsUsername',
     'smsApiKey',
@@ -61,6 +69,8 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 const SECRETS = new Set<SettingKey>([
     'merchantId',
     'zibalMerchant',
+    'plisioApiKey',
+    'resendApiKey',
     'smsApiKey',
     'telegramBotToken',
     'adminKeyHash'
@@ -70,6 +80,12 @@ const SECRETS = new Set<SettingKey>([
 export interface RuntimeSettings {
     /** What the shop calls itself: the page title, the brand, the payment description. */
     appName: string;
+
+    /**
+     * The same name in each dollar-shop language. An empty one falls back to the English one,
+     * and an empty English one to `appName` - see `shopName` in domain/langs.ts.
+     */
+    appNames: ShopNames;
 
     /**
      * Where the BUYER'S BROWSER reaches this shop - the public origin nginx answers on, not
@@ -97,6 +113,22 @@ export interface RuntimeSettings {
     zibalBase: string;
     /** Zibal's merchant. The literal `zibal` is their published test account. */
     zibalMerchant: string;
+
+    /**
+     * The English shop's gateway - see features/checkout/plisio.ts. Its SECRET key, which
+     * Plisio calls `api_key`. Empty means the English cards cannot be bought.
+     */
+    plisioApiKey: string;
+    plisioBase: string;
+
+    /**
+     * The English shop's delivery: Resend's API key, the From address on a domain verified in
+     * Resend, and the API host - a setting because `api.resend.com` may not be reachable from
+     * where the shop runs. See features/checkout/mailer.ts.
+     */
+    resendApiKey: string;
+    mailFrom: string;
+    resendBase: string;
 
     /**
      * The SMS panel's send-by-link or web-service address and what it is called with - see
@@ -183,12 +215,18 @@ export const MAX_MARGIN_PERCENT = 100;
  */
 const DEFAULTS = {
     appName: 'اشبرینگر',
-    publicBaseUrl: 'https://guardian-service.ir',
+    appNames: NO_SHOP_NAMES,
+    publicBaseUrl: 'https://ashbringer.org',
     paymentGateway: 'zarinpal',
     zarinpalBase: 'https://payment.zarinpal.com',
     merchantId: '',
     zibalBase: 'https://gateway.zibal.ir',
     zibalMerchant: '',
+    plisioApiKey: '',
+    plisioBase: 'https://api.plisio.net',
+    resendApiKey: '',
+    mailFrom: '',
+    resendBase: 'https://api.resend.com',
     smsApiUrl: 'https://0098vip.com/sendsmslink.aspx',
     smsUsername: '',
     smsApiKey: '',
@@ -231,7 +269,11 @@ export interface Settings {
     view(callbackUrl: string): SettingsView;
 
     /** Applies only the fields present; an absent field keeps its value. */
-    save(changes: Partial<RuntimeSettings>): void;
+    save(
+        changes: Partial<Omit<RuntimeSettings, 'appNames'>> & {
+            appNames?: Partial<Record<keyof ShopNames, string | undefined>>;
+        }
+    ): void;
 
     /** True when the given key matches the stored hash, or the bootstrap key if none exists. */
     matchesAdminKey(candidate: string): boolean;
@@ -248,6 +290,7 @@ export interface Settings {
 /** The masked shape the console receives. Mirrors `settingsView` in the contract. */
 export interface SettingsView {
     appName: string;
+    appNames: ShopNames;
     publicBaseUrl: string;
     paymentGateway: GatewayName;
     sandbox: boolean;
@@ -257,6 +300,14 @@ export interface SettingsView {
     zibalBase: string;
     zibalMerchantMasked: string;
     zibalMerchantSet: boolean;
+    plisioBase: string;
+    plisioApiKeyMasked: string;
+    plisioApiKeySet: boolean;
+    resendBase: string;
+    resendApiKeyMasked: string;
+    resendApiKeySet: boolean;
+    mailFrom: string;
+    mailReady: boolean;
     smsApiUrl: string;
     smsUsername: string;
     smsApiKeyMasked: string;
@@ -370,6 +421,26 @@ function proxiesFrom(raw: string): TelegramProxy[] {
 }
 
 /**
+ * @internal The per-language names, every language present. Unreadable or missing ones are
+ * empty, which means "use the fallback" - never a reason to refuse to serve the page.
+ */
+function namesFrom(raw: string): ShopNames {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        parsed = {};
+    }
+    const held = typeof parsed === 'object' && parsed !== null ? parsed : {};
+    const names = { ...NO_SHOP_NAMES };
+    for (const lang of INTL_LANGS) {
+        const value = (held as Record<string, unknown>)[lang];
+        names[lang] = typeof value === 'string' ? value : '';
+    }
+    return names;
+}
+
+/**
  * @internal A rate that cannot poison a price.
  *
  * The stored value is text an operator typed, so it can be empty, `'abc'`, negative, or one
@@ -432,12 +503,18 @@ export function createSettings(options: SettingsOptions): Settings {
 
             cache = {
                 appName: pick('appName', DEFAULTS.appName),
+                appNames: namesFrom(pick('appNames', '{}')),
                 publicBaseUrl: pick('publicBaseUrl', DEFAULTS.publicBaseUrl),
                 paymentGateway: gatewayFrom(pick('paymentGateway', DEFAULTS.paymentGateway)),
                 zarinpalBase: pick('zarinpalBase', DEFAULTS.zarinpalBase),
                 merchantId: pick('merchantId', DEFAULTS.merchantId),
                 zibalBase: pick('zibalBase', DEFAULTS.zibalBase),
                 zibalMerchant: pick('zibalMerchant', DEFAULTS.zibalMerchant),
+                plisioApiKey: pick('plisioApiKey', DEFAULTS.plisioApiKey),
+                plisioBase: pick('plisioBase', DEFAULTS.plisioBase),
+                resendApiKey: pick('resendApiKey', DEFAULTS.resendApiKey),
+                mailFrom: pick('mailFrom', DEFAULTS.mailFrom),
+                resendBase: pick('resendBase', DEFAULTS.resendBase),
                 smsApiUrl: pick('smsApiUrl', DEFAULTS.smsApiUrl),
                 smsUsername: pick('smsUsername', DEFAULTS.smsUsername),
                 smsApiKey: pick('smsApiKey', DEFAULTS.smsApiKey),
@@ -466,6 +543,7 @@ export function createSettings(options: SettingsOptions): Settings {
             const live = current();
             return {
                 appName: live.appName,
+                appNames: live.appNames,
                 publicBaseUrl: live.publicBaseUrl,
                 paymentGateway: live.paymentGateway,
                 // About the ACTIVE gateway only: the other one's test mode moves nobody's
@@ -480,6 +558,14 @@ export function createSettings(options: SettingsOptions): Settings {
                 zibalBase: live.zibalBase,
                 zibalMerchantMasked: mask(live.zibalMerchant),
                 zibalMerchantSet: live.zibalMerchant !== '',
+                plisioBase: live.plisioBase,
+                plisioApiKeyMasked: mask(live.plisioApiKey),
+                plisioApiKeySet: live.plisioApiKey !== '',
+                resendBase: live.resendBase,
+                resendApiKeyMasked: mask(live.resendApiKey),
+                resendApiKeySet: live.resendApiKey !== '',
+                mailFrom: live.mailFrom,
+                mailReady: mailConfigured({ apiKey: live.resendApiKey, from: live.mailFrom }),
                 smsApiUrl: live.smsApiUrl,
                 smsUsername: live.smsUsername,
                 smsApiKeyMasked: mask(live.smsApiKey),
@@ -519,7 +605,17 @@ export function createSettings(options: SettingsOptions): Settings {
                             ? JSON.stringify(
                                   keepPasswords(value as TelegramProxy[], current().telegramProxies)
                               )
-                            : String(value)
+                            : name === 'appNames'
+                              ? // Merged: a form that sends one language keeps the others.
+                                JSON.stringify({
+                                    ...current().appNames,
+                                    ...Object.fromEntries(
+                                        Object.entries(value as object).filter(
+                                            ([, held]) => typeof held === 'string'
+                                        )
+                                    )
+                                })
+                              : String(value)
                     );
                 }
             }

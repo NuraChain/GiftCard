@@ -7,6 +7,12 @@
 export type OrderStatus = 'pending' | 'paid' | 'cancelled' | 'failed';
 
 /**
+ * Which shop an order was placed in. It is more than a language: `fa` is paid in Toman through
+ * Zarinpal or Zibal and texted, `en` is paid in dollars through Plisio and emailed.
+ */
+export type OrderLang = 'fa' | 'en';
+
+/**
  * A denomination, in dollars. Deliberately a plain number rather than a union: the
  * catalogue is editable at runtime, so the set of valid amounts is a TABLE, not a type.
  *
@@ -23,6 +29,10 @@ export interface Tier {
 
     title: string;
     blurb: string;
+
+    /** The English shop's copy. Empty means the page words the card from its amount. */
+    titleEn: string;
+    blurbEn: string;
 
     /** At most one card carries the recommended treatment; the store enforces that. */
     recommended: boolean;
@@ -51,11 +61,19 @@ export interface Order {
 
     amount: Amount;
 
-    /** What the buyer pays, in Toman. Stored so verify uses OUR number, not a request's. */
+    /**
+     * What the buyer pays, in Toman. Stored so verify uses OUR number, not a request's. ZERO on
+     * an `en` order, which is charged its face value in dollars - `amount` is the price there.
+     */
     toman: number;
 
-    /** Canonical Iranian mobile number. See domain/phone.ts. */
+    /**
+     * Where the code is sent: a canonical Iranian mobile on an `fa` order (domain/phone.ts), a
+     * canonical email on an `en` one (domain/email.ts). The column kept its name.
+     */
     phone: string;
+
+    lang: OrderLang;
 
     status: OrderStatus;
 
@@ -69,7 +87,7 @@ export interface Order {
     /** The gateway's transaction reference, quoted in support. */
     refId: number | null;
 
-    /** Whether the code reached the buyer by SMS. False never invalidates the code. */
+    /** Whether the code reached the buyer, by SMS or email. False never invalidates the code. */
     smsDelivered: boolean;
 
     createdAt: string;
@@ -82,6 +100,7 @@ export interface NewOrder {
     amount: Amount;
     toman: number;
     phone: string;
+    lang: OrderLang;
     createdAt: string;
 }
 
@@ -267,6 +286,13 @@ export interface Store extends SettingsStore {
 
     orderById(id: string): Order | undefined;
     orderByAuthority(authority: string): Order | undefined;
+
+    /**
+     * Unsettled orders whose gateway handle starts with `prefix`, opened after `since` (ISO).
+     * What the Plisio reconciler re-checks - a crypto payment can confirm long after the buyer
+     * closed the tab.
+     */
+    pendingOrders(prefix: string, since: string): Order[];
 
     /**
      * Settles a verified payment: keeps the held code (or claims a fresh one if the hold

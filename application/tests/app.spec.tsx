@@ -22,6 +22,17 @@ const TEN_DOLLAR_TOMAN = 1_060_000;
 function catalogBody(overrides: { toman?: number | null } = {}): Record<string, unknown> {
     return {
         appName: 'اشبرینگر',
+        appNames: {
+            en: 'Ashbringer',
+            ar: '',
+            es: '',
+            pt: '',
+            hi: '',
+            zh: '',
+            ru: '',
+            fr: 'Boutique',
+            tr: ''
+        },
         tiers: [
             {
                 amount: 10,
@@ -29,9 +40,12 @@ function catalogBody(overrides: { toman?: number | null } = {}): Record<string, 
                 available: 4,
                 title: 'خرید گیفت کارت نورا ۱۰ دلاری',
                 blurb: 'رایج‌ترین انتخاب.',
+                titleEn: 'Nura $10 gift card',
+                blurbEn: 'The usual choice.',
                 recommended: true
             }
-        ]
+        ],
+        englishOpen: true
     };
 }
 
@@ -81,7 +95,7 @@ describe('landing page', () => {
 
     it('shows every FAQ answer in the markup, so the page reads without opening each row', () => {
         const { container } = render(<App url="/" />);
-        for (const faq of FAQS) {
+        for (const faq of FAQS.fa) {
             expect(container.textContent, faq.id).toContain(faq.question);
             expect(container.textContent, faq.id).toContain(faq.answer);
         }
@@ -89,7 +103,7 @@ describe('landing page', () => {
 
     it('the FAQ accordion toggles aria-expanded and the panel', () => {
         const { container } = render(<App url="/" />);
-        const first = FAQS[0].id;
+        const first = FAQS.fa[0].id;
         const button = container.querySelector<HTMLButtonElement>(`#faq-button-${first}`);
         const panel = container.querySelector<HTMLElement>(`#faq-panel-${first}`);
 
@@ -145,7 +159,7 @@ describe('landing page', () => {
 
     it('every hero assurance carries a glyph', () => {
         const { container } = render(<App url="/" />);
-        for (const item of ASSURANCES) {
+        for (const item of ASSURANCES.fa) {
             expect(container.textContent, item.label).toContain(item.label);
             expect(container.textContent, item.detail).toContain(item.detail);
         }
@@ -393,5 +407,266 @@ describe('the tether rate', () => {
         const button = await screen.findByText('قیمت در دسترس نیست');
         expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
         expect(document.body.textContent).not.toContain('۱٬۰۶۰٬۰۰۰');
+    });
+});
+
+describe('the English shop', () => {
+    it('reads left to right, in English, with its links kept inside /en', async () => {
+        const { container } = render(<App url="/en" />);
+
+        expect(await screen.findByText('Choose your card')).not.toBeNull();
+        expect(document.documentElement.dir).toBe('ltr');
+        expect(document.documentElement.lang).toBe('en-US');
+        for (const faq of FAQS.en) {
+            expect(container.textContent, faq.id).toContain(faq.answer);
+        }
+
+        // «Cards» must not send an English reader into the Persian shop.
+        const hrefs = [...container.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
+        expect(hrefs).toContain('/en#cards');
+        expect(hrefs).not.toContain('/#cards');
+
+        // The way back is named in the language it leads to.
+        fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
+        expect(screen.getByRole('link', { name: /فارسی/ }).getAttribute('href')).toBe('/');
+    });
+
+    it('offers the English shop from the Persian one, and puts the document back', async () => {
+        render(<App url="/" />);
+        await screen.findByLabelText('شماره موبایل');
+
+        expect(document.documentElement.dir).toBe('rtl');
+        fireEvent.click(screen.getByRole('button', { name: 'زبان: فارسی' }));
+        expect(screen.getByRole('link', { name: /English/ }).getAttribute('href')).toBe('/en');
+    });
+
+    it('asks for an email and prices the card at its face value in dollars', async () => {
+        render(<App url="/en" />);
+
+        const input = await screen.findByLabelText('Email');
+        expect(input.getAttribute('id')).toBe('email-10');
+        expect(screen.queryByLabelText('شماره موبایل')).toBeNull();
+        expect(document.body.textContent).toContain('Nura $10 gift card');
+        expect(document.body.textContent).toContain('$10.00');
+        // The Toman price belongs to the other shop.
+        expect(document.body.textContent).not.toContain('تومان');
+    });
+
+    it('refuses to advance on an email the shared schema rejects', async () => {
+        render(<App url="/en" />);
+        const input = await screen.findByLabelText('Email');
+
+        fireEvent.change(input, { target: { value: 'buyer@example' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+        expect(screen.queryByText('Change email')).toBeNull();
+        expect(document.body.textContent).toContain('Enter a valid email address.');
+    });
+
+    it('opens a Plisio checkout and keeps the receipt for the trip back', async () => {
+        const calls: Array<Record<string, unknown>> = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string, init?: RequestInit) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(CATALOG));
+                }
+                if (String(input).includes('/api/pay/start-en')) {
+                    calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+                    return Promise.resolve(
+                        json({ payUrl: 'https://plisio.test/invoice/x', receipt: 'r-123' })
+                    );
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/en" />);
+        const input = await screen.findByLabelText('Email');
+        fireEvent.change(input, { target: { value: 'buyer@example.com' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+        // Read back before any money moves, exactly like the mobile number.
+        expect(screen.getByText('Change email')).not.toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: /^Pay \$10\.00/ }));
+
+        await vi.waitFor(() => expect(calls).toHaveLength(1));
+        expect(calls[0]).toEqual({ amount: 10, email: 'buyer@example.com', lang: 'en' });
+        await vi.waitFor(() =>
+            expect(sessionStorage.getItem('ashbringer-pending-receipt')).toBe('r-123')
+        );
+    });
+
+    it('will not sell while Plisio has no key', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json({ ...CATALOG, englishOpen: false }));
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/en" />);
+        const button = await screen.findByText('Not available');
+        expect(button.closest('button')?.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('picks the receipt back up on return from Plisio and waits for the chain', async () => {
+        sessionStorage.setItem('ashbringer-pending-receipt', 'r-456');
+        const asked: string[] = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(CATALOG));
+                }
+                if (String(input).includes('/api/pay/receipt')) {
+                    asked.push(String(input));
+                    return Promise.resolve(
+                        json({
+                            outcome: 'pending',
+                            amount: 10,
+                            toman: 0,
+                            lang: 'en',
+                            phone: 'buyer@example.com',
+                            code: null,
+                            refId: null,
+                            smsDelivered: false
+                        })
+                    );
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        render(<App url="/en?pay=return" />);
+
+        expect(await screen.findByText('Waiting for your payment to confirm')).not.toBeNull();
+        expect(asked[0]).toContain('token=r-456');
+        sessionStorage.clear();
+    });
+
+    it('says the code is on its way when the tab has no receipt to pick up', async () => {
+        sessionStorage.clear();
+        render(<App url="/en?pay=return" />);
+        expect(await screen.findByText('Thanks - we are checking your payment')).not.toBeNull();
+    });
+});
+
+describe('every language', () => {
+    const PAGES: Array<[lang: string, path: string, locale: string, dir: string]> = [
+        ['fa', '/', 'fa-IR', 'rtl'],
+        ['en', '/en', 'en-US', 'ltr'],
+        ['ar', '/ar', 'ar', 'rtl'],
+        ['es', '/es', 'es', 'ltr'],
+        ['pt', '/pt', 'pt-BR', 'ltr'],
+        ['hi', '/hi', 'hi-IN', 'ltr'],
+        ['zh', '/zh', 'zh-CN', 'ltr'],
+        ['ru', '/ru', 'ru', 'ltr'],
+        ['fr', '/fr', 'fr', 'ltr'],
+        ['tr', '/tr', 'tr', 'ltr']
+    ];
+
+    for (const [lang, path, locale, dir] of PAGES) {
+        it(`${lang}: sets the document, sells through the right shop, and lists every language`, async () => {
+            const { container } = render(<App url={path} />);
+
+            // Persian is the Toman shop with a mobile number; every other language the dollar
+            // shop with an email.
+            await vi.waitFor(() =>
+                expect(
+                    container.querySelector(lang === 'fa' ? '#phone-10' : '#email-10')
+                ).not.toBeNull()
+            );
+            expect(document.documentElement.lang).toBe(locale);
+            expect(document.documentElement.dir).toBe(dir);
+
+            // The section links stay on this language's page.
+            const hrefs = [...container.querySelectorAll('nav a')].map((a) =>
+                a.getAttribute('href')
+            );
+            expect(hrefs).toContain(path === '/' ? '/#cards' : `${path}#cards`);
+
+            // The switcher: ten links, each with its flag, the current one marked.
+            const trigger = container.querySelector<HTMLButtonElement>(
+                '[aria-controls="language-menu-panel"]'
+            );
+            expect(trigger?.querySelector('img')?.getAttribute('src')).toMatch(
+                /^\/flags\/\w+\.svg$/
+            );
+            fireEvent.click(trigger as HTMLButtonElement);
+            const links = [...container.querySelectorAll('#language-menu-panel a')];
+            expect(links.map((a) => a.getAttribute('href'))).toEqual([
+                '/en',
+                '/',
+                '/ar',
+                '/es',
+                '/pt',
+                '/hi',
+                '/zh',
+                '/ru',
+                '/fr',
+                '/tr'
+            ]);
+            expect(links.every((a) => a.querySelector('img[src^="/flags/"]') !== null)).toBe(true);
+            expect(
+                container
+                    .querySelector('#language-menu-panel [aria-current="true"]')
+                    ?.getAttribute('href')
+            ).toBe(path);
+
+            // The eNamad seal is an Iranian licence: on the Persian page only.
+            const seal = container.querySelector('a[href*="trustseal.enamad.ir"]');
+            expect(seal === null).toBe(lang !== 'fa');
+        });
+    }
+
+    it("names the shop in the page's language, else in English", async () => {
+        const french = render(<App url="/fr" />);
+        await vi.waitFor(() => expect(document.title).toContain('Boutique'));
+        french.unmount();
+
+        // Spanish has no name of its own: the English one stands in.
+        render(<App url="/es" />);
+        await vi.waitFor(() => expect(document.title).toContain('Ashbringer'));
+    });
+
+    it('sends Plisio back to the page the buyer started on', async () => {
+        const calls: Array<Record<string, unknown>> = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string, init?: RequestInit) => {
+                if (String(input).includes('/api/pay/catalog')) {
+                    return Promise.resolve(json(CATALOG));
+                }
+                if (String(input).includes('/api/pay/start-en')) {
+                    calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+                    return Promise.resolve(
+                        json({ payUrl: 'https://plisio.test/invoice/x', receipt: 'r-1' })
+                    );
+                }
+                return Promise.resolve(json({}, 401));
+            })
+        );
+
+        const { container } = render(<App url="/tr" />);
+        await vi.waitFor(() => expect(container.querySelector('#email-10')).not.toBeNull());
+        const input = container.querySelector('#email-10') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'alici@example.com' } });
+        fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+        const pay = [...container.querySelectorAll('button')].find(
+            (button) =>
+                button.textContent?.includes('10') === true &&
+                !button.disabled &&
+                button.type !== 'submit'
+        );
+        fireEvent.click(pay as HTMLButtonElement);
+
+        await vi.waitFor(() => expect(calls).toHaveLength(1));
+        expect(calls[0]).toEqual({ amount: 10, email: 'alici@example.com', lang: 'tr' });
+        sessionStorage.clear();
     });
 });

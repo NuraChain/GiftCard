@@ -7,7 +7,8 @@
 // Zibal is still going to return from Zarinpal, with money that is still real.
 //
 // THE ORDER REMEMBERS; THE REQUEST IS NOT ASKED. The handle stored on an order says which
-// gateway issued it: Zibal's are stored as `zibal:<trackId>`, Zarinpal's exactly as issued -
+// gateway issued it: Zibal's are stored as `zibal:<trackId>`, Plisio's as `plisio:<txn_id>`,
+// Zarinpal's exactly as issued -
 // which is what every order written before this file existed already holds, so there was
 // nothing to migrate.
 //
@@ -18,10 +19,18 @@
 // Here a mislabelled return either finds no order at all, or finds the right one and is
 // verified by the gateway recorded on it.
 import type { GatewayName } from '../settings/contract.ts';
+import type { Plisio } from './plisio.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 
 /** @internal What marks a stored handle as Zibal's. A Zarinpal authority never contains a colon. */
 const ZIBAL_PREFIX = 'zibal:';
+
+/**
+ * What marks a stored handle as Plisio's. Exported, unlike Zibal's, because the English shop
+ * opens Plisio invoices itself rather than through the switch - it has no choice of gateway to
+ * make - and the reconciler finds unsettled ones by it.
+ */
+export const PLISIO_PREFIX = 'plisio:';
 
 export interface GatewaySwitchOptions {
     /**
@@ -32,6 +41,9 @@ export interface GatewaySwitchOptions {
 
     zarinpal: PaymentGateway;
     zibal: PaymentGateway;
+
+    /** Only ever VERIFIED through here; see `PLISIO_PREFIX`. */
+    plisio: Pick<Plisio, 'verify'>;
 }
 
 /**
@@ -50,10 +62,13 @@ export function createGatewaySwitch(options: GatewaySwitchOptions): PaymentGatew
                 : opened;
         },
 
-        verify(authority, tomanAmount) {
+        verify(authority, amount) {
+            if (authority.startsWith(PLISIO_PREFIX)) {
+                return options.plisio.verify(authority.slice(PLISIO_PREFIX.length), amount);
+            }
             return authority.startsWith(ZIBAL_PREFIX)
-                ? options.zibal.verify(authority.slice(ZIBAL_PREFIX.length), tomanAmount)
-                : options.zarinpal.verify(authority, tomanAmount);
+                ? options.zibal.verify(authority.slice(ZIBAL_PREFIX.length), amount)
+                : options.zarinpal.verify(authority, amount);
         }
     };
 }

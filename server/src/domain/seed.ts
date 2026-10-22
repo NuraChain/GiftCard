@@ -23,6 +23,9 @@ export function seedTiers(): TierInput[] {
             amount: 3,
             title: 'خرید گیفت کارت نورا ۳ دلاری',
             blurb: 'برای امتحان کردن سرویس یا هدیه‌ای کوچک. همان کد و همان تحویل آنی کارت‌های بزرگ‌تر.',
+            titleEn: 'Nura $3 gift card',
+            blurbEn:
+                'A small one to try the service or to give. The same code and the same instant delivery as the bigger cards.',
             recommended: false,
             active: true,
             sort: 10
@@ -31,6 +34,9 @@ export function seedTiers(): TierInput[] {
             amount: 10,
             title: 'خرید گیفت کارت نورا ۱۰ دلاری',
             blurb: 'رایج‌ترین انتخاب: اندازه‌ای که برای بیشتر خریدها کافی است و ته‌مانده‌ای باقی نمی‌گذارد.',
+            titleEn: 'Nura $10 gift card',
+            blurbEn:
+                'The usual choice: enough for most purchases, without leaving a balance behind.',
             recommended: true,
             active: true,
             sort: 20
@@ -39,6 +45,8 @@ export function seedTiers(): TierInput[] {
             amount: 20,
             title: 'خرید گیفت کارت نورا ۲۰ دلاری',
             blurb: 'برای استفاده طولانی‌تر یا هدیه دادن. یک کد، بدون تاریخ انقضا.',
+            titleEn: 'Nura $20 gift card',
+            blurbEn: 'For longer use or as a gift. One code, with no expiry date.',
             recommended: false,
             active: true,
             sort: 30

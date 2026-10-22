@@ -21,6 +21,7 @@ const PAYOUT = {
 const SALE = {
     amount: 10,
     toman: 1_000_000,
+    lang: 'fa' as const,
     phone: '+989121234567',
     refId: 123,
     receipt: 'r-1',

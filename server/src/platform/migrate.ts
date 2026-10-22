@@ -50,23 +50,22 @@ const MIGRATIONS: Migration[] = [
         },
         run: (db) => db.exec('ALTER TABLE redemptions RENAME COLUMN email TO phone')
     },
+    // THERE WAS A MIGRATION HERE that deleted `resendApiKey`, `mailFrom` and `resendBase`,
+    // from when email delivery was replaced by SMS. Email is back for the English shop under
+    // those same keys, and a migration runs on every boot - so leaving it would have wiped the
+    // Resend credentials the operator had just saved, every time the process started.
     {
-        name: 'remove obsolete email delivery settings',
-        needed: (db) =>
-            (
-                db
-                    .prepare(
-                        "SELECT COUNT(*) AS count FROM settings WHERE key IN ('resendApiKey', 'mailFrom', 'resendBase')"
-                    )
-                    .get() as { count: number }
-            ).count > 0,
+        name: 'orders.lang',
+        needed: (db) => !columns(db, 'orders').has('lang'),
+        // Every order before this column existed came through the Persian shop.
+        run: (db) => db.exec("ALTER TABLE orders ADD COLUMN lang TEXT NOT NULL DEFAULT 'fa'")
+    },
+    {
+        name: 'tiers.title_en, tiers.blurb_en',
+        needed: (db) => !columns(db, 'tiers').has('title_en'),
         run: (db) => {
-            db.prepare(
-                "DELETE FROM settings WHERE key IN ('resendApiKey', 'mailFrom', 'resendBase')"
-            ).run();
-            db.prepare(
-                "DELETE FROM settings_log WHERE key IN ('resendApiKey', 'mailFrom', 'resendBase')"
-            ).run();
+            db.exec("ALTER TABLE tiers ADD COLUMN title_en TEXT NOT NULL DEFAULT ''");
+            db.exec("ALTER TABLE tiers ADD COLUMN blurb_en TEXT NOT NULL DEFAULT ''");
         }
     }
 ];

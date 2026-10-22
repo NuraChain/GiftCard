@@ -296,7 +296,8 @@ function wired(initial: 'zarinpal' | 'zibal') {
     const payment = createGatewaySwitch({
         active: () => state.active,
         zarinpal: zarinpal.gateway,
-        zibal: zibalSide.gateway
+        zibal: zibalSide.gateway,
+        plisio: named('plisio').gateway
     });
     return { state, payment, zarinpal, zibal: zibalSide };
 }
@@ -354,7 +355,8 @@ describe('the gateway switch', () => {
         const payment = createGatewaySwitch({
             active: () => 'zibal',
             zarinpal: refusing,
-            zibal: refusing
+            zibal: refusing,
+            plisio: refusing
         });
         expect(await payment.request(ORDER)).toEqual({
             ok: false,

@@ -61,6 +61,7 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
                     id: order.id,
                     amount: order.amount,
                     toman: order.toman,
+                    lang: order.lang,
                     phone: displayPhone(order.phone),
                     status: order.status,
                     code: order.code,

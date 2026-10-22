@@ -28,13 +28,19 @@
 // The amount is an LTR ISLAND inside an RTL block: only the inner span carries dir, so the
 // characters read "$25" while the block still aligns to the RTL start. Putting dir on the
 // block itself silently flips what `text-start` means.
+//
+// THE ENGLISH SHOP'S CARD IS A DIFFERENT PURCHASE, and is its own component at the bottom of
+// this file. It asks for an email, sells at the face value in dollars - so there is no moving
+// price and nothing above about pinning a quote applies - and pays through Plisio.
 import { ArrowRight, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 import { ApiError, client, failureText } from '../lib/api.ts';
-import { purchaseFormInput } from '../../../server/src/contract/index.ts';
+import { purchaseEnFormInput, purchaseFormInput } from '../../../server/src/contract/index.ts';
 import { useCatalog, type CatalogTier } from '../lib/catalog.tsx';
-import { count, toman } from '../lib/format.ts';
+import { count, toman, usd } from '../lib/format.ts';
+import { shopOf, useDollarCopy, useLang, type IntlLang } from '../lib/lang.ts';
+import { rememberReceipt } from '../lib/pending-receipt.ts';
 import { useForm } from '../lib/use-form.ts';
 import Button from '../ui/button.tsx';
 import Field from '../ui/field.tsx';
@@ -79,7 +85,12 @@ function logFailure(error: unknown): void {
     /* oxlint-enable no-console */
 }
 
+/** The card the reader's shop sells: Toman and a mobile number, or dollars and an email. */
 export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
+    return shopOf(useLang()) === 'dollar' ? <DollarCard tier={tier} /> : <TomanCard tier={tier} />;
+}
+
+function TomanCard({ tier }: { tier: CatalogTier }): ReactNode {
     const catalog = useCatalog();
     const [step, setStep] = useState<'phone' | 'confirm'>('phone');
     const [paying, setPaying] = useState(false);
@@ -289,6 +300,408 @@ export default function GiftCard({ tier }: { tier: CatalogTier }): ReactNode {
                             پرداخت روی درگاه پرداخت اینترنتی انجام می‌شود. اطلاعات کارت بانکی شما به
                             سرور ما نمی‌رسد.
                         </p>
+                    </div>
+                )}
+            </div>
+        </article>
+    );
+}
+
+/**
+ * The English shop's card: an email, the face value in dollars, and Plisio.
+ *
+ * It keeps the Persian card's shape - the purchase inside the card, a confirm step that reads
+ * the address back - because a mistyped email is exactly as expensive as a mistyped mobile:
+ * the code goes somewhere nobody reads.
+ *
+ * THE RECEIPT TOKEN IS REMEMBERED BEFORE THE BUYER LEAVES. Plisio sends every buyer back to the
+ * same address, so this tab is the only thing that knows which order it is waiting for - see
+ * lib/pending-receipt.ts.
+ */
+interface DollarCopy {
+    /** A card with no English title of its own: `$10.00 gift card`. */
+    untitled: (price: string) => string;
+    popular: string;
+    unavailable: string;
+    paidInCrypto: (price: string) => string;
+    outOfStock: string;
+    ready: (n: string) => string;
+    email: string;
+    invalidEmail: string;
+    emailHint: string;
+    notAvailable: string;
+    proceed: string;
+    changeEmail: string;
+    total: string;
+    opening: string;
+    pay: (price: string) => string;
+    note: string;
+    failed: string;
+    // The server's own refusals are worded in English only, so each language says them here.
+    soldOut: string;
+    closed: string;
+}
+
+const DOLLAR_COPY: Record<IntlLang, DollarCopy> = {
+    en: {
+        untitled: (price) => `${price} gift card`,
+        popular: 'Most popular',
+        unavailable: 'Not available right now',
+        paidInCrypto: (price) => `${price}, paid in crypto`,
+        outOfStock: 'Out of stock',
+        ready: (n) => `${n} ready to deliver`,
+        email: 'Email',
+        invalidEmail: 'Enter a valid email address.',
+        emailHint: 'Your code is emailed to this address.',
+        notAvailable: 'Not available',
+        proceed: 'Continue',
+        changeEmail: 'Change email',
+        total: 'Total',
+        opening: 'Opening checkout...',
+        pay: (price) => `Pay ${price}`,
+        note: "You pay in crypto on Plisio's checkout page. Your wallet keys never reach our server.",
+        failed: 'The payment could not be started. Check your connection and try again.',
+        soldOut: 'This card cannot be bought right now. Please choose another one.',
+        closed: 'Payments are not available right now. Please try again later.'
+    },
+    ar: {
+        untitled: (price) => `بطاقة هدايا بقيمة ${price}`,
+        popular: 'الأكثر طلبًا',
+        unavailable: 'غير متاحة حاليًا',
+        paidInCrypto: (price) => `${price}، تُدفع بالعملات الرقمية`,
+        outOfStock: 'نفدت الكمية',
+        ready: (n) => `${n} جاهزة للتسليم`,
+        email: 'البريد الإلكتروني',
+        invalidEmail: 'أدخل بريدًا إلكترونيًا صحيحًا.',
+        emailHint: 'سيُرسل الرمز إلى هذا البريد الإلكتروني.',
+        notAvailable: 'غير متاحة',
+        proceed: 'متابعة',
+        changeEmail: 'تغيير البريد الإلكتروني',
+        total: 'الإجمالي',
+        opening: 'جارٍ فتح صفحة الدفع...',
+        pay: (price) => `ادفع ${price}`,
+        note: 'تدفع بالعملات الرقمية على صفحة الدفع في Plisio. مفاتيح محفظتك لا تصل إلى خادمنا أبدًا.',
+        failed: 'تعذّر بدء الدفع. تحقّق من اتصالك وحاول مرة أخرى.',
+        soldOut: 'لا يمكن شراء هذه البطاقة حاليًا. يُرجى اختيار بطاقة أخرى.',
+        closed: 'الدفع غير متاح حاليًا. يُرجى المحاولة لاحقًا.'
+    },
+    es: {
+        untitled: (price) => `Tarjeta de regalo de ${price}`,
+        popular: 'La más elegida',
+        unavailable: 'No disponible por ahora',
+        paidInCrypto: (price) => `${price}, pago con criptomonedas`,
+        outOfStock: 'Agotada',
+        ready: (n) => `${n} listas para entregar`,
+        email: 'Correo electrónico',
+        invalidEmail: 'Introduce un correo electrónico válido.',
+        emailHint: 'Te enviaremos el código a esta dirección.',
+        notAvailable: 'No disponible',
+        proceed: 'Continuar',
+        changeEmail: 'Cambiar correo',
+        total: 'Total',
+        opening: 'Abriendo el pago...',
+        pay: (price) => `Pagar ${price}`,
+        note: 'Pagas con criptomonedas en la página de pago de Plisio. Las claves de tu billetera nunca llegan a nuestro servidor.',
+        failed: 'No se pudo iniciar el pago. Revisa tu conexión e inténtalo de nuevo.',
+        soldOut: 'Esta tarjeta no se puede comprar ahora. Elige otra, por favor.',
+        closed: 'Los pagos no están disponibles en este momento. Inténtalo más tarde.'
+    },
+    pt: {
+        untitled: (price) => `Cartão-presente de ${price}`,
+        popular: 'Mais escolhido',
+        unavailable: 'Indisponível no momento',
+        paidInCrypto: (price) => `${price}, pago em cripto`,
+        outOfStock: 'Esgotado',
+        ready: (n) => `${n} prontos para entrega`,
+        email: 'E-mail',
+        invalidEmail: 'Digite um e-mail válido.',
+        emailHint: 'O código será enviado para este e-mail.',
+        notAvailable: 'Indisponível',
+        proceed: 'Continuar',
+        changeEmail: 'Alterar e-mail',
+        total: 'Total',
+        opening: 'Abrindo o pagamento...',
+        pay: (price) => `Pagar ${price}`,
+        note: 'Você paga em cripto na página de pagamento da Plisio. As chaves da sua carteira nunca chegam ao nosso servidor.',
+        failed: 'Não foi possível iniciar o pagamento. Verifique sua conexão e tente novamente.',
+        soldOut: 'Este cartão não pode ser comprado agora. Escolha outro, por favor.',
+        closed: 'Os pagamentos não estão disponíveis no momento. Tente novamente mais tarde.'
+    },
+    hi: {
+        untitled: (price) => `${price} का गिफ़्ट कार्ड`,
+        popular: 'सबसे लोकप्रिय',
+        unavailable: 'अभी उपलब्ध नहीं',
+        paidInCrypto: (price) => `${price}, क्रिप्टो में भुगतान`,
+        outOfStock: 'स्टॉक में नहीं',
+        ready: (n) => `${n} डिलीवरी के लिए तैयार`,
+        email: 'ईमेल',
+        invalidEmail: 'कृपया मान्य ईमेल पता दर्ज करें।',
+        emailHint: 'आपका कोड इसी पते पर ईमेल किया जाएगा।',
+        notAvailable: 'उपलब्ध नहीं',
+        proceed: 'आगे बढ़ें',
+        changeEmail: 'ईमेल बदलें',
+        total: 'कुल',
+        opening: 'भुगतान पेज खुल रहा है...',
+        pay: (price) => `${price} का भुगतान करें`,
+        note: 'आप Plisio के भुगतान पेज पर क्रिप्टो में भुगतान करते हैं। आपके वॉलेट की कुंजियाँ कभी हमारे सर्वर तक नहीं पहुँचतीं।',
+        failed: 'भुगतान शुरू नहीं हो सका। अपना कनेक्शन जाँचें और फिर से कोशिश करें।',
+        soldOut: 'यह कार्ड अभी खरीदा नहीं जा सकता। कृपया कोई दूसरा कार्ड चुनें।',
+        closed: 'भुगतान अभी उपलब्ध नहीं है। कृपया बाद में फिर से कोशिश करें।'
+    },
+    zh: {
+        untitled: (price) => `${price} 礼品卡`,
+        popular: '最受欢迎',
+        unavailable: '暂不可购买',
+        paidInCrypto: (price) => `${price}，使用加密货币支付`,
+        outOfStock: '已售罄',
+        ready: (n) => `${n} 张可立即发货`,
+        email: '电子邮箱',
+        invalidEmail: '请输入有效的电子邮箱地址。',
+        emailHint: '兑换码将发送到此邮箱。',
+        notAvailable: '暂不可用',
+        proceed: '继续',
+        changeEmail: '更改邮箱',
+        total: '合计',
+        opening: '正在打开支付页面...',
+        pay: (price) => `支付 ${price}`,
+        note: '您将在 Plisio 的支付页面使用加密货币付款。您的钱包密钥绝不会经过我们的服务器。',
+        failed: '无法发起支付。请检查网络连接后重试。',
+        soldOut: '此卡暂时无法购买，请选择其他卡。',
+        closed: '暂时无法付款，请稍后再试。'
+    },
+    ru: {
+        untitled: (price) => `Подарочная карта на ${price}`,
+        popular: 'Самая популярная',
+        unavailable: 'Сейчас недоступна',
+        paidInCrypto: (price) => `${price}, оплата криптовалютой`,
+        outOfStock: 'Нет в наличии',
+        ready: (n) => `Готово к выдаче: ${n}`,
+        email: 'Электронная почта',
+        invalidEmail: 'Введите корректный адрес электронной почты.',
+        emailHint: 'Код придёт на этот адрес.',
+        notAvailable: 'Недоступно',
+        proceed: 'Продолжить',
+        changeEmail: 'Изменить адрес',
+        total: 'Итого',
+        opening: 'Открываем страницу оплаты...',
+        pay: (price) => `Оплатить ${price}`,
+        note: 'Оплата криптовалютой проходит на странице Plisio. Ключи вашего кошелька никогда не попадают на наш сервер.',
+        failed: 'Не удалось начать оплату. Проверьте подключение и попробуйте снова.',
+        soldOut: 'Эту карту сейчас нельзя купить. Пожалуйста, выберите другую.',
+        closed: 'Оплата сейчас недоступна. Пожалуйста, попробуйте позже.'
+    },
+    fr: {
+        untitled: (price) => `Carte cadeau de ${price}`,
+        popular: 'La plus choisie',
+        unavailable: 'Indisponible pour le moment',
+        paidInCrypto: (price) => `${price}, payé en cryptomonnaie`,
+        outOfStock: 'En rupture de stock',
+        ready: (n) => `${n} prêtes à être livrées`,
+        email: 'E-mail',
+        invalidEmail: 'Saisissez une adresse e-mail valide.',
+        emailHint: 'Votre code sera envoyé à cette adresse.',
+        notAvailable: 'Indisponible',
+        proceed: 'Continuer',
+        changeEmail: "Modifier l'e-mail",
+        total: 'Total',
+        opening: 'Ouverture du paiement...',
+        pay: (price) => `Payer ${price}`,
+        note: 'Vous payez en cryptomonnaie sur la page de paiement de Plisio. Les clés de votre portefeuille ne transitent jamais par notre serveur.',
+        failed: 'Impossible de lancer le paiement. Vérifiez votre connexion et réessayez.',
+        soldOut: 'Cette carte ne peut pas être achetée pour le moment. Choisissez-en une autre.',
+        closed: 'Les paiements sont indisponibles pour le moment. Réessayez plus tard.'
+    },
+    tr: {
+        untitled: (price) => `${price} hediye kartı`,
+        popular: 'En çok tercih edilen',
+        unavailable: 'Şu anda satışta değil',
+        paidInCrypto: (price) => `${price}, kripto ile ödenir`,
+        outOfStock: 'Stokta yok',
+        ready: (n) => `${n} adet teslimata hazır`,
+        email: 'E-posta',
+        invalidEmail: 'Geçerli bir e-posta adresi girin.',
+        emailHint: 'Kodunuz bu adrese e-postayla gönderilir.',
+        notAvailable: 'Kullanılamıyor',
+        proceed: 'Devam et',
+        changeEmail: 'E-postayı değiştir',
+        total: 'Toplam',
+        opening: 'Ödeme sayfası açılıyor...',
+        pay: (price) => `${price} öde`,
+        note: "Ödemeyi Plisio'nun ödeme sayfasında kripto ile yaparsınız. Cüzdan anahtarlarınız sunucumuza asla ulaşmaz.",
+        failed: 'Ödeme başlatılamadı. Bağlantınızı kontrol edip tekrar deneyin.',
+        soldOut: 'Bu kart şu anda satın alınamıyor. Lütfen başka bir kart seçin.',
+        closed: 'Ödemeler şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.'
+    }
+};
+
+function DollarCard({ tier }: { tier: CatalogTier }): ReactNode {
+    const catalog = useCatalog();
+    const lang = useLang();
+    const t = useDollarCopy(DOLLAR_COPY);
+    const price = usd(tier.amount, lang);
+    const [step, setStep] = useState<'email' | 'confirm'>('email');
+    const [paying, setPaying] = useState(false);
+    const [failure, setFailure] = useState('');
+
+    const form = useForm(purchaseEnFormInput, { email: '' });
+
+    const soldOut = tier.available === 0;
+    const closed = !catalog.englishOpen;
+    const buyable = !soldOut && !closed;
+    const inputId = `email-${tier.amount}`;
+
+    // `?? ''` for a server mid-deploy that has not learnt the English copy yet.
+    const title = (tier.titleEn ?? '') === '' ? t.untitled(price) : tier.titleEn;
+    const blurb = tier.blurbEn ?? '';
+
+    const pay = async (): Promise<void> => {
+        setPaying(true);
+        setFailure('');
+        try {
+            const opened = await client.pay.startEn({
+                input: {
+                    amount: tier.amount,
+                    email: form.values.email,
+                    // Which page Plisio sends the buyer back to.
+                    lang: lang === 'fa' ? 'en' : lang
+                }
+            });
+            rememberReceipt(opened.receipt);
+            // Leaving the page is the success case: Plisio owns the next screen.
+            window.location.assign(opened.payUrl);
+        } catch (error) {
+            setPaying(false);
+            logFailure(error);
+            // The checkout's own refusals - a 409 (sold out) or a 503 (Plisio closed) - get
+            // their own sentence in the reader's language; the server words them in English
+            // only. Anything else gets the general one: a throttle, a proxy's page, a dropped
+            // connection, and a 422, whose headline is the shared validator's Persian one (the
+            // form has already shown the field's message before it got this far).
+            const status = error instanceof ApiError ? error.status : 0;
+            setFailure(status === 409 ? t.soldOut : status === 503 ? t.closed : t.failed);
+        }
+    };
+
+    return (
+        <article
+            className={`flex flex-col rounded-2xl border bg-surface p-5 sm:p-6 ${
+                tier.recommended
+                    ? 'border-firouze shadow-[0_1px_24px_-8px_var(--firouze)]'
+                    : 'border-line'
+            }`}
+        >
+            <div className="flex items-baseline justify-between gap-2">
+                <h3 className="font-bold">{title}</h3>
+                {tier.recommended && (
+                    <span className="rounded-full bg-firouze/15 px-2.5 py-0.5 text-caption font-bold text-firouze">
+                        {t.popular}
+                    </span>
+                )}
+            </div>
+
+            {/* An LTR island, as on the Toman card: on the Arabic page the block is RTL. */}
+            <p className="mt-3 text-start text-3xl font-bold sm:text-4xl">
+                <span dir="ltr" className="latin inline-block">
+                    ${tier.amount}
+                </span>
+            </p>
+
+            <p className="mt-1 min-h-5 text-small text-muted">
+                {closed ? t.unavailable : t.paidInCrypto(price)}
+            </p>
+
+            {blurb !== '' && <p className="mt-3 text-small text-muted">{blurb}</p>}
+
+            <div className="mt-auto pt-4">
+                <p className="min-h-5 text-caption">
+                    {soldOut ? (
+                        <span className="text-muted">{t.outOfStock}</span>
+                    ) : (
+                        <span className="text-firouze">{t.ready(count(tier.available, lang))}</span>
+                    )}
+                </p>
+
+                {step === 'email' ? (
+                    <form
+                        className="mt-3"
+                        noValidate
+                        onSubmit={form.handleSubmit(() => {
+                            setFailure('');
+                            setStep('confirm');
+                        })}
+                    >
+                        <Field
+                            label={t.email}
+                            htmlFor={inputId}
+                            error={form.errorFor('email') === '' ? '' : t.invalidEmail}
+                            hint={form.errorFor('email') === '' ? t.emailHint : undefined}
+                        >
+                            <TextInput
+                                id={inputId}
+                                type="email"
+                                latin
+                                inputMode="email"
+                                autoComplete="email"
+                                placeholder="you@example.com"
+                                disabled={!buyable}
+                                invalid={form.errorFor('email') !== ''}
+                                value={form.values.email}
+                                onChange={(value) => form.set('email', value)}
+                            />
+                        </Field>
+
+                        <Button
+                            type="submit"
+                            variant={tier.recommended ? 'primary' : 'outline'}
+                            full
+                            className="mt-4"
+                            disabled={!buyable}
+                        >
+                            {soldOut ? t.outOfStock : closed ? t.notAvailable : t.proceed}
+                        </Button>
+                    </form>
+                ) : (
+                    <div className="mt-3">
+                        <div className="rounded-xl border border-line bg-paper p-4">
+                            <p className="text-caption text-muted">{t.email}</p>
+                            <p
+                                dir="ltr"
+                                className="latin mt-1 text-start text-lg font-semibold break-all"
+                            >
+                                {form.values.email}
+                            </p>
+                            <button
+                                type="button"
+                                className="mt-2 min-h-tap text-caption font-bold text-firouze hover:underline"
+                                onClick={() => setStep('email')}
+                            >
+                                {t.changeEmail}
+                            </button>
+                        </div>
+
+                        <dl className="mt-4 grid gap-2 text-small">
+                            <div className="flex justify-between gap-2">
+                                <dt className="shrink-0 text-muted">{t.total}</dt>
+                                <dd className="min-w-0 text-end font-bold">{price}</dd>
+                            </div>
+                        </dl>
+
+                        {failure !== '' && <p className="mt-4 text-small text-danger">{failure}</p>}
+
+                        <Button
+                            variant="primary"
+                            full
+                            trailing={ArrowRight}
+                            className="mt-4"
+                            busy={paying}
+                            busyText={t.opening}
+                            disabled={!buyable}
+                            onClick={() => void pay()}
+                        >
+                            {t.pay(price)}
+                        </Button>
+
+                        <p className="mt-3 text-caption text-muted">{t.note}</p>
                     </div>
                 )}
             </div>

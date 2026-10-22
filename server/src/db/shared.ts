@@ -3,7 +3,7 @@
 //
 // New mobile numbers are stored in one canonical form, so the ledger can search directly while
 // retaining and matching historical email addresses moved into the phone column.
-import type { Order, OrderStatus } from './types.ts';
+import type { Order, OrderLang, OrderStatus } from './types.ts';
 
 /** The row shape SQLite returns for an order; booleans are integers and there are no unions. */
 export interface OrderRow {
@@ -18,6 +18,7 @@ export interface OrderRow {
     sms_delivered: number;
     created_at: string;
     settled_at: string | null;
+    lang: string;
 }
 
 export function toOrder(row: OrderRow): Order {
@@ -27,6 +28,8 @@ export function toOrder(row: OrderRow): Order {
         amount: row.amount,
         toman: row.toman,
         phone: row.phone,
+        // Anything but `en` is the Persian shop, which is what every row before the column was.
+        lang: (row.lang === 'en' ? 'en' : 'fa') satisfies OrderLang,
         status: row.status as OrderStatus,
         code: row.code,
         refId: row.ref_id,

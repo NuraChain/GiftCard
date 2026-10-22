@@ -12,6 +12,8 @@ import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
 import { telegramProxyList } from '../../contract/shared.ts';
+import { emailField } from '../../domain/email.ts';
+import { INTL_LANGS, type IntlLang } from '../../domain/langs.ts';
 import { normalizePhone, phoneField } from '../../domain/phone.ts';
 import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 
@@ -44,8 +46,26 @@ export const GATEWAYS = ['zarinpal', 'zibal'] as const;
 
 export type GatewayName = (typeof GATEWAYS)[number];
 
+/** The shop's name, in each dollar-shop language. */
+const shopNames = z.object(
+    Object.fromEntries(INTL_LANGS.map((lang) => [lang, z.string()])) as Record<
+        IntlLang,
+        z.ZodString
+    >
+);
+
+/** The same, on the way in: any of them, each at most as long as the Persian name. */
+const shopNamesInput = z
+    .object(
+        Object.fromEntries(
+            INTL_LANGS.map((lang) => [lang, z.string().trim().max(60).optional()])
+        ) as Record<IntlLang, z.ZodOptional<z.ZodString>>
+    )
+    .strict();
+
 export const settingsView = z.object({
     appName: z.string(),
+    appNames: shopNames,
 
     /** The public origin the buyer reaches the shop on. The gateway returns them here. */
     publicBaseUrl: z.string(),
@@ -71,6 +91,26 @@ export const settingsView = z.object({
     zibalBase: z.string(),
     zibalMerchantMasked: z.string(),
     zibalMerchantSet: z.boolean(),
+
+    /** The English shop's gateway: host and secret key, masked like every other credential. */
+    plisioBase: z.string(),
+    plisioApiKeyMasked: z.string(),
+    plisioApiKeySet: z.boolean(),
+
+    /**
+     * Where Plisio posts an invoice's state - the address to give Plisio's panel as the Status
+     * URL. Derived from `publicBaseUrl`, like `callbackUrl` below.
+     */
+    plisioCallbackUrl: z.string(),
+
+    /** The English shop's email delivery through Resend. The key is write-only. */
+    resendBase: z.string(),
+    resendApiKeyMasked: z.string(),
+    resendApiKeySet: z.boolean(),
+    mailFrom: z.string(),
+
+    /** Delivery runs when both the key and the From address are set. */
+    mailReady: z.boolean(),
 
     /**
      * The SMS panel's send-by-link or web-service address, and what it is called with. The
@@ -119,6 +159,7 @@ export const settingsView = z.object({
  */
 export const settingsInput = z.object({
     appName: z.string().trim().max(60).optional(),
+    appNames: shopNamesInput.optional(),
     publicBaseUrl: z.string().trim().max(200).optional(),
 
     /**
@@ -133,6 +174,15 @@ export const settingsInput = z.object({
     zibalBase: z.string().trim().max(200).optional(),
     /** Zibal's merchant is write-only too: a blank one means "keep it", never "erase it". */
     zibalMerchant: z.string().trim().max(100).optional(),
+
+    /** Plisio's secret key and Resend's API key are write-only, like the merchants. */
+    plisioApiKey: z.string().trim().max(200).optional(),
+    plisioBase: z.string().trim().max(200).optional(),
+    resendApiKey: z.string().trim().max(200).optional(),
+
+    /** `codes@example.com`, or `Shop <codes@example.com>`. Checked by Resend, not here. */
+    mailFrom: z.string().trim().max(200).optional(),
+    resendBase: z.string().trim().max(200).optional(),
     smsApiUrl: z.string().trim().max(500).optional(),
     smsUsername: z.string().trim().max(100).optional(),
     /** The panel password is write-only: a blank one means "keep it", never "erase it". */
@@ -207,6 +257,9 @@ export const rotateKeyInput = z.object({
 export const testSmsInput = z.object({ phone: phoneField });
 export const testSmsResult = z.object({ ok: z.boolean(), reason: z.string() });
 
+/** Proving Resend sends, without selling something first. */
+export const testEmailInput = z.object({ email: emailField });
+
 /**
  * Proving the ACTIVE gateway takes payments without a buyer paying first: one payment is
  * opened and left unpaid, which moves no money - an opened payment nobody pays just expires.
@@ -228,5 +281,9 @@ export const settingsRoutes = {
     settingsLog: get('/admin/settings/log', { output: settingsLog }),
     rotateKey: post('/admin/key', { input: rotateKeyInput }),
     testSms: post('/admin/test-sms', { input: testSmsInput, output: testSmsResult }),
-    testGateway: post('/admin/test-gateway', { output: testGatewayResult })
+    testGateway: post('/admin/test-gateway', { output: testGatewayResult }),
+    testEmail: post('/admin/test-email', { input: testEmailInput, output: testSmsResult }),
+
+    /** The same proof for Plisio: one $1 invoice is opened and left unpaid. */
+    testPlisio: post('/admin/test-plisio', { output: testSmsResult })
 };

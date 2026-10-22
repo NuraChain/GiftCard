@@ -70,7 +70,7 @@ export const config = loadConfig({
      * The gift codes, the order ledger, the catalogue and the settings. One SQLite file;
      * back it up like money, because unsold codes in it ARE money.
      */
-    databaseFile: str('DATABASE_FILE', { default: 'data/guardian-service.db' }),
+    databaseFile: str('DATABASE_FILE', { default: 'data/ashbringer.db' }),
 
     // --- The built client ---
 

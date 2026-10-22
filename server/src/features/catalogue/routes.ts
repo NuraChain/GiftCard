@@ -46,6 +46,8 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers 
             toman: live === null ? null : tomanPrice(tier.amount, live.toman, margin),
             title: tier.title,
             blurb: tier.blurb,
+            titleEn: tier.titleEn,
+            blurbEn: tier.blurbEn,
             recommended: tier.recommended,
             active: tier.active,
             sort: tier.sort

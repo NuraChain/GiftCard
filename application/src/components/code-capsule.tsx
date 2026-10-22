@@ -13,6 +13,21 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useCopy, type Lang } from '../lib/lang.ts';
+
+const COPY: Record<Lang, string> = {
+    fa: 'تأیید شد',
+    en: 'Verified',
+    ar: 'تم التحقق',
+    es: 'Verificado',
+    pt: 'Verificado',
+    hi: 'सत्यापित',
+    zh: '已验证',
+    ru: 'Проверено',
+    fr: 'Vérifié',
+    tr: 'Doğrulandı'
+};
+
 export interface CodeCapsuleProps {
     code: string;
     label: string;
@@ -21,6 +36,7 @@ export interface CodeCapsuleProps {
 }
 
 export default function CodeCapsule(props: CodeCapsuleProps): ReactNode {
+    const verifiedText = useCopy(COPY);
     return (
         <div className="relative overflow-hidden rounded-xl border border-line bg-surface p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
@@ -28,7 +44,7 @@ export default function CodeCapsule(props: CodeCapsuleProps): ReactNode {
                 {props.verified === true && (
                     <span className="flex items-center gap-1.5 text-caption font-bold text-gold">
                         <Check className="size-4" aria-hidden="true" />
-                        تأیید شد
+                        {verifiedText}
                     </span>
                 )}
             </div>

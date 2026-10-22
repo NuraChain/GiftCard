@@ -1,4 +1,8 @@
-// The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt.
+// The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt -
+// for both shops. The English one is paid through Plisio; see ./plisio.ts before its routes.
+import { shopName, type IntlLang } from '../../domain/langs.ts';
+import { randomInt } from 'node:crypto';
+
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Logger } from '../../platform/logging.ts';
 
@@ -6,13 +10,15 @@ import type { Handlers } from '../../platform/api.ts';
 import { ConflictError, HttpError, NotFoundError } from '../../platform/http.ts';
 import { throttle } from '../../platform/throttle.ts';
 import type { contract } from '../../contract/index.ts';
-import type { Store } from '../../db/index.ts';
+import type { Order, Store } from '../../db/index.ts';
 import { mintReceiptToken } from '../../domain/codes.ts';
+import { normalizeEmail } from '../../domain/email.ts';
 import { displayPhone, normalizePhone } from '../../domain/phone.ts';
 import { tomanPrice } from '../../domain/pricing.ts';
 import type { TetherRate } from '../rate/rate.ts';
 import type { PaymentGateway } from './zarinpal.ts';
-import { readReturn } from './gateway.ts';
+import type { Plisio } from './plisio.ts';
+import { PLISIO_PREFIX, readReturn } from './gateway.ts';
 import type { Checkout } from './checkout.ts';
 import type { Settings } from '../settings/settings.ts';
 
@@ -22,6 +28,21 @@ import type { Settings } from '../settings/settings.ts';
  * on stock all day.
  */
 const HOLD_MS = 30 * 60 * 1000;
+
+/**
+ * The same for an English order, and the life of its Plisio invoice, which is set to match.
+ * Longer, because a crypto transfer is a wallet app, a network fee and a wait for the chain,
+ * not a one-time password. A code held past this goes back to stock; a payment that confirms
+ * afterwards is still honoured from whatever is free (see `settlePaid`).
+ */
+export const HOLD_EN_MINUTES = 60;
+
+/**
+ * How often one receipt may make the server go and ask Plisio. The English result page polls
+ * while a payment confirms, and every ask is an outbound call - so a tab left open, or a
+ * stranger holding a token, costs one call per this long and no more.
+ */
+const ASK_EVERY_MS = 15_000;
 
 export interface PayOptions {
     store: Store;
@@ -35,10 +56,17 @@ export interface PayOptions {
     rate: TetherRate;
 
     payment: PaymentGateway;
+
+    /** The English shop's gateway. Only OPENS invoices here; `payment` verifies them. */
+    plisio: Plisio;
     checkout: Checkout;
 
     /** The absolute URL the gateway returns the buyer to. Read PER PAYMENT - see app.ts. */
     callbackUrl: () => string;
+
+    /** Where Plisio posts an invoice's state, and where its page sends the buyer back to. */
+    plisioCallbackUrl: () => string;
+    plisioReturnUrl: (lang: IntlLang) => string;
 
     /** Where the buyer lands afterwards; the receipt token is appended. */
     resultPath: string;
@@ -95,11 +123,88 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
 }
 
 /**
+ * Plisio's callback: the invoice's state, posted by Plisio whenever it changes.
+ *
+ * A NUDGE, NOT A WITNESS - rule 4 in ./plisio.ts. Only `txn_id` is read, to find the order;
+ * whether it was paid is then asked of Plisio with our own key, through the same `settle`
+ * every other payment goes through. So the HMAC Plisio signs this with is not checked: a
+ * forged post can make the server look an invoice up, and nothing more.
+ *
+ * It answers 200 to everything, known order or not. A refusal would only teach Plisio to
+ * retry, and teach a stranger which ids are real.
+ *
+ * Mounted in its OWN SCOPE, because Plisio may post a form rather than JSON and Fastify
+ * refuses form bodies by default. Accepting forms app-wide would open every cookie-guarded
+ * console route to a cross-site form post; accepting them here costs nothing, since this
+ * route believes no body at all.
+ */
+export function mountPlisioCallback(app: FastifyInstance, options: PayOptions): void {
+    const { store, checkout, log } = options;
+    const limit = throttle(60, 60_000);
+
+    app.register((scope, _opts, done) => {
+        scope.addContentTypeParser(
+            'application/x-www-form-urlencoded',
+            { parseAs: 'string' },
+            (_request, body, parsed) => {
+                parsed(null, Object.fromEntries(new URLSearchParams(String(body))));
+            }
+        );
+
+        scope.post(
+            '/api/pay/plisio',
+            {
+                preHandler: async (request, reply) => {
+                    await limit({ request, reply });
+                }
+            },
+            async (request, reply) => {
+                const body = request.body as Record<string, unknown> | null | undefined;
+                const txnId = typeof body?.txn_id === 'string' ? body.txn_id : '';
+                const order =
+                    txnId === '' ? undefined : store.orderByAuthority(`${PLISIO_PREFIX}${txnId}`);
+                if (order === undefined) {
+                    log?.warn('plisio callback for no known invoice');
+                } else {
+                    await checkout.settle(order, true);
+                }
+                return reply.send({ ok: true });
+            }
+        );
+        done();
+    });
+}
+
+/**
  * Every handler under `pay`. The return type comes from the CONTRACT, so drift between a
  * route and its handler is a compile error here rather than a runtime 500.
  */
 export function payHandlers(options: PayOptions): PayHandlers {
-    const { store, settings, rate, payment, callbackUrl, isOperator, log } = options;
+    const { store, settings, rate, payment, plisio, checkout, callbackUrl, isOperator, log } =
+        options;
+
+    /** When each English receipt last made us ask Plisio. Pruned as it is read. */
+    const asked = new Map<string, number>();
+
+    /**
+     * The English receipt's fallback for a callback that never came: an unsettled Plisio
+     * order is asked about once per `ASK_EVERY_MS`, and settled if the answer is in. A lost
+     * callback then costs the buyer a few seconds rather than their code.
+     */
+    async function askPlisio(order: Order): Promise<Order> {
+        const now = Date.now();
+        for (const [id, at] of asked) {
+            if (now - at >= ASK_EVERY_MS) {
+                asked.delete(id);
+            }
+        }
+        if (asked.has(order.id)) {
+            return order;
+        }
+        asked.set(order.id, now);
+        await checkout.settle(order, true);
+        return store.orderById(order.id) ?? order;
+    }
 
     return {
         // GET /api/pay/catalog
@@ -116,6 +221,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
 
             return {
                 appName: settings.current().appName,
+                appNames: settings.current().appNames,
                 tiers: store
                     .tiers()
                     .filter((tier) => tier.active)
@@ -125,8 +231,11 @@ export function payHandlers(options: PayOptions): PayHandlers {
                         available: stock.get(tier.amount) ?? 0,
                         title: tier.title,
                         blurb: tier.blurb,
+                        titleEn: tier.titleEn,
+                        blurbEn: tier.blurbEn,
                         recommended: tier.recommended
-                    }))
+                    })),
+                englishOpen: settings.current().plisioApiKey !== ''
             };
         },
 
@@ -179,6 +288,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 // the verify step keeps, and the reason a moved rate cannot become a discount.
                 toman: price,
                 phone,
+                lang: 'fa' as const,
                 createdAt: new Date().toISOString()
             };
 
@@ -229,18 +339,100 @@ export function payHandlers(options: PayOptions): PayHandlers {
             return { payUrl: opened.payUrl };
         },
 
+        // POST /api/pay/start-en
+        //
+        // The English shop's checkout. It follows `start` above step for step - the same
+        // sellable-tier check, the same claim before the gateway, the same single exit when
+        // the gateway fails - and differs where the English shop does: an email instead of a
+        // mobile, the face value in dollars instead of a Toman quote, and Plisio whichever
+        // gateway the Persian shop is on. Its refusals are in English, for the page that
+        // shows them.
+        startEn: async ({ input, request }) => {
+            const email = normalizeEmail(input.email);
+            if (email === null) {
+                throw new ConflictError('Enter a valid email address');
+            }
+            const tier = store.sellableTier(input.amount);
+            if (tier === undefined) {
+                throw new ConflictError('This card is not for sale');
+            }
+            if (settings.current().plisioApiKey === '') {
+                throw new HttpError(503, 'Payments are not open yet. Please try again later.', {
+                    code: 'gateway-unavailable',
+                    retryAfter: 60
+                });
+            }
+
+            const order = {
+                id: mintReceiptToken(),
+                amount: tier.amount,
+                // No Toman: an English order is charged `amount`, in dollars.
+                toman: 0,
+                phone: email,
+                lang: 'en' as const,
+                createdAt: new Date().toISOString()
+            };
+            if (!store.startOrder(order, HOLD_EN_MINUTES * 60 * 1000)) {
+                throw new ConflictError('This card is out of stock right now');
+            }
+
+            const opened = await plisio.request({
+                usdAmount: tier.amount,
+                // Twelve digits: unique enough for one shop, and an exact integer on both ends.
+                orderNumber: randomInt(100_000_000_000, 999_999_999_999),
+                orderName: `${shopName('en', settings.current().appName, settings.current().appNames)} $${tier.amount} gift card`,
+                email,
+                callbackUrl: options.plisioCallbackUrl(),
+                returnUrl: options.plisioReturnUrl(input.lang),
+                expireMinutes: HOLD_EN_MINUTES
+            });
+
+            // The same single exit as `start`, for the same reasons.
+            const tracked =
+                opened.ok && store.attachAuthority(order.id, `${PLISIO_PREFIX}${opened.authority}`);
+            if (!tracked) {
+                const reason = opened.ok ? 'duplicate authority' : opened.reason;
+                store.abandonOrder(order.id);
+                log?.error({ amount: input.amount, reason }, 'could not open a Plisio invoice');
+                throw new HttpError(
+                    503,
+                    'The payment gateway is unavailable. Please try again in a few minutes.',
+                    {
+                        code: 'gateway-unavailable',
+                        details: isOperator?.(request) === true ? { reason } : undefined
+                    }
+                );
+            }
+
+            return { payUrl: opened.payUrl, receipt: order.id };
+        },
+
         // GET /api/pay/receipt
-        receipt: ({ query }) => {
-            const order = store.orderById(query.token);
-            // A pending order is indistinguishable from no order here: until the gateway has
-            // answered there is nothing true to report.
-            if (order === undefined || order.status === 'pending') {
-                throw new NotFoundError('نتیجه‌ای برای این پرداخت پیدا نشد');
+        receipt: async ({ query }) => {
+            let order = store.orderById(query.token);
+            if (
+                order?.status === 'pending' &&
+                order.lang === 'en' &&
+                order.authority?.startsWith(PLISIO_PREFIX) === true
+            ) {
+                order = await askPlisio(order);
+            }
+
+            // A pending PERSIAN order is indistinguishable from no order here: until the bank
+            // has answered there is nothing true to report. A pending English one is a payment
+            // confirming on the chain, and saying so is the truth.
+            if (order === undefined || (order.status === 'pending' && order.lang !== 'en')) {
+                throw new NotFoundError(
+                    order?.lang === 'en'
+                        ? 'No result was found for this payment'
+                        : 'نتیجه‌ای برای این پرداخت پیدا نشد'
+                );
             }
             return {
                 outcome: order.status,
                 amount: order.amount,
                 toman: order.toman,
+                lang: order.lang,
                 phone: displayPhone(order.phone),
                 code: order.code,
                 refId: order.refId,

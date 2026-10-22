@@ -9,6 +9,8 @@
 // (the proxy answers every path with index.html) and the router decides what goes in it.
 import type { ComponentType } from 'react';
 
+import { homeOf, LANGS } from './lib/lang.ts';
+
 import Landing from './pages/landing.tsx';
 import AdminOverview from './pages/admin/overview.tsx';
 import AdminCodes from './pages/admin/codes/index.tsx';
@@ -22,7 +24,10 @@ export interface PageRoute {
 }
 
 export const routes: PageRoute[] = [
-    { path: '/', Component: Landing },
+    // Every language's landing page: `/` for Persian, `/en`, `/ar`... for the rest. The same
+    // page in each; Persian is paid in Toman, the others in dollars through Plisio and
+    // delivered by email. See lib/lang.ts - the address is what says which shop this is.
+    ...LANGS.map((lang) => ({ path: homeOf(lang), Component: Landing })),
 
     // The console is four ROUTES rather than four in-page tabs: a refresh keeps the operator
     // where they were, a colleague can be sent straight to the ledger, and browser back

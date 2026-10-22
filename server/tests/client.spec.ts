@@ -40,6 +40,11 @@ function stubs(store: Store) {
             sendCode: () => Promise.resolve({ ok: true as const }),
             sendText: () => Promise.resolve({ ok: true as const })
         },
+        plisio: {
+            request: () => Promise.resolve({ ok: false as const, reason: 'not used' }),
+            verify: () => Promise.resolve({ ok: false as const, reason: 'not used' })
+        },
+        mail: { sendCode: () => Promise.resolve({ ok: true as const }) },
         telegram: {
             configured: () => false,
             sendMessage: () => Promise.resolve({ ok: true as const }),

@@ -7,8 +7,11 @@ import type { Logger } from '../../platform/logging.ts';
 import type { Handlers } from '../../platform/api.ts';
 import { ConflictError, UnauthorizedError } from '../../platform/http.ts';
 import type { contract } from '../../contract/index.ts';
+import { normalizeEmail } from '../../domain/email.ts';
 import { normalizePhone } from '../../domain/phone.ts';
+import type { MailSender } from '../checkout/mailer.ts';
 import type { SmsSender } from '../checkout/panelsms.ts';
+import type { Plisio } from '../checkout/plisio.ts';
 import type { PaymentGateway } from '../checkout/zarinpal.ts';
 import { ADMIN_KEY_PATTERN, SESSION_COOKIE, type Admin } from '../console/session.ts';
 import type { Settings } from './settings.ts';
@@ -17,10 +20,14 @@ export interface SettingsOptions {
     settings: Settings;
     admin: Admin;
     sms: SmsSender;
+    mail: MailSender;
     payment: PaymentGateway;
+    plisio: Plisio;
 
     /** Derived from the public origin the console holds - see app.ts. */
     callbackUrl: () => string;
+    plisioCallbackUrl: () => string;
+    plisioReturnUrl: (lang: 'en') => string;
 
     log?: Logger;
 }
@@ -28,7 +35,14 @@ export interface SettingsOptions {
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type SettingsHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'settings' | 'saveSettings' | 'settingsLog' | 'rotateKey' | 'testSms' | 'testGateway'
+    | 'settings'
+    | 'saveSettings'
+    | 'settingsLog'
+    | 'rotateKey'
+    | 'testSms'
+    | 'testGateway'
+    | 'testEmail'
+    | 'testPlisio'
 >;
 
 /**
@@ -38,11 +52,17 @@ type SettingsHandlers = Pick<
 const TEST_TOMAN = 10_000;
 
 export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
-    const { settings, admin, sms, payment, callbackUrl, log } = options;
+    const { settings, admin, sms, mail, payment, plisio, callbackUrl, log } = options;
+
+    /** The masked settings, with the two addresses that are derived rather than stored. */
+    const view = () => ({
+        ...settings.view(callbackUrl()),
+        plisioCallbackUrl: options.plisioCallbackUrl()
+    });
 
     return {
         // GET /api/admin/settings
-        settings: () => settings.view(callbackUrl()),
+        settings: () => view(),
 
         // POST /api/admin/settings
         saveSettings: ({ input }) => {
@@ -51,7 +71,7 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             // secret input wiping a working credential.
             settings.save(input);
             log?.warn({ fields: Object.keys(input) }, 'runtime settings changed');
-            return settings.view(callbackUrl());
+            return view();
         },
 
         // GET /api/admin/settings/log
@@ -101,6 +121,32 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             // The payment page is NOT handed back. Paying it would take money for an order
             // that does not exist - there is nothing to deliver and nobody to deliver it to.
             return { ok: result.ok, reason: result.ok ? '' : result.reason, gateway };
+        },
+
+        // POST /api/admin/test-email
+        testEmail: async ({ input }) => {
+            const email = normalizeEmail(input.email);
+            if (email === null) {
+                throw new ConflictError('ایمیل معتبر نیست');
+            }
+            const result = await mail.sendCode(email, 'TEST-0000-0000', 0);
+            return { ok: result.ok, reason: result.ok ? '' : result.reason };
+        },
+
+        // POST /api/admin/test-plisio
+        testPlisio: async () => {
+            // An invoice nobody pays expires on its own. Its page is not handed back, for the
+            // reason given in `testGateway`; the order number is a throwaway one.
+            const result = await plisio.request({
+                usdAmount: 1,
+                orderNumber: Date.now(),
+                orderName: 'Console gateway test',
+                email: '',
+                callbackUrl: options.plisioCallbackUrl(),
+                returnUrl: options.plisioReturnUrl('en'),
+                expireMinutes: 10
+            });
+            return { ok: result.ok, reason: result.ok ? '' : result.reason };
         }
     };
 }

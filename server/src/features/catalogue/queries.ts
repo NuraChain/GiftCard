@@ -20,6 +20,8 @@ interface TierRow {
     amount: number;
     title: string;
     blurb: string;
+    title_en: string;
+    blurb_en: string;
     recommended: number;
     active: number;
     sort: number;
@@ -30,6 +32,8 @@ function toTier(row: TierRow): Tier {
         amount: row.amount,
         title: row.title,
         blurb: row.blurb,
+        titleEn: row.title_en,
+        blurbEn: row.blurb_en,
         recommended: row.recommended === 1,
         active: row.active === 1,
         sort: row.sort
@@ -48,10 +52,11 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
     const selectTiers = db.prepare('SELECT * FROM tiers ORDER BY sort, amount');
     const selectSellable = db.prepare('SELECT * FROM tiers WHERE amount = ? AND active = 1');
     const upsertTier = db.prepare(`
-        INSERT INTO tiers (amount, toman, title, blurb, recommended, active, sort)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tiers (amount, toman, title, blurb, recommended, active, sort, title_en, blurb_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(amount) DO UPDATE SET
             title = excluded.title, blurb = excluded.blurb,
+            title_en = excluded.title_en, blurb_en = excluded.blurb_en,
             recommended = excluded.recommended, active = excluded.active,
             sort = excluded.sort`);
     // At most one recommended card: the treatment means "most people pick this", and two of
@@ -85,7 +90,9 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
                     tier.blurb,
                     tier.recommended ? 1 : 0,
                     tier.active ? 1 : 0,
-                    tier.sort
+                    tier.sort,
+                    tier.titleEn,
+                    tier.blurbEn
                 );
                 if (tier.recommended) {
                     clearRecommended.run(tier.amount);

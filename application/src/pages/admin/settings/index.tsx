@@ -1,4 +1,4 @@
-// The settings tab: seven unrelated jobs, seven components, one page.
+// The settings tab: nine unrelated jobs, nine components, one page.
 //
 // They share a tab because an operator thinks of them as "the shop's own controls", not
 // because they share any state - each loads and saves independently, so one failing to load
@@ -18,6 +18,9 @@
 // the database to Telegram asks before it does it, and rotating the key demands the current
 // one even though a session is already open.
 //
+// THE ENGLISH SHOP'S TWO CARDS - Plisio and Resend - sit after the Persian shop's gateway and
+// SMS panel, in the same order: how a buyer pays, then how their code reaches them.
+//
 // PRICING SITS SECOND, right under the catalogue. The cards above it no longer carry prices -
 // they carry denominations - so the panel that explains what those cost belongs next to them
 // rather than below the gateway credentials.
@@ -29,6 +32,8 @@ import PricingSettings from './pricing.tsx';
 import ShopSettings from './shop.tsx';
 import GatewaySettings from './gateway.tsx';
 import SmsSettings from './sms.tsx';
+import PlisioSettings from './plisio.tsx';
+import EmailSettings from './email.tsx';
 import TelegramSettings from './telegram.tsx';
 import AdminKeySettings from './admin-key.tsx';
 
@@ -40,6 +45,8 @@ export default function AdminSettings(): ReactNode {
             <ShopSettings />
             <GatewaySettings />
             <SmsSettings />
+            <PlisioSettings />
+            <EmailSettings />
             <TelegramSettings />
             <AdminKeySettings />
         </AdminShell>

@@ -12,8 +12,9 @@
 // TLS, so the HSTS header and the page-branding wrapper that used to live here are gone -
 // both were about HTML this process does not emit any more. What stayed is everything that
 // decides whether money moved.
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { shopName } from './domain/langs.ts';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 import { pino } from 'pino';
 
@@ -23,6 +24,8 @@ import { config } from './config.ts';
 import { createGatewaySwitch } from './features/checkout/gateway.ts';
 import { createPayment } from './features/checkout/zarinpal.ts';
 import { createZibal } from './features/checkout/zibal.ts';
+import { createPlisio } from './features/checkout/plisio.ts';
+import { createMailer } from './features/checkout/mailer.ts';
 import { createTetherRate } from './features/rate/rate.ts';
 import { createTelegram } from './features/telegram/telegram.ts';
 import {
@@ -65,6 +68,10 @@ const log = pino({
             'phone',
             'botToken',
             'telegramBotToken',
+            'plisioApiKey',
+            'resendApiKey',
+            'api_key',
+            'email',
             '*.merchantId',
             '*.merchant',
             '*.zibalMerchant',
@@ -78,6 +85,10 @@ const log = pino({
             '*.trackId',
             '*.code',
             '*.phone',
+            '*.plisioApiKey',
+            '*.resendApiKey',
+            '*.api_key',
+            '*.email',
             '*.botToken',
             '*.telegramBotToken'
         ],
@@ -96,6 +107,23 @@ const log = pino({
 });
 
 mkdirSync(dirname(config.databaseFile), { recursive: true });
+
+// The database file was renamed with the shop. A deployment still holding it under the
+// previous name has it moved - with its WAL and shared-memory files - once, before it is
+// opened. Starting on a fresh empty file instead would lose every unsold code.
+const previousDatabaseFile = join(dirname(config.databaseFile), 'guardian-service.db');
+if (
+    basename(config.databaseFile) === 'ashbringer.db' &&
+    !existsSync(config.databaseFile) &&
+    existsSync(previousDatabaseFile)
+) {
+    for (const suffix of ['', '-wal', '-shm']) {
+        if (existsSync(previousDatabaseFile + suffix)) {
+            renameSync(previousDatabaseFile + suffix, config.databaseFile + suffix);
+        }
+    }
+    log.warn({ from: previousDatabaseFile, to: config.databaseFile }, 'database file renamed');
+}
 const store = createStore(config.databaseFile, (names) =>
     log.warn({ migrations: names }, 'database schema migrated')
 );
@@ -245,6 +273,15 @@ if (!telegram.configured()) {
     );
 }
 
+// The English shop's gateway. Built once and handed to the app twice: it opens invoices
+// directly, and verifies them through the switch below, which knows a `plisio:` handle.
+const plisio = createPlisio({
+    settings: () => {
+        const now = settings.current();
+        return { apiKey: now.plisioApiKey, baseUrl: now.plisioBase };
+    }
+});
+
 const app = buildApp({
     store,
     settings,
@@ -269,8 +306,24 @@ const app = buildApp({
                 const now = settings.current();
                 return { merchant: now.zibalMerchant, baseUrl: now.zibalBase };
             }
-        })
+        }),
+        plisio
     }),
+    plisio,
+    // The English shop's delivery - see features/checkout/mailer.ts.
+    mail: createMailer({
+        settings: () => {
+            const now = settings.current();
+            return {
+                apiKey: now.resendApiKey,
+                from: now.mailFrom,
+                baseUrl: now.resendBase,
+                // The email is written in English, so it carries the English name.
+                appName: shopName('en', now.appName, now.appNames)
+            };
+        }
+    }),
+    reconcileEveryMs: 2 * 60 * 1000,
     sms,
     admin: createAdmin({
         matches: (candidate) => settings.matchesAdminKey(candidate),

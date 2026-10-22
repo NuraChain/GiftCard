@@ -44,9 +44,14 @@ export type RequestResult =
     | { ok: true; authority: string; payUrl: string }
     | { ok: false; reason: string };
 
+/**
+ * `pending` is the answer only Plisio gives: a crypto payment that has been seen but not yet
+ * confirmed, or a gateway that could not be asked. It is NOT a refusal - see rule 5 in
+ * ./checkout.ts - and the order is left exactly as it was.
+ */
 export type VerifyResult =
     | { ok: true; refId: number; alreadyVerified: boolean }
-    | { ok: false; reason: string };
+    | { ok: false; reason: string; pending?: boolean };
 
 /**
  * What the app depends on. The app takes THIS, not the concrete client, so a test supplies
@@ -54,7 +59,12 @@ export type VerifyResult =
  */
 export interface PaymentGateway {
     request(input: PaymentRequest): Promise<RequestResult>;
-    verify(authority: string, tomanAmount: number): Promise<VerifyResult>;
+
+    /**
+     * `amount` is what the order was charged, in the currency its gateway charges in: Toman
+     * for Zarinpal and Zibal, dollars for Plisio. It ALWAYS comes from the stored order.
+     */
+    verify(authority: string, amount: number): Promise<VerifyResult>;
 }
 
 interface ZarinpalBody {

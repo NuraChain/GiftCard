@@ -22,6 +22,7 @@ import { telegramRoutes } from '../features/telegram/contract.ts';
 
 // Both halves' schemas and their inferred types, re-exported so an importer needs one path.
 export * from './shared.ts';
+export * from '../domain/langs.ts';
 export * from '../features/checkout/contract.ts';
 export * from '../features/redeem/contract.ts';
 export * from '../features/console/contract.ts';

@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS codes (
 );
 CREATE INDEX IF NOT EXISTS codes_free ON codes (amount, order_id);
 
+-- lang on orders is which shop the buyer was in, and it decides three things: the gateway
+-- (Zarinpal or Zibal for 'fa', Plisio for 'en'), whether toman or amount is the sum charged,
+-- and whether the code goes out by SMS or by email. phone holds the buyer's EMAIL on an
+-- 'en' order - the column has carried addresses before, see platform/migrate.ts.
 CREATE TABLE IF NOT EXISTS orders (
     id            TEXT    PRIMARY KEY,
     authority     TEXT    UNIQUE,
@@ -30,7 +34,8 @@ CREATE TABLE IF NOT EXISTS orders (
     ref_id        INTEGER,
     sms_delivered INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT    NOT NULL,
-    settled_at    TEXT
+    settled_at    TEXT,
+    lang          TEXT    NOT NULL DEFAULT 'fa'
 );
 CREATE INDEX IF NOT EXISTS orders_recent ON orders (created_at DESC);
 
@@ -91,6 +96,8 @@ CREATE TABLE IF NOT EXISTS tiers (
     blurb       TEXT    NOT NULL,
     recommended INTEGER NOT NULL DEFAULT 0,
     active      INTEGER NOT NULL DEFAULT 1,
-    sort        INTEGER NOT NULL DEFAULT 0
+    sort        INTEGER NOT NULL DEFAULT 0,
+    title_en    TEXT    NOT NULL DEFAULT '',
+    blurb_en    TEXT    NOT NULL DEFAULT ''
 );
 `;

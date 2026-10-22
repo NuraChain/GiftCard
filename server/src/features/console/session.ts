@@ -31,6 +31,14 @@ const SESSION_MS = 8 * 60 * 60 * 1000;
 const ATTEMPT_LIMIT = 5;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
+/**
+ * The lockout ESCALATES for an address that keeps coming back: each lockout within a day of
+ * the last one is twice as long, up to a day. Five guesses per fifteen minutes is still 480 a
+ * day from one patient address; doubling makes it a few dozen.
+ */
+const STRIKE_MEMORY_MS = 24 * 60 * 60 * 1000;
+const LOCKOUT_CAP_MS = 24 * 60 * 60 * 1000;
+
 /** How often the expiry sweep may actually run. See {@link createAdmin}'s `sweep`. */
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
@@ -63,6 +71,9 @@ export interface AdminOptions {
      * request would answer "no" on every production deployment.
      */
     secureCookie: boolean;
+
+    /** The clock. Tests move it by hand so a day of lockouts costs no wall time. */
+    now?: () => number;
 }
 
 export interface Admin {
@@ -84,6 +95,11 @@ export function createAdmin(options: AdminOptions): Admin {
     // safe direction to fail, and it keeps a live credential out of the database file.
     const sessions = new Map<string, number>();
     const attempts = new Map<string, { count: number; until: number }>();
+
+    // How many times each address has been locked out recently - what makes the next
+    // lockout longer. Kept apart from `attempts`, which forgets an address once its window ends.
+    const strikes = new Map<string, { count: number; until: number }>();
+    const clock = options.now ?? Date.now;
 
     /**
      * @internal Drops what has expired from BOTH maps, at most once a minute.
@@ -113,9 +129,11 @@ export function createAdmin(options: AdminOptions): Admin {
                 sessions.delete(id);
             }
         }
-        for (const [bucket, record] of attempts) {
-            if (record.until <= now) {
-                attempts.delete(bucket);
+        for (const map of [attempts, strikes]) {
+            for (const [bucket, record] of map) {
+                if (record.until <= now) {
+                    map.delete(bucket);
+                }
             }
         }
     }
@@ -134,7 +152,7 @@ export function createAdmin(options: AdminOptions): Admin {
 
     return {
         signIn(clientAddress, key) {
-            const now = Date.now();
+            const now = clock();
             const bucketKey = clientAddress === '' ? 'unknown' : clientAddress;
             const bucket = attempts.get(bucketKey);
             if (bucket !== undefined && bucket.until > now && bucket.count >= ATTEMPT_LIMIT) {
@@ -148,6 +166,14 @@ export function createAdmin(options: AdminOptions): Admin {
                     bucket !== undefined && bucket.until > now
                         ? { count: bucket.count + 1, until: bucket.until }
                         : { count: 1, until: now + ATTEMPT_WINDOW_MS };
+                if (next.count >= ATTEMPT_LIMIT) {
+                    const previous = strikes.get(bucketKey);
+                    const count =
+                        previous !== undefined && previous.until > now ? previous.count + 1 : 1;
+                    strikes.set(bucketKey, { count, until: now + STRIKE_MEMORY_MS });
+                    next.until =
+                        now + Math.min(ATTEMPT_WINDOW_MS * 2 ** (count - 1), LOCKOUT_CAP_MS);
+                }
                 attempts.set(bucketKey, next);
                 // One message for every failure. Saying which part was wrong, or whether a
                 // key exists at all, would hand an attacker the only feedback they lack.
@@ -155,6 +181,7 @@ export function createAdmin(options: AdminOptions): Admin {
             }
 
             attempts.delete(bucketKey);
+            strikes.delete(bucketKey);
 
             const id = crypto.randomUUID();
             sessions.set(id, now + SESSION_MS);
@@ -183,7 +210,7 @@ export function createAdmin(options: AdminOptions): Admin {
         },
 
         require(sessionId) {
-            const now = Date.now();
+            const now = clock();
             sweep(now);
             const expiresAt = sessionId === undefined ? undefined : sessions.get(sessionId);
             if (expiresAt === undefined || expiresAt <= now) {

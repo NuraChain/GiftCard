@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 
 import { client, failureText } from '../../lib/api.ts';
 import type { LedgerRow } from '../../../../server/src/contract/index.ts';
-import { count, moment, toman } from '../../lib/format.ts';
+import { count, moment, toman, usd } from '../../lib/format.ts';
 import { useToasts } from '../../ui/toast.tsx';
 import Async from '../../ui/async.tsx';
 import Button from '../../ui/button.tsx';
@@ -157,7 +157,7 @@ export default function Orders(): ReactNode {
                             <thead className="border-b border-line text-caption text-muted">
                                 <tr>
                                     <th className="p-3 text-start font-normal">زمان</th>
-                                    <th className="p-3 text-start font-normal">موبایل</th>
+                                    <th className="p-3 text-start font-normal">موبایل / ایمیل</th>
                                     <th className="p-3 text-start font-normal">کارت</th>
                                     <th className="p-3 text-start font-normal">مبلغ</th>
                                     <th className="p-3 text-start font-normal">وضعیت</th>
@@ -178,7 +178,7 @@ export default function Orders(): ReactNode {
                                             {moment(order.createdAt)}
                                         </td>
                                         <td
-                                            data-label="موبایل"
+                                            data-label="موبایل / ایمیل"
                                             className="p-3 whitespace-nowrap max-md:order-1 max-md:font-bold"
                                         >
                                             <span dir="ltr" className="latin">
@@ -197,7 +197,15 @@ export default function Orders(): ReactNode {
                                             data-label="مبلغ"
                                             className="cell-inline p-3 whitespace-nowrap text-caption max-md:order-4"
                                         >
-                                            {toman(order.toman)}
+                                            {/* An English order was paid in dollars through
+                                                Plisio, and its Toman column is a zero. */}
+                                            {order.lang === 'en' ? (
+                                                <span dir="ltr" className="latin">
+                                                    {usd(order.amount)} · Plisio
+                                                </span>
+                                            ) : (
+                                                toman(order.toman)
+                                            )}
                                         </td>
                                         <td
                                             data-label="وضعیت"
@@ -208,7 +216,9 @@ export default function Orders(): ReactNode {
                                                 !order.smsDelivered &&
                                                 order.code !== null && (
                                                     <span className="block text-caption font-normal text-muted">
-                                                        پیامک نرفت
+                                                        {order.lang === 'en'
+                                                            ? 'ایمیل نرفت'
+                                                            : 'پیامک نرفت'}
                                                     </span>
                                                 )}
                                         </td>

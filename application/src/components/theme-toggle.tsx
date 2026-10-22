@@ -19,26 +19,87 @@
 import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
+import { useCopy, type Lang } from '../lib/lang.ts';
+
 type Choice = 'system' | 'light' | 'dark';
 
 interface Mode {
     value: Choice;
     glyph: LucideIcon;
 
-    /** Persian name, used to say what clicking will switch TO. */
-    label: string;
+    /** The mode's name in each language, used to say what clicking will switch TO. */
+    label: Record<Lang, string>;
 }
 
 // Cycle order is deliberate: the two explicit modes first, then back to following the
 // system. A user who only wants "make it dark" gets there in one tap.
 const MODES: Mode[] = [
-    { value: 'light', glyph: Sun, label: 'روشن' },
-    { value: 'dark', glyph: Moon, label: 'تاریک' },
-    { value: 'system', glyph: Monitor, label: 'پیروی از سیستم' }
+    {
+        value: 'light',
+        glyph: Sun,
+        label: {
+            fa: 'روشن',
+            en: 'light',
+            ar: 'فاتح',
+            es: 'claro',
+            pt: 'claro',
+            hi: 'लाइट',
+            zh: '浅色',
+            ru: 'светлую',
+            fr: 'clair',
+            tr: 'açık'
+        }
+    },
+    {
+        value: 'dark',
+        glyph: Moon,
+        label: {
+            fa: 'تاریک',
+            en: 'dark',
+            ar: 'داكن',
+            es: 'oscuro',
+            pt: 'escuro',
+            hi: 'डार्क',
+            zh: '深色',
+            ru: 'тёмную',
+            fr: 'sombre',
+            tr: 'koyu'
+        }
+    },
+    {
+        value: 'system',
+        glyph: Monitor,
+        label: {
+            fa: 'پیروی از سیستم',
+            en: 'follow the system',
+            ar: 'حسب إعدادات النظام',
+            es: 'el del sistema',
+            pt: 'o do sistema',
+            hi: 'सिस्टम के अनुसार',
+            zh: '跟随系统',
+            ru: 'как в системе',
+            fr: 'celui du système',
+            tr: 'sistem ayarı'
+        }
+    }
 ];
+
+const COPY: Record<Lang, (mode: Mode) => string> = {
+    fa: (mode) => `تغییر پوسته به ${mode.label.fa}`,
+    en: (mode) => `Switch theme to ${mode.label.en}`,
+    ar: (mode) => `تغيير المظهر إلى ${mode.label.ar}`,
+    es: (mode) => `Cambiar el tema a ${mode.label.es}`,
+    pt: (mode) => `Mudar o tema para ${mode.label.pt}`,
+    hi: (mode) => `थीम बदलें: ${mode.label.hi}`,
+    zh: (mode) => `切换主题为${mode.label.zh}`,
+    ru: (mode) => `Переключить тему на ${mode.label.ru}`,
+    fr: (mode) => `Passer au thème ${mode.label.fr}`,
+    tr: (mode) => `Temayı değiştir: ${mode.label.tr}`
+};
 
 export default function ThemeToggle(): ReactNode {
     const [choice, setChoice] = useState<Choice>('system');
+    const switchTo = useCopy(COPY);
 
     useEffect(() => {
         try {
@@ -76,8 +137,8 @@ export default function ThemeToggle(): ReactNode {
         <button
             type="button"
             className="flex size-tap items-center justify-center rounded-xl border border-line text-muted transition-colors hover:border-firouze hover:text-firouze"
-            aria-label={`تغییر پوسته به ${next.label}`}
-            title={`تغییر پوسته به ${next.label}`}
+            aria-label={switchTo(next)}
+            title={switchTo(next)}
             onClick={() => apply(next.value)}
         >
             {/* Keyed on the mode so React mounts a FRESH glyph on every change, which is what

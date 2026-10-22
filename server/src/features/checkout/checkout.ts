@@ -19,19 +19,31 @@
 //      state re-verifies, because a `cancelled` order was settled on the strength of an answer
 //      that could have been about a payment the buyer went on to complete.
 //   4. A DELIVERY failure is a NOTICE, never a failed purchase. The code is already minted,
-//      stored, and on the buyer's screen. This held when delivery was an SMS and it holds now
-//      that it is an SMS: the message is a convenience, the screen is the delivery.
+//      stored, and on the buyer's screen. The Persian shop texts it and the English shop
+//      emails it; either way the message is a convenience, the screen is the delivery.
+//   5. NOT YET IS NOT NO. A crypto payment can be seen and not yet confirmed, and a gateway
+//      can fail to answer at all - Plisio says `pending` for both. The order is then left
+//      EXACTLY as it was: still holding its code, still waiting. Settling it as a failure
+//      would put the code back on the shelf while the buyer's money is on its way.
+//
+// AND THE AMOUNT IS IN THE ORDER'S OWN CURRENCY. A Persian order was charged `toman`; an
+// English one was charged its face value in dollars, which is `amount`. Rule 2 holds for both
+// because both numbers are read off our own row.
 import type { Logger } from '../../platform/logging.ts';
 
 import type { Order, Store } from '../../db/index.ts';
 import type { PaymentGateway } from './zarinpal.ts';
 import type { SmsSender } from './panelsms.ts';
+import type { MailSender } from './mailer.ts';
 import type { SaleNotifier } from '../telegram/notify.ts';
 
 export interface CheckoutOptions {
     store: Store;
     payment: PaymentGateway;
     sms: SmsSender;
+
+    /** The English shop's delivery. */
+    mail: MailSender;
 
     /**
      * Told about every settled sale. Optional, and FIRE AND FORGET by its own signature - a
@@ -51,7 +63,7 @@ export interface Checkout {
 }
 
 export function createCheckout(options: CheckoutOptions): Checkout {
-    const { store, payment, sms, notifier, log } = options;
+    const { store, payment, sms, mail, notifier, log } = options;
 
     // Settling is serialised per order. Without this, two callbacks arriving together (a
     // double-click on the gateway's return, a prefetching browser) would both see an
@@ -63,7 +75,13 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
 
-        const verified = await payment.verify(order.authority ?? '', order.toman);
+        const due = order.lang === 'en' ? order.amount : order.toman;
+        const verified = await payment.verify(order.authority ?? '', due);
+        if (!verified.ok && verified.pending === true) {
+            // Rule 5. Nothing is written: the next nudge, poll or reconciliation asks again.
+            log?.info({ amount: order.amount, reason: verified.reason }, 'payment still pending');
+            return;
+        }
         if (!verified.ok) {
             store.settleUnpaid(order.id, gatewaySaidOk ? 'failed' : 'cancelled');
             log?.warn(
@@ -81,6 +99,7 @@ export function createCheckout(options: CheckoutOptions): Checkout {
         notifier?.sold({
             amount: order.amount,
             toman: order.toman,
+            lang: order.lang,
             phone: order.phone,
             refId: verified.refId,
             receipt: order.id,
@@ -99,12 +118,17 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
 
-        const sent = await sms.sendCode(order.phone, code, order.amount);
+        const sent =
+            order.lang === 'en'
+                ? await mail.sendCode(order.phone, code, order.amount)
+                : await sms.sendCode(order.phone, code, order.amount);
         store.markSmsDelivered(order.id, sent.ok);
         if (!sent.ok) {
             log?.error(
                 { refId: verified.refId, reason: sent.reason },
-                'gift code SMS not delivered'
+                order.lang === 'en'
+                    ? 'gift code email not delivered'
+                    : 'gift code SMS not delivered'
             );
         }
     }

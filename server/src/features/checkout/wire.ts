@@ -1,5 +1,5 @@
-// The one POST both gateway clients make - and, when it goes wrong, enough said about HOW for
-// the log line to be acted on.
+// The one call every gateway client makes - a POST for the two Iranian gateways, a GET for
+// Plisio - and, when it goes wrong, enough said about HOW for the log line to be acted on.
 //
 // A gateway that will not open a payment is the shop being closed, and "request failed" does
 // not tell the operator whether to fix a merchant id, top up a wallet, or call their host. So
@@ -21,7 +21,7 @@ export function quote(raw: string): string {
     return flat.length > QUOTE_LIMIT ? `${flat.slice(0, QUOTE_LIMIT)}...` : flat;
 }
 
-/** What came back from one POST. */
+/** What came back from one call. */
 export interface Answer<Body> {
     /** The parsed JSON object, or null when there was none to parse. */
     body: Body | null;
@@ -59,21 +59,46 @@ function thrown(error: unknown): string {
  * The body is read whatever the status was - both gateways report a refusal in the body, and
  * one of them does it under a 4xx.
  */
-export async function postJson<Body>(
+export function postJson<Body>(
     call: Fetch,
     url: string,
     body: Record<string, unknown>,
     timeoutMs: number
 ): Promise<Answer<Body>> {
+    return exchange<Body>(
+        call,
+        url,
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify(body)
+        },
+        timeoutMs
+    );
+}
+
+/**
+ * {@link postJson} for a gateway that is spoken to with GET - Plisio, whose every endpoint
+ * takes its arguments, the API key among them, in the query string. NEVER THROWS either.
+ *
+ * THE URL CARRIES THE KEY, so nothing that builds a reason from this answer may repeat it.
+ * Nothing here does: a reason is built from the status, the body and the transport's error.
+ */
+export function getJson<Body>(call: Fetch, url: string, timeoutMs: number): Promise<Answer<Body>> {
+    return exchange<Body>(call, url, { headers: { accept: 'application/json' } }, timeoutMs);
+}
+
+/** @internal The one round trip both of the above make. */
+async function exchange<Body>(
+    call: Fetch,
+    url: string,
+    init: RequestInit,
+    timeoutMs: number
+): Promise<Answer<Body>> {
     let response: Response;
     let text: string;
     try {
-        response = await call(url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(timeoutMs)
-        });
+        response = await call(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
         text = await response.text();
     } catch (error) {
         // Never reached, cut off mid-answer, or timed out: the error says which.

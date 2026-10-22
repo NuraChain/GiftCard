@@ -2,7 +2,8 @@
 //
 // `Intl` is in every browser this app supports, so there is no digit-mapping table here:
 // `fa-IR` produces Persian digits AND the Persian thousands separator, which a hand-rolled
-// replace would get subtly wrong.
+// replace would get subtly wrong. Every other language gets its own locale - see ./lang.ts.
+import { LANG_INFO, type Lang } from './lang.ts';
 
 const TOMAN = new Intl.NumberFormat('fa-IR');
 const MOMENT = new Intl.DateTimeFormat('fa-IR', { dateStyle: 'short', timeStyle: 'short' });
@@ -20,9 +21,21 @@ export function toman(value: number): string {
     return TOMAN.format(value);
 }
 
-/** A plain count: `۷`. */
-export function count(value: number): string {
-    return TOMAN.format(value);
+/** A plain count, in the reader's digits: `۷` in Persian, `٧` in Arabic, `7` in most. */
+export function count(value: number, lang: Lang = 'fa'): string {
+    return new Intl.NumberFormat(LANG_INFO[lang].locale).format(value);
+}
+
+/**
+ * A dollar price: `$10.00` in English, `10,00 US$` in Portuguese. The dollar shop's only
+ * currency - its cards sell at face value. Cents are always shown, because the invoice Plisio
+ * opens is for exactly this sum.
+ */
+export function usd(value: number, lang: Lang = 'en'): string {
+    return new Intl.NumberFormat(LANG_INFO[lang].locale, {
+        style: 'currency',
+        currency: 'USD'
+    }).format(value);
 }
 
 /** A timestamp for the ledger, in the Persian calendar. */
@@ -58,11 +71,13 @@ export function ago(iso: string): string {
 }
 
 /**
- * The current year, in the Persian calendar - `۱۴۰۴`. Used by the footer's copyright.
+ * The current year, in the Persian calendar - `۱۴۰۴` - or the Gregorian one, in Latin digits,
+ * on every other page: a locale's own default calendar is not always Gregorian. Used by the
+ * footer's copyright.
  *
  * Computed rather than written down: a hardcoded year is wrong every January, and it is
  * wrong in the one place on the page whose whole job is to look maintained.
  */
-export function year(): string {
-    return YEAR.format(new Date());
+export function year(lang: Lang = 'fa'): string {
+    return lang === 'fa' ? YEAR.format(new Date()) : String(new Date().getFullYear());
 }

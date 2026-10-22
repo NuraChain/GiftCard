@@ -9,7 +9,21 @@
 import { Check, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useCopy, type Lang } from '../lib/lang.ts';
 import { useToasts, type ToastTone } from './toast.tsx';
+
+const COPY: Record<Lang, { region: string; dismiss: string }> = {
+    fa: { region: 'اعلان‌ها', dismiss: 'بستن اعلان' },
+    en: { region: 'Notifications', dismiss: 'Dismiss notification' },
+    ar: { region: 'الإشعارات', dismiss: 'إغلاق الإشعار' },
+    es: { region: 'Notificaciones', dismiss: 'Cerrar notificación' },
+    pt: { region: 'Notificações', dismiss: 'Fechar notificação' },
+    hi: { region: 'सूचनाएँ', dismiss: 'सूचना बंद करें' },
+    zh: { region: '通知', dismiss: '关闭通知' },
+    ru: { region: 'Уведомления', dismiss: 'Закрыть уведомление' },
+    fr: { region: 'Notifications', dismiss: 'Fermer la notification' },
+    tr: { region: 'Bildirimler', dismiss: 'Bildirimi kapat' }
+};
 
 const TONE: Record<ToastTone, { Glyph: LucideIcon; accent: string }> = {
     success: { Glyph: Check, accent: 'text-firouze' },
@@ -19,12 +33,13 @@ const TONE: Record<ToastTone, { Glyph: LucideIcon; accent: string }> = {
 
 export default function ToastHost(): ReactNode {
     const { toasts, dismiss, hold, release } = useToasts();
+    const t = useCopy(COPY);
 
     return (
         <div
             className="pointer-events-none fixed bottom-4 start-4 z-50 flex flex-col gap-2"
             role="region"
-            aria-label="اعلان‌ها"
+            aria-label={t.region}
         >
             {toasts.map((toast) => {
                 const { Glyph, accent } = TONE[toast.tone];
@@ -46,7 +61,7 @@ export default function ToastHost(): ReactNode {
                         <button
                             type="button"
                             className="ms-auto shrink-0 rounded-lg p-1 text-muted hover:text-ink"
-                            aria-label="بستن اعلان"
+                            aria-label={t.dismiss}
                             onClick={() => dismiss(toast.id)}
                         >
                             <X className="size-4" aria-hidden="true" />

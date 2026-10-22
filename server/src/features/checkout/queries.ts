@@ -17,6 +17,7 @@ export interface OrderQueries {
     abandonOrder(orderId: string): void;
     orderById(id: string): Order | undefined;
     orderByAuthority(authority: string): Order | undefined;
+    pendingOrders(prefix: string, since: string): Order[];
     settlePaid(orderId: string, refId: number): string | null;
     settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
     markSmsDelivered(orderId: string, delivered: boolean): void;
@@ -27,12 +28,17 @@ export interface OrderQueries {
 
 export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
     const insertOrder = db.prepare(`
-        INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at)
-        VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL)`);
+        INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at, lang)
+        VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL, ?)`);
     const setAuthority = db.prepare('UPDATE orders SET authority = ? WHERE id = ?');
     const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
     const selectById = db.prepare('SELECT * FROM orders WHERE id = ?');
     const selectByAuthority = db.prepare('SELECT * FROM orders WHERE authority = ?');
+    // `substr` rather than LIKE: a prefix is matched literally, with no wildcard to escape.
+    const selectPending = db.prepare(`
+        SELECT * FROM orders
+        WHERE status = 'pending' AND substr(authority, 1, ?) = ? AND created_at >= ?
+        ORDER BY created_at`);
     const setPaid = db.prepare(
         "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
     );
@@ -74,7 +80,14 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
                     db.exec('ROLLBACK');
                     return false;
                 }
-                insertOrder.run(order.id, order.amount, order.toman, order.phone, order.createdAt);
+                insertOrder.run(
+                    order.id,
+                    order.amount,
+                    order.toman,
+                    order.phone,
+                    order.createdAt,
+                    order.lang
+                );
                 db.exec('COMMIT');
                 return true;
             } catch (error) {
@@ -115,6 +128,10 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
         orderByAuthority(authority) {
             const row = shaped<OrderRow | undefined>(selectByAuthority.get(authority));
             return row === undefined ? undefined : toOrder(row);
+        },
+
+        pendingOrders(prefix, since) {
+            return shaped<OrderRow[]>(selectPending.all(prefix.length, prefix, since)).map(toOrder);
         },
 
         settlePaid(orderId, refId) {

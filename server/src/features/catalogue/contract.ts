@@ -22,6 +22,13 @@ export const tierInput = z.object({
     amount: amountField,
     title: z.string().trim().max(80),
     blurb: z.string().trim().max(400),
+
+    /**
+     * The English shop's copy. Optional on the way in, so a console or a script that predates
+     * the English shop still saves a card - an empty title is worded from the amount there.
+     */
+    titleEn: z.string().trim().max(80).default(''),
+    blurbEn: z.string().trim().max(400).default(''),
     recommended: z.boolean(),
     active: z.boolean(),
     sort: z.number().int().min(0).max(999)
