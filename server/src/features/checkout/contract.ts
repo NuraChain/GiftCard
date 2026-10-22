@@ -7,7 +7,7 @@
 //
 // CLIENT-SAFE. Like every features/*/contract.ts, this may import only
 // `platform/contract.ts`, `zod` and `domain/`.
-import { INTL_LANGS, type IntlLang } from '../../domain/langs.ts';
+import { INTL_LANGS, LANGS, type IntlLang } from '../../domain/langs.ts';
 import { z } from 'zod';
 
 import { get, post } from '../../platform/contract.ts';
@@ -190,6 +190,12 @@ export const receipt = z.object({
     smsDelivered: z.boolean()
 });
 
+/**
+ * The language the visitor's country suggests, for the page a first visit lands on. Null when
+ * the server cannot tell where the visitor is - the browser's own language decides then.
+ */
+export const localeHint = z.object({ lang: z.enum(LANGS).nullable() });
+
 export type PayStartInput = z.infer<typeof payStartInput>;
 export type PurchaseFormInput = z.infer<typeof purchaseFormInput>;
 export type PayStartEnInput = z.infer<typeof payStartEnInput>;
@@ -199,6 +205,7 @@ export type Receipt = z.infer<typeof receipt>;
 /** The shop's routes. Assembled into the whole contract by ../../contract/index.ts. */
 export const checkoutRoutes = {
     catalog: get('/pay/catalog', { output: catalog }),
+    locale: get('/pay/locale', { output: localeHint }),
     start: post('/pay/start', { input: payStartInput, output: payStartOutput }),
     startEn: post('/pay/start-en', { input: payStartEnInput, output: payStartEnOutput }),
     receipt: get('/pay/receipt', { query: receiptQuery, output: receipt })

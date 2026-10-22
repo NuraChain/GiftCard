@@ -2371,6 +2371,21 @@ describe('the English shop', () => {
         expect(fake.nowPaymentsRequests[0]?.orderName).toBe('Shop $10 gift card');
     });
 
+    it("suggests a first visit's language from the country the edge reports", async () => {
+        const lang = async (headers: Record<string, string>): Promise<unknown> =>
+            (await get('/api/pay/locale', headers)).json<{ lang: unknown }>().lang;
+
+        expect(await lang({ 'cf-ipcountry': 'IR' })).toBe('fa');
+        expect(await lang({ 'cf-ipcountry': 'br' })).toBe('pt');
+        expect(await lang({ 'x-country-code': 'SA' })).toBe('ar');
+        // A country the shop has no language for, Cloudflare's "unknown", and no header at
+        // all: the browser's own language decides then.
+        expect(await lang({ 'cf-ipcountry': 'DE' })).toBeNull();
+        expect(await lang({ 'cf-ipcountry': 'XX' })).toBeNull();
+        expect(await lang({ 'cf-ipcountry': '../etc' })).toBeNull();
+        expect(await lang({})).toBeNull();
+    });
+
     it('never shows the Persian name on another language', () => {
         expect(shopName('en', 'اشبرینگر', NO_SHOP_NAMES)).toBe('Ashbringer');
         expect(shopName('ar', 'اشبرینگر', NO_SHOP_NAMES)).toBe('Ashbringer');

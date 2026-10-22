@@ -5,10 +5,13 @@
 import { render } from 'azerothjs';
 
 import App from './App.azeroth';
+import { settleFirstVisit } from './lib/first-visit.ts';
 
 const root = document.getElementById('root');
 if (root === null) {
     throw new Error('index.html is missing its #root element');
 }
 
-render(() => App({}), root);
+// The language is settled BEFORE the first render, so a first arrival at `/` starts on its
+// own language's page instead of painting the Persian one and then jumping.
+void settleFirstVisit().finally(() => render(() => App({}), root));

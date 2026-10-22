@@ -1,6 +1,6 @@
 // The buyer-facing routes: the shop, the checkout, the return from the bank, the receipt -
 // for both shops. The English one is paid through NOWPayments; see ./nowpayments.ts before its routes.
-import { shopName, type IntlLang } from '../../domain/langs.ts';
+import { langOfCountry, shopName, type IntlLang } from '../../domain/langs.ts';
 import { randomInt } from 'node:crypto';
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -42,6 +42,18 @@ export const HOLD_EN_MINUTES = 60;
  * stranger holding a token, costs one call per this long and no more.
  */
 const ASK_EVERY_MS = 15_000;
+
+/**
+ * Where the visitor's country can arrive from, first match wins: Cloudflare's own header, and
+ * the names an nginx GeoIP module or another proxy is commonly set up to send. Lower case, as
+ * Node hands headers over.
+ */
+const COUNTRY_HEADERS = [
+    'cf-ipcountry',
+    'x-country-code',
+    'x-geoip-country',
+    'x-vercel-ip-country'
+];
 
 export interface PayOptions {
     store: Store;
@@ -254,6 +266,26 @@ export function payHandlers(options: PayOptions): PayHandlers {
     }
 
     return {
+        // GET /api/pay/locale
+        //
+        // Where the visitor is, as a language - for a first visit to the bare address only
+        // (application/src/lib/first-visit.ts). The country comes from a header the edge in
+        // front of this server adds, never from a lookup here: no address leaves for a
+        // third-party service, and no database of addresses ships with the shop.
+        //
+        // A header anybody could forge is fine for this: the most a forged one does is open
+        // the shop in another language, which the visitor can change with one tap.
+        locale: ({ request }) => {
+            for (const name of COUNTRY_HEADERS) {
+                const value = request.headers[name];
+                const country = Array.isArray(value) ? value[0] : value;
+                if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country.trim())) {
+                    return { lang: langOfCountry(country) };
+                }
+            }
+            return { lang: null };
+        },
+
         // GET /api/pay/catalog
         catalog: () => {
             // Only ACTIVE tiers reach the shop. A disabled card is not "hidden by the page" -

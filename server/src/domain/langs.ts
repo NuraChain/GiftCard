@@ -33,6 +33,87 @@ export const NO_SHOP_NAMES: ShopNames = {
     tr: ''
 };
 
+/**
+ * The language a visitor from each country most likely reads, for a FIRST visit only - see
+ * `langOfCountry`. Countries are ISO 3166-1 alpha-2 codes, upper case. A country missing here
+ * is not a mistake: its visitors fall through to their browser's language, then to English.
+ */
+const COUNTRY_LANGS: Record<string, Lang> = {
+    // Persian: Iran, and Afghanistan and Tajikistan, whose Dari and Tajik readers read it.
+    IR: 'fa',
+    AF: 'fa',
+    TJ: 'fa',
+    // Arabic.
+    SA: 'ar',
+    AE: 'ar',
+    IQ: 'ar',
+    KW: 'ar',
+    QA: 'ar',
+    BH: 'ar',
+    OM: 'ar',
+    YE: 'ar',
+    JO: 'ar',
+    SY: 'ar',
+    LB: 'ar',
+    PS: 'ar',
+    EG: 'ar',
+    LY: 'ar',
+    TN: 'ar',
+    DZ: 'ar',
+    MA: 'ar',
+    SD: 'ar',
+    // Spanish.
+    ES: 'es',
+    MX: 'es',
+    AR: 'es',
+    CO: 'es',
+    CL: 'es',
+    PE: 'es',
+    VE: 'es',
+    EC: 'es',
+    GT: 'es',
+    CU: 'es',
+    BO: 'es',
+    DO: 'es',
+    HN: 'es',
+    PY: 'es',
+    SV: 'es',
+    NI: 'es',
+    CR: 'es',
+    PA: 'es',
+    UY: 'es',
+    // Portuguese.
+    BR: 'pt',
+    PT: 'pt',
+    AO: 'pt',
+    MZ: 'pt',
+    // Hindi.
+    IN: 'hi',
+    // Simplified Chinese.
+    CN: 'zh',
+    SG: 'zh',
+    // Russian.
+    RU: 'ru',
+    BY: 'ru',
+    KZ: 'ru',
+    KG: 'ru',
+    // French.
+    FR: 'fr',
+    BE: 'fr',
+    LU: 'fr',
+    MC: 'fr',
+    SN: 'fr',
+    CI: 'fr',
+    // Turkish.
+    TR: 'tr',
+    CY: 'tr'
+};
+
+/** The language for a visitor's country, or null when the country says nothing useful. */
+export function langOfCountry(country: string): Lang | null {
+    return COUNTRY_LANGS[country.trim().toUpperCase()] ?? null;
+}
+
 /** The English name when the admin has set none: a Persian name on a Latin page reads as a bug. */
 export const DEFAULT_ENGLISH_NAME = 'Ashbringer';
 

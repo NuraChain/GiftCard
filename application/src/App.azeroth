@@ -28,6 +28,7 @@ import Icon from './ui/icon.azeroth';
 import ToastHost from './ui/toast-host.azeroth';
 import { provideToasts } from './ui/toast.ts';
 import { provideAdminSession } from './pages/admin/session.ts';
+import { rememberLang } from './lib/first-visit.ts';
 
 // Absolute, not bare fragments. The bar is shown on every route, and `#cards` from the
 // console would navigate to /admin#cards and scroll nowhere - the link has to name the page
@@ -238,6 +239,12 @@ component Chrome()
     // they move.
     document.documentElement.lang = LANG_INFO[lang].locale;
     document.documentElement.dir = dirOf(lang);
+
+    // The language the reader is in is the one the bare address opens in next time (see
+    // lib/first-visit.ts). Not from the console: it is Persian whatever its operator reads.
+    if (!location().pathname.startsWith('/admin')) {
+        rememberLang(lang);
+    }
 
     // The title is in a built file, so a rebrand would leave it stale. Setting it here is
     // what makes the name in the console the name in the browser tab, in the reader's words.
