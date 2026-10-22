@@ -1,0 +1,178 @@
+// The shop's own name, on its own.
+//
+// IT IS HERE BECAUSE IT BELONGS TO NEITHER NEIGHBOUR. The name is the browser tab, the page
+// header, the footer, the SMS text AND the transaction description on the gateway - so it
+// cannot sit inside the payment panel without the SMS settings depending on a field in it.
+// One field, one
+// job, one card.
+//
+// It is the only setting on this tab that changes something the BUYER sees on every page,
+// which is why saving it tells the storefront to re-read rather than waiting for a reload.
+//
+// THE OTHER LANGUAGES' NAMES sit under it. Each is optional: an empty one shows the English
+// name, and an empty English one shows DEFAULT_ENGLISH_NAME (server: domain/langs.ts).
+// The English name is also the one in the email and on the NOWPayments invoice.
+import { Save, Store } from 'lucide';
+
+import { client, failureText } from '../../../lib/api.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import { useCatalog } from '../../../lib/catalog.ts';
+import { INTL_LANGS, LANG_INFO } from '../../../lib/lang.ts';
+import {
+    DEFAULT_ENGLISH_NAME,
+    NO_SHOP_NAMES,
+    type ShopNames
+} from '../../../../../server/src/contract/index.ts';
+import Async from '../../../ui/async.azeroth';
+import Button from '../../../ui/button.azeroth';
+import Field from '../../../ui/field.azeroth';
+import Icon from '../../../ui/icon.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+import { useAdminSession } from '../session.ts';
+
+export default component ShopSettings()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+    const catalog = useCatalog();
+
+    state loaded = false;
+    state loading = false;
+    state error = '';
+    state saving = false;
+
+    state formAppName = '';
+    state formNames: ShopNames = NO_SHOP_NAMES;
+
+    const load = async (): Promise<void> => {
+        loading = true;
+        error = '';
+        try {
+            const view = await client.admin.settings();
+            formAppName = view.appName;
+            formNames = { ...NO_SHOP_NAMES, ...view.appNames };
+            loaded = true;
+        } catch (failure) {
+            error = failureText(failure, 'تنظیمات خوانده نشد');
+        } finally {
+            loading = false;
+        }
+    };
+
+    // Keyed on the session, not on mount - see the note in overview.azeroth.
+    effect (session.revision, session.unlocked) {
+        if (session.unlocked) {
+            void load();
+        }
+    }
+
+    const save = async (event: Event): Promise<void> => {
+        event.preventDefault();
+
+        // Nothing is saved before something is read - see the note in sms.azeroth. Posting the
+        // empty box this form starts with would rename the shop to nothing.
+        if (!loaded) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+        if (formAppName.trim() === '') {
+            notify.error('نام فروشگاه را وارد کنید');
+            return;
+        }
+
+        saving = true;
+        try {
+            // ONLY this panel's field is sent. An absent field keeps its value, so a save here
+            // cannot touch the gateway or SMS settings - which is the point of the split.
+            await client.admin.saveSettings({
+                input: { appName: formAppName, appNames: formNames }
+            });
+            // The name is on every page of the shop, so it is told to re-read rather than left
+            // showing the old one until somebody reloads.
+            void catalog.load();
+            notify.success('نام فروشگاه ذخیره شد');
+        } catch (failure) {
+            notify.error(failureText(failure, 'ذخیره نشد'));
+        } finally {
+            saving = false;
+        }
+    };
+
+    <section class="mt-section">
+        <h2 class="flex items-center gap-2 text-h3 font-bold">
+            <Icon icon={ Store } class="size-5 text-firouze" />
+            فروشگاه
+        </h2>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading || !loaded }
+                error={ error }
+                onRetry={ () => void load() }
+                skeleton={
+                    <div class="anim-pulse h-32 rounded-2xl border border-line bg-surface"></div>
+                }
+            >
+                <form
+                    class="rounded-2xl border border-line bg-surface p-5"
+                    novalidate
+                    onSubmit={ (event) => void save(event) }
+                >
+                    <Field
+                        label="نام فروشگاه"
+                        htmlFor="app-name"
+                        hint="روی عنوان مرورگر، سربرگ صفحه‌ها، پانویس، متن پیامک کد، و توضیح تراکنش در درگاه دیده می‌شود."
+                    >
+                        <TextInput
+                            id="app-name"
+                            placeholder="اشبرینگر"
+                            value={ formAppName }
+                            onChange={ (value) => formAppName = value }
+                        />
+                    </Field>
+
+                    <h3 class="mt-6 font-bold">نام در زبان‌های دیگر</h3>
+                    <p class="mt-1 text-caption text-muted">
+                        اختیاری. اگر خالی بماند، نام انگلیسی نمایش داده می‌شود؛ و اگر نام انگلیسی
+                        هم خالی باشد، Ashbringer. نام انگلیسی در ایمیل کد و فاکتور NOWPayments
+                        هم می‌آید.
+                    </p>
+                    <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <For each={ [...INTL_LANGS] } key={ (lang) => lang } let={ lang }>
+                            { /* A list row must be one element, and a Field is not one to the
+                                 list. `contents` keeps the wrapper out of the grid. */ }
+                            <div class="contents">
+                                <Field
+                                    label={ LANG_INFO[lang].name }
+                                    htmlFor={ `app-name-${ lang }` }
+                                >
+                                    <TextInput
+                                        id={ `app-name-${ lang }` }
+                                        placeholder={
+                                            lang === 'en' || formNames.en.trim() === ''
+                                                ? DEFAULT_ENGLISH_NAME
+                                                : formNames.en
+                                        }
+                                        value={ formNames[lang] }
+                                        onChange={ (value) => formNames = { ...formNames, [lang]: value } }
+                                    />
+                                </Field>
+                            </div>
+                        </For>
+                    </div>
+
+                    <Button
+                        type="submit"
+                        variant="primary"
+                        glyph={ Save }
+                        class="mt-5"
+                        busy={ saving }
+                        busyText="در حال ذخیره..."
+                    >
+                        ذخیره نام
+                    </Button>
+                </form>
+            </Async>
+        </div>
+    </section>
+}

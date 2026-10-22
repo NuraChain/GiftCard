@@ -1,0 +1,326 @@
+// The catalogue editor: what the shop sells. NOT at what price.
+//
+// THERE IS NO PRICE FIELD HERE ANY MORE. A card costs its dollar figure times the tether
+// rate times one shop-wide margin, so the only two things an operator sets are the
+// denomination (below) and the margin (the pricing panel underneath this one). The Toman
+// figure beside each card is a PREVIEW of that arithmetic, computed by the server on the way
+// out - it is read-only because typing over it would be inventing a second price that the
+// next rate refresh would silently contradict.
+//
+// A removal is not necessarily a delete. A tier with codes or orders behind it is
+// DEACTIVATED so the history that explains what someone paid survives - the server decides
+// which of the two happened and the notice reports it, so the dialog promises the weaker one.
+import { Plus, Save, Settings2, Trash2 } from 'lucide';
+
+import { client, failureText } from '../../../lib/api.ts';
+import type { TierInput, TierRow } from '../../../../../server/src/contract/index.ts';
+import { toman } from '../../../lib/format.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import Async from '../../../ui/async.azeroth';
+import Button from '../../../ui/button.azeroth';
+import Field from '../../../ui/field.azeroth';
+import Icon from '../../../ui/icon.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+import { useAdminSession } from '../session.ts';
+
+/** A blank card, ready to be filled in. */
+function emptyTier(sort: number): TierInput {
+    return {
+        amount: 0,
+        title: '',
+        blurb: '',
+        titleEn: '',
+        blurbEn: '',
+        recommended: false,
+        active: true,
+        sort
+    };
+}
+
+/**
+ * A saved card, as the editor holds it. The computed `toman` is dropped on the way in: it is
+ * the server's answer, and sending it back would be the console claiming to set a price.
+ */
+function toDraft(tier: TierRow): TierInput {
+    return {
+        amount: tier.amount,
+        title: tier.title,
+        blurb: tier.blurb,
+        titleEn: tier.titleEn,
+        blurbEn: tier.blurbEn,
+        recommended: tier.recommended,
+        active: tier.active,
+        sort: tier.sort
+    };
+}
+
+export default component TierSettings()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+
+    state tiers: TierRow[] = [];
+    state draft: TierInput | null = null;
+    state loading = false;
+    state error = '';
+    state saving = false;
+
+    const load = async (): Promise<void> => {
+        loading = true;
+        error = '';
+        try {
+            tiers = (await client.admin.tiers()).tiers;
+        } catch (failure) {
+            error = failureText(failure, 'کارت‌ها خوانده نشدند');
+        } finally {
+            loading = false;
+        }
+    };
+
+    // Keyed on the session, not on mount - see the note in overview.azeroth.
+    effect (session.revision, session.unlocked) {
+        if (session.unlocked) {
+            void load();
+        }
+    }
+
+    const saveTier = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        if (draft === null) {
+            return;
+        }
+        saving = true;
+        try {
+            tiers = (await client.admin.saveTier({ input: draft })).tiers;
+            notify.success(`کارت $${ draft.amount } ذخیره شد`);
+            draft = null;
+        } catch (failure) {
+            notify.error(failureText(failure, 'ذخیره نشد'));
+        } finally {
+            saving = false;
+        }
+    };
+
+    const removeTier = async (tier: TierRow): Promise<void> => {
+        // A tier with codes or orders behind it is DEACTIVATED rather than deleted, so the
+        // dialog promises the weaker of the two - the server decides which actually happens
+        // and the notice below reports it.
+        if (!confirm(`کارت $${ tier.amount } از فروش برداشته شود؟`)) {
+            return;
+        }
+        try {
+            const result = await client.admin.removeTier({ query: { amount: tier.amount } });
+            await load();
+            notify.success(
+                result.outcome === 'deleted'
+                    ? `کارت $${ tier.amount } حذف شد`
+                    : `کارت $${ tier.amount } از فروش برداشته شد. سابقهٔ فروش آن نگه داشته می‌شود.`
+            );
+        } catch (failure) {
+            notify.error(failureText(failure, 'حذف نشد'));
+        }
+    };
+
+    <section>
+        <div class="flex flex-wrap items-center gap-3">
+            <h2 class="flex items-center gap-2 text-h3 font-bold">
+                <Icon icon={ Settings2 } class="size-5 text-firouze" />
+                کارت‌ها
+            </h2>
+            <Button
+                glyph={ Plus }
+                compact
+                class="ms-auto"
+                onClick={ () => draft = emptyTier((tiers.length + 1) * 10) }
+            >
+                کارت تازه
+            </Button>
+        </div>
+        <p class="mt-2 text-small text-muted">
+            مبلغ دلاری نام کارت است؛ قیمت تومانی از نرخ تتر حساب می‌شود و اینجا فقط نمایش داده
+            می‌شود. کارتی که غیرفعال شود از فروشگاه برداشته می‌شود ولی سابقه‌اش می‌ماند.
+        </p>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading && tiers.length === 0 }
+                error={ error }
+                empty={ !loading && tiers.length === 0 && draft === null }
+                emptyText="هنوز کارتی تعریف نشده است."
+                onRetry={ () => void load() }
+                skeleton={
+                    <div class="anim-pulse h-40 rounded-2xl border border-line bg-surface"></div>
+                }
+            >
+                { /* `sm:contents` dissolves the wrapper from `sm` up, so the desktop row is
+                     the same single flex line it always was. Below that the card is two
+                     blocks - what the tier IS, then what you can do to it - rather than
+                     four labels and two buttons wrapping into four lines. */ }
+                <ul class="grid gap-3">
+                    <For each={ tiers } key={ (tier) => tier.amount } let={ tier }>
+                        <li
+                            class={ `rounded-2xl border p-4 sm:flex sm:flex-wrap sm:items-center sm:gap-3 ${
+                                tier.active
+                                    ? 'border-line bg-surface'
+                                    : 'border-line/60 bg-surface/50'
+                            }` }
+                        >
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 sm:contents">
+                                <span dir="ltr" class="latin text-lg font-bold">
+                                    ${ tier.amount }
+                                </span>
+                                <span class="text-small">{ tier.title }</span>
+                                <span class="text-small text-muted">
+                                    { tier.toman === null
+                                        ? 'قیمت در دسترس نیست'
+                                        : `${ toman(tier.toman) } تومان` }
+                                </span>
+                                <Show when={ tier.recommended }>
+                                    <span class="rounded-full bg-firouze/15 px-2.5 py-0.5 text-caption font-bold text-firouze">
+                                        پیشنهادی
+                                    </span>
+                                </Show>
+                                <Show when={ !tier.active }>
+                                    <span class="rounded-full bg-muted/15 px-2.5 py-0.5 text-caption font-bold text-muted">
+                                        غیرفعال
+                                    </span>
+                                </Show>
+                            </div>
+
+                            <div class="mt-3 flex gap-2 sm:mt-0 sm:ms-auto">
+                                <Button size="sm" grow onClick={ () => draft = toDraft(tier) }>
+                                    ویرایش
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    grow
+                                    variant="retreat"
+                                    glyph={ Trash2 }
+                                    onClick={ () => void removeTier(tier) }
+                                >
+                                    حذف
+                                </Button>
+                            </div>
+                        </li>
+                    </For>
+                </ul>
+            </Async>
+        </div>
+
+        <Show when={ draft } let={ current }>
+            <form
+                class="mt-4 rounded-2xl border border-firouze bg-surface p-5"
+                novalidate
+                onSubmit={ (event) => void saveTier(event) }
+            >
+                <h3 class="font-bold">
+                    <Show when={ current.amount > 0 } fallback={ <span>کارت تازه</span> }>
+                        <span>
+                            ویرایش کارت{ ' ' }
+                            <span dir="ltr" class="latin">
+                                ${ current.amount }
+                            </span>
+                        </span>
+                    </Show>
+                </h3>
+
+                <Field
+                    label="مبلغ دلاری"
+                    htmlFor="tier-amount"
+                    class="mt-4"
+                    hint="قیمت تومانی از این عدد و نرخ تتر حساب می‌شود."
+                >
+                    <TextInput
+                        id="tier-amount"
+                        type="number"
+                        latin
+                        value={ String(current.amount) }
+                        onChange={ (next) => draft = { ...current, amount: Number(next) } }
+                    />
+                </Field>
+
+                <Field label="عنوان" htmlFor="tier-title" class="mt-4">
+                    <TextInput
+                        id="tier-title"
+                        value={ current.title }
+                        onChange={ (next) => draft = { ...current, title: next } }
+                    />
+                </Field>
+
+                <label class="mt-4 block text-small font-bold" for="tier-blurb">
+                    توضیح روی کارت
+                </label>
+                <textarea
+                    id="tier-blurb"
+                    rows="3"
+                    class="mt-2 w-full rounded-xl border border-line bg-paper p-4 text-small outline-none focus:border-firouze"
+                    value={ current.blurb }
+                    onInput={ (event) => draft = { ...current, blurb: (event.currentTarget as HTMLTextAreaElement).value } }
+                ></textarea>
+
+                { /* The dollar shop's copy, shown on EVERY non-Persian page. Left empty, each
+                     page titles the card from its amount in its own language ("$10 gift
+                     card", "Carte cadeau de 10 $") and shows no description. */ }
+                <Field
+                    label="عنوان انگلیسی"
+                    htmlFor="tier-title-en"
+                    class="mt-4"
+                    hint="در همهٔ زبان‌های غیر فارسی نمایش داده می‌شود. اگر خالی بماند، هر زبان عنوان کارت را از مبلغ و به زبان خودش می‌سازد."
+                >
+                    <TextInput
+                        id="tier-title-en"
+                        latin
+                        placeholder={ current.amount > 0 ? `$${ current.amount } gift card` : '' }
+                        value={ current.titleEn }
+                        onChange={ (next) => draft = { ...current, titleEn: next } }
+                    />
+                </Field>
+
+                <label class="mt-4 block text-small font-bold" for="tier-blurb-en">
+                    توضیح انگلیسی روی کارت
+                </label>
+                <textarea
+                    id="tier-blurb-en"
+                    rows="3"
+                    dir="ltr"
+                    class="mt-2 w-full rounded-xl border border-line bg-paper p-4 text-small outline-none focus:border-firouze"
+                    value={ current.blurbEn }
+                    onInput={ (event) => draft = { ...current, blurbEn: (event.currentTarget as HTMLTextAreaElement).value } }
+                ></textarea>
+
+                <div class="mt-4 flex flex-wrap gap-4">
+                    <label class="flex items-center gap-2 text-small">
+                        <input
+                            type="checkbox"
+                            checked={ current.active }
+                            onChange={ (event) => draft = { ...current, active: (event.currentTarget as HTMLInputElement).checked } }
+                        />
+                        فعال (در فروشگاه دیده می‌شود)
+                    </label>
+                    <label class="flex items-center gap-2 text-small">
+                        <input
+                            type="checkbox"
+                            checked={ current.recommended }
+                            onChange={ (event) => draft = { ...current, recommended: (event.currentTarget as HTMLInputElement).checked } }
+                        />
+                        پیشنهادی (فقط یکی می‌تواند باشد)
+                    </label>
+                </div>
+
+                <div class="mt-5 flex gap-2">
+                    <Button
+                        type="submit"
+                        variant="primary"
+                        glyph={ Save }
+                        busy={ saving }
+                        busyText="در حال ذخیره..."
+                        disabled={ current.amount < 1 || current.title === '' }
+                    >
+                        ذخیره
+                    </Button>
+                    <Button onClick={ () => draft = null }>انصراف</Button>
+                </div>
+            </form>
+        </Show>
+    </section>
+}

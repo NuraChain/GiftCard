@@ -27,13 +27,13 @@ import {
     CreditCard,
     ShieldCheck,
     MessageSquareText,
-    type LucideIcon
-} from 'lucide-react';
+    type IconNode
+} from 'lucide';
 
 import type { Lang } from './lang.ts';
 
 export interface Step {
-    glyph: LucideIcon;
+    glyph: IconNode;
     title: string;
     body: string;
 }
@@ -213,7 +213,7 @@ export const STEPS: Record<Lang, Step[]> = {
 };
 
 export interface Assurance {
-    glyph: LucideIcon;
+    glyph: IconNode;
 
     /** Two or three words - long enough to mean something, short enough not to wrap. */
     label: string;

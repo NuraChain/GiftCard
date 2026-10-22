@@ -1,0 +1,221 @@
+// The English shop's delivery: Resend. The Persian shop texts its codes (./sms.azeroth); the
+// English one emails them, through this.
+import { Mail, Save, Send } from 'lucide';
+
+import { client, failureText } from '../../../lib/api.ts';
+import type { SettingsView } from '../../../../../server/src/contract/index.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import Async from '../../../ui/async.azeroth';
+import Button from '../../../ui/button.azeroth';
+import Field from '../../../ui/field.azeroth';
+import Icon from '../../../ui/icon.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+import { useAdminSession } from '../session.ts';
+
+export default component EmailSettings()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+    state settings: SettingsView | null = null;
+    state loading = false;
+    state error = '';
+    state saving = false;
+    state testing = false;
+    state apiKey = '';
+    state from = '';
+    state base = '';
+    state testEmail = '';
+
+    const load = async (): Promise<void> => {
+        loading = true;
+        error = '';
+        try {
+            const view = await client.admin.settings();
+            settings = view;
+            from = view.mailFrom;
+            base = view.resendBase;
+        } catch (failure) {
+            error = failureText(failure, 'تنظیمات ایمیل خوانده نشد');
+        } finally {
+            loading = false;
+        }
+    };
+
+    effect (session.revision, session.unlocked) {
+        if (session.unlocked) {
+            void load();
+        }
+    }
+
+    const save = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        if (settings === null) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+        try {
+            const url = new URL(base);
+            if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+                throw new Error('invalid protocol');
+            }
+        } catch {
+            notify.error('آدرس API معتبر نیست');
+            return;
+        }
+
+        saving = true;
+        try {
+            settings = await client.admin.saveSettings({
+                input: {
+                    mailFrom: from,
+                    // No trailing slash: the client appends `/emails` itself.
+                    resendBase: base.trim().replace(/\/+$/, ''),
+                    resendApiKey: apiKey === '' ? undefined : apiKey
+                }
+            });
+            apiKey = '';
+            notify.success('تنظیمات ایمیل ذخیره شد');
+        } catch (failure) {
+            notify.error(failureText(failure, 'ذخیره نشد'));
+        } finally {
+            saving = false;
+        }
+    };
+
+    const sendTest = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        testing = true;
+        try {
+            const result = await client.admin.testEmail({ input: { email: testEmail } });
+            if (result.ok) {
+                notify.success('ایمیل آزمایشی ارسال شد');
+            } else {
+                notify.error(`ارسال نشد: ${ result.reason }`);
+            }
+        } catch (failure) {
+            notify.error(failureText(failure, 'ارسال نشد'));
+        } finally {
+            testing = false;
+        }
+    };
+
+    <section class="mt-section">
+        <h2 class="flex items-center gap-2 text-h3 font-bold">
+            <Icon icon={ Mail } class="size-5 text-firouze" />
+            ایمیل (Resend) - فروشگاه انگلیسی
+        </h2>
+        <p class="mt-2 text-small text-muted">
+            در فروشگاه انگلیسی (/en) خریدار به‌جای موبایل ایمیل وارد می‌کند و کد پس از تأیید
+            پرداخت با Resend به ایمیلش فرستاده می‌شود. آدرس فرستنده باید روی دامنه‌ای باشد که در
+            Resend تأیید شده است.
+        </p>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading || settings === null }
+                error={ error }
+                onRetry={ () => void load() }
+                skeleton={
+                    <div class="anim-pulse h-48 rounded-2xl border border-line bg-surface"></div>
+                }
+            >
+                <form
+                    class="rounded-2xl border border-line bg-surface p-5"
+                    novalidate
+                    onSubmit={ (event) => void save(event) }
+                >
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <Field
+                            label="کلید API در Resend"
+                            htmlFor="resend-api-key"
+                            hint="پس از ذخیره نمایش داده نمی‌شود. برای نگه داشتن کلید فعلی، کادر را خالی بگذارید."
+                        >
+                            <TextInput
+                                id="resend-api-key"
+                                type="password"
+                                latin
+                                autoComplete="off"
+                                placeholder={
+                                    settings?.resendApiKeySet
+                                        ? `${ settings.resendApiKeyMasked } (برای تغییر وارد کنید)`
+                                        : 're_...'
+                                }
+                                value={ apiKey }
+                                onChange={ (value) => apiKey = value }
+                            />
+                        </Field>
+                        <Field
+                            label="آدرس فرستنده (From)"
+                            htmlFor="mail-from"
+                            hint="مثلاً Shop <codes@example.com>"
+                        >
+                            <TextInput
+                                id="mail-from"
+                                latin
+                                autoComplete="off"
+                                placeholder="codes@example.com"
+                                value={ from }
+                                onChange={ (value) => from = value }
+                            />
+                        </Field>
+                        <Field
+                            label="آدرس API"
+                            htmlFor="resend-base"
+                            hint="اگر api.resend.com از سرور در دسترس نیست، آدرس یک رله را اینجا بگذارید."
+                        >
+                            <TextInput
+                                id="resend-base"
+                                latin
+                                inputMode="url"
+                                autoComplete="off"
+                                placeholder="https://api.resend.com"
+                                value={ base }
+                                onChange={ (value) => base = value }
+                            />
+                        </Field>
+                    </div>
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <Button type="submit" glyph={ Save } disabled={ saving }>
+                            { saving ? 'در حال ذخیره…' : 'ذخیره تنظیمات ایمیل' }
+                        </Button>
+                        <span class="text-caption text-muted">
+                            وضعیت: { settings?.mailReady ? 'آماده' : 'خاموش' }
+                        </span>
+                    </div>
+                </form>
+            </Async>
+
+            <form
+                class="mt-4 rounded-2xl border border-line bg-surface p-5"
+                novalidate
+                onSubmit={ (event) => void sendTest(event) }
+            >
+                <h3 class="font-bold">آزمایش ارسال</h3>
+                <p class="mt-1 text-caption text-muted">
+                    یک ایمیل آزمایشی با کد ساختگی به آدرس واردشده می‌فرستد.
+                </p>
+                <div class="mt-4 flex flex-wrap items-end gap-3">
+                    <Field label="ایمیل آزمایشی" htmlFor="test-email">
+                        <TextInput
+                            id="test-email"
+                            type="email"
+                            latin
+                            inputMode="email"
+                            autoComplete="email"
+                            placeholder="you@example.com"
+                            value={ testEmail }
+                            onChange={ (value) => testEmail = value }
+                        />
+                    </Field>
+                    <Button
+                        type="submit"
+                        glyph={ Send }
+                        disabled={ testing || testEmail.trim() === '' }
+                    >
+                        { testing ? 'در حال ارسال…' : 'ارسال ایمیل آزمایشی' }
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </section>
+}

@@ -9,12 +9,16 @@
         "allowImportingTsExtensions": true,
         "isolatedModules": true,
         "noEmit": true,
-        "jsx": "react-jsx",
+        "types": ["vitest/globals"],
+
+        // Editors resolve `.azeroth` imports with their real types through this. The command
+        // line uses `azeroth-tsc`, which does the same for `.ts` and `.azeroth` files alike.
+        "plugins": [{ "name": "@azerothjs/typescript-plugin" }],
 
         "strict": true,
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true
     },
-    "include": ["src", "tests", "vite.config.ts", "eslint.config.ts"]
+    "include": ["src", "tests", "vite.config.ts"]
 }

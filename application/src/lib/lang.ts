@@ -11,7 +11,13 @@
 // and neither ever asks "is this English".
 //
 // The console is Persian only, and lives outside all of this.
-import { useLocation } from 'react-router';
+//
+// THE LANGUAGE IS READ ONCE, AT SETUP. A component never re-renders here - only the nodes that
+// read a changing value update - so a language that could change under a mounted component
+// would have to be threaded through every string as a getter. Instead the shell REBUILDS the
+// whole page when the language changes (see App.azeroth), and every component below it can
+// take its language, and its words, as plain values.
+import { untrack, useRoute } from 'azerothjs';
 
 import { INTL_LANGS, LANGS, type IntlLang, type Lang } from '../../../server/src/contract/index.ts';
 
@@ -53,9 +59,13 @@ export function langOf(pathname: string): Lang {
     return (LANGS as readonly string[]).includes(first) && first !== 'fa' ? (first as Lang) : 'fa';
 }
 
-/** The current language, from the router - so it changes when the address does. */
+/**
+ * The page's language, from the router. Call it during a component's setup: the value is
+ * fixed for the life of the component, because the shell rebuilds the page when it changes.
+ */
 export function useLang(): Lang {
-    return langOf(useLocation().pathname);
+    const location = useRoute();
+    return untrack(() => langOf(location().pathname));
 }
 
 /** Where a language's landing page lives. Persian keeps the bare root it always had. */

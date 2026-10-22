@@ -1,0 +1,111 @@
+// The four states every fetch has, in one place.
+//
+// A request is not "data or nothing". It is loading, or it failed, or it succeeded and found
+// nothing, or it succeeded with content - and a page that only draws the last one lies about
+// the other three. Before this, a failed catalogue left the shop silently unbuyable and a
+// ledger search showed the previous results while the new ones were still in flight.
+//
+// This is deliberately NOT a toast. A failed fetch needs a retry button and has to stay on
+// screen until someone acts on it; a self-dismissing pill is the wrong container for
+// something that must be acted upon.
+//
+// The children are only BUILT in the content state: they read data that does not exist while
+// loading, and building them early would read it anyway.
+import type { MountNode } from 'azerothjs';
+import { RefreshCw, TriangleAlert } from 'lucide';
+
+import { useCopy, type Lang } from '../lib/lang.ts';
+import Icon from './icon.azeroth';
+
+const COPY: Record<Lang, { retry: string; loading: string; empty: string }> = {
+    fa: { retry: 'تلاش دوباره', loading: 'در حال بارگذاری...', empty: 'چیزی برای نمایش نیست.' },
+    en: { retry: 'Try again', loading: 'Loading...', empty: 'Nothing to show.' },
+    ar: { retry: 'حاول مرة أخرى', loading: 'جارٍ التحميل...', empty: 'لا يوجد ما يُعرض.' },
+    es: { retry: 'Reintentar', loading: 'Cargando...', empty: 'No hay nada que mostrar.' },
+    pt: { retry: 'Tentar novamente', loading: 'Carregando...', empty: 'Nada para mostrar.' },
+    hi: { retry: 'फिर से कोशिश करें', loading: 'लोड हो रहा है...', empty: 'दिखाने के लिए कुछ नहीं है।' },
+    zh: { retry: '重试', loading: '加载中...', empty: '暂无内容。' },
+    ru: { retry: 'Повторить', loading: 'Загрузка...', empty: 'Здесь пока ничего нет.' },
+    fr: { retry: 'Réessayer', loading: 'Chargement...', empty: 'Rien à afficher.' },
+    tr: { retry: 'Tekrar dene', loading: 'Yükleniyor...', empty: 'Gösterilecek bir şey yok.' }
+};
+
+export interface AsyncProps {
+    /** True while a request is in flight. */
+    loading: boolean;
+
+    /** A human-readable failure, or empty when there is none. */
+    error: string;
+
+    /** True when the request succeeded and there is genuinely nothing to show. */
+    empty?: boolean;
+
+    /** What to say when `empty`. */
+    emptyText?: string;
+
+    /** Runs when the reader asks to try again. */
+    onRetry: () => void;
+
+    /**
+     * The skeleton shown while loading. Given as a node rather than a flag so a table can
+     * show rows and a card grid can show cards - a spinner in the middle of a page tells the
+     * reader less than a shape that says what is coming.
+     */
+    skeleton?: MountNode;
+
+    children?: MountNode;
+}
+
+export default component Async(props: AsyncProps)
+{
+    const t = useCopy(COPY);
+
+    // Failure first: a stale success underneath must never be what the reader sees while an
+    // error is true.
+    //
+    // ONE derived state rather than four conditions read by the switch: a derived value only
+    // notifies when it CHANGES, so a background refresh that leaves the page in the content
+    // state does not rebuild the content - and with it a card the buyer is half way through.
+    derived phase = props.error !== ''
+        ? 'error'
+        : props.loading
+          ? 'loading'
+          : props.empty === true
+            ? 'empty'
+            : 'content';
+
+    <Switch fallback={ <div class="contents">{ props.children }</div> }>
+        <Match when={ phase === 'error' }>
+            <div class="rounded-2xl border border-danger/40 bg-danger/5 p-5">
+                <p class="flex items-start gap-2 text-small text-danger">
+                    <Icon icon={ TriangleAlert } class="size-5 shrink-0" />
+                    <span>{ props.error }</span>
+                </p>
+                <button
+                    type="button"
+                    class="mt-4 flex min-h-tap items-center gap-2 rounded-xl border border-line px-4 text-small font-bold hover:border-firouze hover:text-firouze"
+                    onClick={ () => props.onRetry() }
+                >
+                    <Icon icon={ RefreshCw } class="size-4" />
+                    { t.retry }
+                </button>
+            </div>
+        </Match>
+        <Match when={ phase === 'loading' }>
+            <div aria-busy="true" aria-live="polite">
+                <span class="sr-only">{ t.loading }</span>
+                <Show
+                    when={ props.skeleton !== undefined }
+                    fallback={ <div class="anim-pulse h-24 rounded-2xl border border-line bg-surface"></div> }
+                >
+                    { props.skeleton }
+                </Show>
+            </div>
+        </Match>
+        <Match when={ phase === 'empty' }>
+            <p class="rounded-2xl border border-line bg-surface p-5 text-small text-muted">
+                { props.emptyText ?? t.empty }
+            </p>
+        </Match>
+    </Switch>
+}

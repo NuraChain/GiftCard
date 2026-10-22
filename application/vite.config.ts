@@ -1,9 +1,11 @@
-import react from '@vitejs/plugin-react';
+import { azeroth } from '@azerothjs/compiler';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-    plugins: [react(), tailwindcss()],
+    // `.azeroth` components compile to direct DOM updates; there is no virtual DOM to ship.
+    // The plugin also type-checks every component as it builds it.
+    plugins: [azeroth(), tailwindcss()],
     server: {
         // Pinned, and `strictPort` so a busy 4200 is an error rather than a silent
         // move to another port: the server's PUBLIC_BASE_URL names this exact origin,
@@ -23,6 +25,9 @@ export default defineConfig({
         }
     },
     test: {
-        environment: 'happy-dom'
+        environment: 'happy-dom',
+        // @azerothjs/testing registers its own unmount-everything in `afterEach` when the
+        // test globals are on, which is what keeps one test's tree out of the next one.
+        globals: true
     }
 });

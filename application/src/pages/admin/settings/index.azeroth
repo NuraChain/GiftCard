@@ -1,0 +1,51 @@
+// The settings tab: nine unrelated jobs, nine components, one page.
+//
+// They share a tab because an operator thinks of them as "the shop's own controls", not
+// because they share any state - each loads and saves independently, so one failing to load
+// does not blank the others, and each form sends ONLY its own fields. The server treats an
+// absent field as unchanged, which is what makes that safe: saving SMS settings cannot
+// touch the merchant id, and neither can touch the tether rate.
+//
+// THE GATEWAY AND THE SMS PANEL ARE APART because they fail apart - a broken SMS key stops
+// delivery, a wrong merchant id sends the takings to
+// a stranger - and an operator fixing one should never be editing a form that can save the
+// other. The shop NAME sits in its own card above both for the same reason: it is the tab
+// title, the SMS text AND the transaction description, so it belongs to neither.
+//
+// Every one of these changes something that costs money, access, or secrecy, and each guards
+// itself: the merchant id asks for confirmation, the rate and the margin ask too (they
+// multiply every card at once), a tier removal says which of the two things it did, sending
+// the database to Telegram asks before it does it, and rotating the key demands the current
+// one even though a session is already open.
+//
+// THE ENGLISH SHOP'S TWO CARDS - NOWPayments and Resend - sit after the Persian shop's gateway and
+// SMS panel, in the same order: how a buyer pays, then how their code reaches them.
+//
+// PRICING SITS SECOND, right under the catalogue. The cards above it no longer carry prices -
+// they carry denominations - so the panel that explains what those cost belongs next to them
+// rather than below the gateway credentials.
+import AdminShell from '../shell.azeroth';
+import TierSettings from './tiers.azeroth';
+import PricingSettings from './pricing.azeroth';
+import ShopSettings from './shop.azeroth';
+import GatewaySettings from './gateway.azeroth';
+import SmsSettings from './sms.azeroth';
+import NowPaymentsSettings from './nowpayments.azeroth';
+import EmailSettings from './email.azeroth';
+import TelegramSettings from './telegram.azeroth';
+import AdminKeySettings from './admin-key.azeroth';
+
+export default component AdminSettings()
+{
+    <AdminShell>
+        <TierSettings />
+        <PricingSettings />
+        <ShopSettings />
+        <GatewaySettings />
+        <SmsSettings />
+        <NowPaymentsSettings />
+        <EmailSettings />
+        <TelegramSettings />
+        <AdminKeySettings />
+    </AdminShell>
+}

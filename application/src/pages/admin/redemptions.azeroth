@@ -1,0 +1,244 @@
+// The payout requests: every code cashed out, and where its value was asked to go.
+//
+// Rows nobody was told about are pinned to the top by the server and tinted here: each is a
+// person waiting on a transfer the operator may never have heard about. The address is
+// copied by a tap, because a hand-typed address is how USDT is lost.
+import { Search } from 'lucide';
+
+import { client, failureText } from '../../lib/api.ts';
+import type { RedemptionRow } from '../../../../server/src/contract/index.ts';
+import { count, moment } from '../../lib/format.ts';
+import { useToasts } from '../../ui/toast.ts';
+import Async from '../../ui/async.azeroth';
+import Button from '../../ui/button.azeroth';
+import Icon from '../../ui/icon.azeroth';
+import TextInput from '../../ui/text-input.azeroth';
+import AdminShell from './shell.azeroth';
+import { useAdminSession } from './session.ts';
+
+export default component Redemptions()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+
+    state rows: RedemptionRow[] = [];
+    state total = 0;
+    state pageSize = 25;
+    state page = 1;
+    state search = '';
+    state loading = false;
+    state error = '';
+
+    derived lastPage = Math.max(1, Math.ceil(total / pageSize));
+
+    // See orders.azeroth: a plain variable rather than state, so a load started from a
+    // handler reads what that handler set.
+    let query = { search: '', page: 1 };
+
+    const load = async (): Promise<void> => {
+        loading = true;
+        error = '';
+        try {
+            const found = await client.admin.redemptions({ query: { ...query } });
+            rows = found.rows;
+            total = found.total;
+            pageSize = found.pageSize;
+        } catch (failure) {
+            error = failureText(failure, 'درخواست‌های برداشت خوانده نشدند');
+        } finally {
+            loading = false;
+        }
+    };
+
+    // Keyed on the session, not on mount - see the note in overview.azeroth.
+    effect (session.revision, session.unlocked) {
+        if (session.unlocked) {
+            void load();
+        }
+    }
+
+    const runSearch = (event: Event): void => {
+        event.preventDefault();
+        page = 1;
+        query = { search, page: 1 };
+        void load();
+    };
+
+    const goToPage = (next: number): void => {
+        const target = Math.min(Math.max(1, next), lastPage);
+        page = target;
+        query = { search: query.search, page: target };
+        void load();
+    };
+
+    const clearSearch = (): void => {
+        search = '';
+        page = 1;
+        query = { search: '', page: 1 };
+        void load();
+    };
+
+    const copy = async (text: string, done: string): Promise<void> => {
+        try {
+            await navigator.clipboard.writeText(text);
+            notify.success(done);
+        } catch {
+            notify.error('کپی نشد. متن را دستی انتخاب کنید.');
+        }
+    };
+
+    <AdminShell>
+        <h2 class="text-h3 font-bold">درخواست‌های برداشت</h2>
+        <p class="mt-2 text-small text-muted">
+            هر کدی که redeem شده، با مبلغ و آدرسی که برایش خواسته شده. انتقال را دستی انجام
+            دهید. ردیف‌هایی که خبرشان به شما نرسیده بود اول می‌آیند، بقیه از تازه به قدیم.
+        </p>
+
+        <form class="mt-4 flex flex-wrap gap-2" novalidate onSubmit={ (event) => runSearch(event) }>
+            <label class="sr-only" for="redemption-search">
+                جستجو در درخواست‌های برداشت
+            </label>
+            <div class="relative min-w-0 flex-1">
+                <TextInput
+                    id="redemption-search"
+                    tone="surface"
+                    class="ps-11 pe-4 text-small"
+                    placeholder="کد، آدرس کیف پول یا شماره موبایل خریدار"
+                    value={ search }
+                    onChange={ (value) => search = value }
+                />
+                <span class="pointer-events-none absolute inset-y-0 start-4 flex items-center text-muted">
+                    <Icon icon={ Search } class="size-4" />
+                </span>
+            </div>
+            <Button type="submit" disabled={ loading }>
+                جستجو
+            </Button>
+            <Show when={ search !== '' }>
+                <Button variant="ghost" onClick={ () => clearSearch() }>
+                    پاک کردن
+                </Button>
+            </Show>
+        </form>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading }
+                error={ error }
+                empty={ rows.length === 0 }
+                emptyText={
+                    search === ''
+                        ? 'هنوز هیچ کدی redeem نشده است.'
+                        : 'درخواستی با این مشخصات پیدا نشد.'
+                }
+                onRetry={ () => void load() }
+                skeleton={
+                    <div class="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div>
+                }
+            >
+                { /* `table-cards` redraws these rows as stacked cards below `md` - see the
+                     note on the same table in orders.azeroth. */ }
+                <div class="overflow-x-auto rounded-2xl border border-line bg-surface">
+                    <table class="table-cards w-full text-start text-small">
+                        <thead class="border-b border-line text-caption text-muted">
+                            <tr>
+                                <th class="p-3 text-start font-normal">زمان</th>
+                                <th class="p-3 text-start font-normal">مبلغ</th>
+                                <th class="p-3 text-start font-normal">شبکه</th>
+                                <th class="p-3 text-start font-normal">آدرس کیف پول</th>
+                                <th class="p-3 text-start font-normal">خریدار</th>
+                                <th class="p-3 text-start font-normal">اطلاع‌رسانی</th>
+                                <th class="p-3 text-start font-normal">کد</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <For each={ rows } key={ (row) => row.code } let={ row }>
+                                <tr class={ `border-b border-line/60 ${ row.notified ? '' : 'bg-danger/5' }` }>
+                                    <td
+                                        data-label="زمان"
+                                        class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-6"
+                                    >
+                                        { moment(row.claimedAt) }
+                                    </td>
+                                    <td
+                                        data-label="مبلغ"
+                                        class="cell-inline p-3 whitespace-nowrap font-bold max-md:order-1"
+                                    >
+                                        <span dir="ltr" class="latin">
+                                            ${ row.amount } USDT
+                                        </span>
+                                    </td>
+                                    <td
+                                        data-label="شبکه"
+                                        class="cell-inline p-3 whitespace-nowrap max-md:order-2"
+                                    >
+                                        <span dir="ltr" class="latin">
+                                            { row.network }
+                                        </span>
+                                    </td>
+                                    <td
+                                        data-label="آدرس کیف پول"
+                                        class="cell-action p-3 max-md:order-3"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="py-1 text-caption break-all hover:text-firouze max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line max-md:px-3"
+                                            title="کپی کردن آدرس"
+                                            onClick={ () => void copy(row.wallet, 'آدرس کپی شد') }
+                                        >
+                                            <span dir="ltr" class="latin">
+                                                { row.wallet }
+                                            </span>
+                                        </button>
+                                    </td>
+                                    <td
+                                        data-label="خریدار"
+                                        class="cell-inline p-3 whitespace-nowrap max-md:order-4"
+                                    >
+                                        <span dir="ltr" class="latin">
+                                            { row.phone }
+                                        </span>
+                                    </td>
+                                    <td
+                                        data-label="اطلاع‌رسانی"
+                                        class={ `cell-inline p-3 whitespace-nowrap font-bold max-md:order-5 ${ row.notified ? 'text-firouze' : 'text-danger' }` }
+                                    >
+                                        { row.notified ? 'خبر داده شد' : 'خبر نرسید' }
+                                    </td>
+                                    <td
+                                        data-label="کد"
+                                        class="cell-inline p-3 whitespace-nowrap text-caption text-muted max-md:order-7"
+                                    >
+                                        <span dir="ltr" class="latin">
+                                            { row.code }
+                                        </span>
+                                    </td>
+                                </tr>
+                            </For>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center gap-3">
+                    <p class="text-caption text-muted">
+                        { count(total) } درخواست، صفحهٔ { count(page) } از { count(lastPage) }
+                    </p>
+                    <div class="ms-auto flex gap-2">
+                        <Button
+                            disabled={ page <= 1 || loading }
+                            onClick={ () => goToPage(page - 1) }
+                        >
+                            تازه‌تر
+                        </Button>
+                        <Button
+                            disabled={ page >= lastPage || loading }
+                            onClick={ () => goToPage(page + 1) }
+                        >
+                            قدیمی‌تر
+                        </Button>
+                    </div>
+                </div>
+            </Async>
+        </div>
+    </AdminShell>
+}

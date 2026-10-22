@@ -1,0 +1,69 @@
+// Where notices appear. Mounted once, in the shell.
+//
+// The region is a live region, not a decoration: a sighted reader sees the pill, a screen
+// reader hears it without the focus moving. `polite` for the ordinary case; an error is
+// `assertive` because it usually means the thing the reader just did did not happen.
+//
+// Position is LOGICAL (bottom + start), so it settles into the bottom-right corner of an RTL
+// page and the bottom-left of an LTR one without a direction branch.
+import { Check, Info, TriangleAlert, X, type IconNode } from 'lucide';
+
+import { useCopy, type Lang } from '../lib/lang.ts';
+import Icon from './icon.azeroth';
+import { useToasts, type ToastTone } from './toast.ts';
+
+const COPY: Record<Lang, { region: string; dismiss: string }> = {
+    fa: { region: 'اعلان‌ها', dismiss: 'بستن اعلان' },
+    en: { region: 'Notifications', dismiss: 'Dismiss notification' },
+    ar: { region: 'الإشعارات', dismiss: 'إغلاق الإشعار' },
+    es: { region: 'Notificaciones', dismiss: 'Cerrar notificación' },
+    pt: { region: 'Notificações', dismiss: 'Fechar notificação' },
+    hi: { region: 'सूचनाएँ', dismiss: 'सूचना बंद करें' },
+    zh: { region: '通知', dismiss: '关闭通知' },
+    ru: { region: 'Уведомления', dismiss: 'Закрыть уведомление' },
+    fr: { region: 'Notifications', dismiss: 'Fermer la notification' },
+    tr: { region: 'Bildirimler', dismiss: 'Bildirimi kapat' }
+};
+
+const TONE: Record<ToastTone, { glyph: IconNode; accent: string }> = {
+    success: { glyph: Check, accent: 'text-firouze' },
+    error: { glyph: TriangleAlert, accent: 'text-danger' },
+    info: { glyph: Info, accent: 'text-muted' }
+};
+
+export default component ToastHost()
+{
+    const toasts = useToasts();
+    const t = useCopy(COPY);
+
+    <div
+        class="pointer-events-none fixed bottom-4 start-4 z-50 flex flex-col gap-2"
+        role="region"
+        aria-label={ t.region }
+    >
+        <For each={ toasts.toasts } key={ (toast) => toast.id } let={ toast }>
+            <div
+                class="anim-toast pointer-events-auto flex max-w-sm items-start gap-3 rounded-xl border border-line bg-surface p-3 ps-4 shadow-lg"
+                role={ toast.tone === 'error' ? 'alert' : 'status' }
+                aria-live={ toast.tone === 'error' ? 'assertive' : 'polite' }
+                onMouseEnter={ () => toasts.hold(toast.id) }
+                onMouseLeave={ () => toasts.release(toast.id) }
+                onFocusIn={ () => toasts.hold(toast.id) }
+                onFocusOut={ () => toasts.release(toast.id) }
+            >
+                <span class={ `mt-0.5 shrink-0 ${ TONE[toast.tone].accent }` }>
+                    <Icon icon={ TONE[toast.tone].glyph } class="size-4" />
+                </span>
+                <p class="text-small">{ toast.message }</p>
+                <button
+                    type="button"
+                    class="ms-auto shrink-0 rounded-lg p-1 text-muted hover:text-ink"
+                    aria-label={ t.dismiss }
+                    onClick={ () => toasts.dismiss(toast.id) }
+                >
+                    <Icon icon={ X } class="size-4" />
+                </button>
+            </div>
+        </For>
+    </div>
+}

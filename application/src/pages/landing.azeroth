@@ -1,0 +1,356 @@
+// The landing page - of every language. `/` is the Persian one and `/en`, `/ar`, `/fr`... the
+// others; they share this layout and differ in words, and - Persian against the rest - in
+// currency, gateway and delivery (see lib/lang.ts).
+//
+// It argues one thing: what you buy is a code, and this is exactly what happens to it. The
+// hero shows that code as the artifact it is, the cards carry the purchase itself, and the
+// FAQ answers the fears in the buyer's own words.
+//
+// The payment RESULT is first on the page rather than last, and renders only when there is
+// one. A buyer who lands here is coming back from the gateway and has exactly one question;
+// making them scroll past the shop to find the answer would be a strange thing to do to
+// somebody who has just paid.
+import { CATALOG_UNAVAILABLE, useCatalog, useShopName } from '../lib/catalog.ts';
+import { STEPS, FAQS, ASSURANCES } from '../lib/content.ts';
+import { useCopy, useLang, type Lang } from '../lib/lang.ts';
+import Async from '../ui/async.azeroth';
+import Icon from '../ui/icon.azeroth';
+import CodeCapsule from '../components/code-capsule.azeroth';
+import GiftCard from '../components/gift-card.azeroth';
+import FaqItem from '../components/faq-item.azeroth';
+import PurchaseResult from '../components/purchase-result.azeroth';
+
+interface LandingCopy {
+    kicker: (name: string) => string;
+    headline: string;
+    lede: string;
+    seeCards: string;
+    howTo: string;
+    sampleLabel: string;
+    sampleNote: string;
+    cardsTitle: string;
+    cardsLede: string;
+    cardsEmpty: string;
+    cardsFailed: string;
+    stepsTitle: string;
+    faqTitle: string;
+}
+
+const COPY: Record<Lang, LandingCopy> = {
+    fa: {
+        kicker: (name: string) => `گیفت کارت ${name}`,
+        headline: 'کد را همان لحظه تحویل می‌گیرید، نه بعد از انتظار',
+        lede: 'آنچه می‌خرید یک کد است. اینجا دقیقاً می‌بینید که چه شکلی دارد',
+        seeCards: 'دیدن کارت‌ها',
+        howTo: 'روش خرید',
+        sampleLabel: 'نمونه کد - این کد واقعی نیست',
+        sampleNote:
+            'کد شما پس از پرداخت به همین شکل نمایش داده می‌شود و به شماره موبایلتان هم پیامک می‌شود.',
+        cardsTitle: 'کارت خود را انتخاب کنید',
+        // No count in this sentence: the catalogue is editable, so "all three" was a promise
+        // the page could not keep the moment a fourth card was added.
+        cardsLede:
+            'شماره موبایلتان را روی همان کارتی که می‌خواهید وارد کنید. همهٔ کارت‌ها یک نوع کد می‌دهند و یک جور تحویل می‌شوند.',
+        cardsEmpty: 'در حال حاضر کارتی برای فروش نیست.',
+        cardsFailed: 'فهرست کارت‌ها بارگذاری نشد. اتصال اینترنت را بررسی کنید.',
+        stepsTitle: 'از پرداخت تا کد فعال',
+        faqTitle: 'سوال‌های پرتکرار'
+    },
+    en: {
+        kicker: (name: string) => `${name} gift cards`,
+        headline: 'Get your code the moment you pay, not after a wait',
+        lede: 'What you buy is a code. Here is exactly what it looks like.',
+        seeCards: 'See the cards',
+        howTo: 'How it works',
+        sampleLabel: 'Sample code - not a real one',
+        sampleNote: 'Your code appears like this after payment, and is emailed to you as well.',
+        cardsTitle: 'Choose your card',
+        cardsLede:
+            'Type your email on the card you want. Every card gives the same kind of code, delivered the same way.',
+        cardsEmpty: 'There are no cards for sale right now.',
+        cardsFailed: 'The cards could not be loaded. Check your internet connection.',
+        stepsTitle: 'From payment to a working code',
+        faqTitle: 'Frequently asked questions'
+    },
+    ar: {
+        kicker: (name: string) => `بطاقات هدايا ${name}`,
+        headline: 'استلم رمزك لحظة الدفع، دون انتظار',
+        lede: 'ما تشتريه هو رمز. إليك شكله بالضبط.',
+        seeCards: 'عرض البطاقات',
+        howTo: 'كيف يعمل',
+        sampleLabel: 'رمز تجريبي - ليس رمزًا حقيقيًا',
+        sampleNote: 'يظهر رمزك بهذا الشكل بعد الدفع، ويُرسَل إليك بالبريد الإلكتروني أيضًا.',
+        cardsTitle: 'اختر بطاقتك',
+        cardsLede:
+            'اكتب بريدك الإلكتروني على البطاقة التي تريدها. كل البطاقات تعطي النوع نفسه من الرموز، وتُسلَّم بالطريقة نفسها.',
+        cardsEmpty: 'لا توجد بطاقات معروضة للبيع حاليًا.',
+        cardsFailed: 'تعذّر تحميل البطاقات. تحقّق من اتصالك بالإنترنت.',
+        stepsTitle: 'من الدفع إلى رمز يعمل',
+        faqTitle: 'الأسئلة الشائعة'
+    },
+    es: {
+        kicker: (name: string) => `Tarjetas regalo ${name}`,
+        headline: 'Recibe tu código en el momento en que pagas, sin esperas',
+        lede: 'Lo que compras es un código. Así es exactamente como se ve.',
+        seeCards: 'Ver las tarjetas',
+        howTo: 'Cómo funciona',
+        sampleLabel: 'Código de ejemplo - no es real',
+        sampleNote:
+            'Tu código aparecerá así después del pago, y también te lo enviaremos por correo.',
+        cardsTitle: 'Elige tu tarjeta',
+        cardsLede:
+            'Escribe tu correo en la tarjeta que quieras. Todas las tarjetas dan el mismo tipo de código y se entregan de la misma forma.',
+        cardsEmpty: 'No hay tarjetas a la venta en este momento.',
+        cardsFailed: 'No se pudieron cargar las tarjetas. Revisa tu conexión a internet.',
+        stepsTitle: 'Del pago a un código que funciona',
+        faqTitle: 'Preguntas frecuentes'
+    },
+    pt: {
+        kicker: (name: string) => `Cartões-presente ${name}`,
+        headline: 'Receba seu código na hora em que paga, sem espera',
+        lede: 'O que você compra é um código. Veja exatamente como ele é.',
+        seeCards: 'Ver os cartões',
+        howTo: 'Como funciona',
+        sampleLabel: 'Código de exemplo - não é real',
+        sampleNote:
+            'Seu código aparece assim depois do pagamento e também é enviado para seu e-mail.',
+        cardsTitle: 'Escolha seu cartão',
+        cardsLede:
+            'Digite seu e-mail no cartão que você quer. Todos os cartões dão o mesmo tipo de código, entregue da mesma forma.',
+        cardsEmpty: 'Não há cartões à venda no momento.',
+        cardsFailed: 'Não foi possível carregar os cartões. Verifique sua conexão com a internet.',
+        stepsTitle: 'Do pagamento a um código funcionando',
+        faqTitle: 'Perguntas frequentes'
+    },
+    hi: {
+        kicker: (name: string) => `${name} गिफ़्ट कार्ड`,
+        headline: 'भुगतान करते ही अपना कोड पाएँ, बिना इंतज़ार के',
+        lede: 'आप जो खरीदते हैं, वह एक कोड है। यह ठीक ऐसा दिखता है।',
+        seeCards: 'कार्ड देखें',
+        howTo: 'यह कैसे काम करता है',
+        sampleLabel: 'नमूना कोड - यह असली नहीं है',
+        sampleNote: 'भुगतान के बाद आपका कोड ऐसा ही दिखेगा, और आपको ईमेल भी किया जाएगा।',
+        cardsTitle: 'अपना कार्ड चुनें',
+        cardsLede:
+            'जो कार्ड आप चाहते हैं, उस पर अपना ईमेल लिखें। हर कार्ड एक ही तरह का कोड देता है, जो एक ही तरीके से पहुँचाया जाता है।',
+        cardsEmpty: 'अभी बिक्री के लिए कोई कार्ड नहीं है।',
+        cardsFailed: 'कार्ड लोड नहीं हो सके। अपना इंटरनेट कनेक्शन जाँचें।',
+        stepsTitle: 'भुगतान से चालू कोड तक',
+        faqTitle: 'अक्सर पूछे जाने वाले सवाल'
+    },
+    zh: {
+        kicker: (name: string) => `${name} 礼品卡`,
+        headline: '付款即刻拿到兑换码，无需等待',
+        lede: '您购买的是一个兑换码。它的样子就是这样。',
+        seeCards: '查看礼品卡',
+        howTo: '购买流程',
+        sampleLabel: '示例兑换码 - 并非真实兑换码',
+        sampleNote: '付款后，您的兑换码会像这样显示，并同时发送到您的邮箱。',
+        cardsTitle: '选择您的礼品卡',
+        cardsLede: '在您想要的卡片上填写邮箱即可。每张卡提供的兑换码类型相同，交付方式也相同。',
+        cardsEmpty: '目前没有在售的礼品卡。',
+        cardsFailed: '礼品卡加载失败。请检查您的网络连接。',
+        stepsTitle: '从付款到可用的兑换码',
+        faqTitle: '常见问题'
+    },
+    ru: {
+        kicker: (name: string) => `Подарочные карты ${name}`,
+        headline: 'Получите код в момент оплаты, без ожидания',
+        lede: 'Вы покупаете код. Вот как именно он выглядит.',
+        seeCards: 'Смотреть карты',
+        howTo: 'Как это работает',
+        sampleLabel: 'Пример кода - не настоящий',
+        sampleNote: 'После оплаты ваш код появится в таком виде и также придёт вам на почту.',
+        cardsTitle: 'Выберите карту',
+        cardsLede:
+            'Укажите почту на нужной карте. Все карты дают одинаковый код, и выдаётся он одинаково.',
+        cardsEmpty: 'Сейчас нет карт в продаже.',
+        cardsFailed: 'Не удалось загрузить карты. Проверьте подключение к интернету.',
+        stepsTitle: 'От оплаты до рабочего кода',
+        faqTitle: 'Частые вопросы'
+    },
+    fr: {
+        kicker: (name: string) => `Cartes cadeaux ${name}`,
+        headline: 'Recevez votre code dès le paiement, sans attendre',
+        lede: "Ce que vous achetez, c'est un code. Voici exactement à quoi il ressemble.",
+        seeCards: 'Voir les cartes',
+        howTo: 'Comment ça marche',
+        sampleLabel: "Code d'exemple - ce n'est pas un vrai code",
+        sampleNote:
+            "Votre code s'affiche ainsi après le paiement, et vous est aussi envoyé par e-mail.",
+        cardsTitle: 'Choisissez votre carte',
+        cardsLede:
+            'Saisissez votre e-mail sur la carte de votre choix. Toutes les cartes donnent le même type de code, livré de la même façon.',
+        cardsEmpty: "Aucune carte n'est en vente pour le moment.",
+        cardsFailed: 'Impossible de charger les cartes. Vérifiez votre connexion internet.',
+        stepsTitle: 'Du paiement à un code qui fonctionne',
+        faqTitle: 'Questions fréquentes'
+    },
+    tr: {
+        kicker: (name: string) => `${name} hediye kartları`,
+        headline: 'Kodunuzu ödediğiniz anda alın, beklemeden',
+        lede: 'Satın aldığınız şey bir kod. İşte tam olarak böyle görünür.',
+        seeCards: 'Kartları gör',
+        howTo: 'Nasıl çalışır',
+        sampleLabel: 'Örnek kod - gerçek değil',
+        sampleNote: 'Kodunuz ödemeden sonra böyle görünür ve ayrıca e-postanıza gönderilir.',
+        cardsTitle: 'Kartınızı seçin',
+        cardsLede:
+            'İstediğiniz kartın üzerine e-postanızı yazın. Tüm kartlar aynı türde kod verir ve aynı şekilde teslim edilir.',
+        cardsEmpty: 'Şu anda satışta kart yok.',
+        cardsFailed: 'Kartlar yüklenemedi. İnternet bağlantınızı kontrol edin.',
+        stepsTitle: 'Ödemeden çalışan bir koda',
+        faqTitle: 'Sıkça sorulan sorular'
+    }
+};
+
+export default component Landing()
+{
+    const catalog = useCatalog();
+    const lang = useLang();
+    const t = useCopy(COPY);
+    const name = useShopName();
+    const faqs = FAQS[lang];
+
+    // The hero capsule resolves from scanning to verified once, on load.
+    state scanning = true;
+    state verified = false;
+
+    mount {
+        const timer = setTimeout(() => {
+            batch {
+                scanning = false;
+                verified = true;
+            }
+        }, 4200);
+        cleanup { clearTimeout(timer); }
+    }
+
+    state openFaq: string | null = faqs[0].id;
+    const toggleFaq = (id: string): void => {
+        openFaq = openFaq === id ? null : id;
+    };
+
+    <div>
+        <PurchaseResult />
+
+        <section class="mx-auto grid max-w-6xl items-center gap-stack px-4 pt-section pb-stack sm:px-5 lg:grid-cols-[1.05fr_1fr]">
+            <div class="anim-settle">
+                { /* The name in the READER'S language: a Persian brand in front of "gift cards"
+                     on an English page reads as a broken page, not as a brand. */ }
+                <p class="text-small font-bold text-firouze">{ t.kicker(name()) }</p>
+                <h1 class="mt-4 font-bold">{ t.headline }</h1>
+                <p class="mt-5 max-w-xl text-muted">{ t.lede }</p>
+
+                <div class="mt-stack flex flex-wrap gap-3">
+                    <a
+                        href="#cards"
+                        class="flex min-h-tap items-center rounded-xl bg-firouze px-5 text-small font-bold text-paper hover:opacity-90"
+                    >
+                        { t.seeCards }
+                    </a>
+                    <a
+                        href="#how"
+                        class="flex min-h-tap items-center rounded-xl border border-line px-5 text-small font-bold hover:border-firouze hover:text-firouze"
+                    >
+                        { t.howTo }
+                    </a>
+                </div>
+            </div>
+
+            <div class="anim-settle">
+                <CodeCapsule
+                    code="7f3c1e2a-9b04-4d68-a5c1-0e7b2d9f4a31"
+                    label={ t.sampleLabel }
+                    scanning={ scanning }
+                    verified={ verified }
+                />
+                <p class="mt-3 text-caption text-muted">{ t.sampleNote }</p>
+            </div>
+        </section>
+
+        <section class="mx-auto max-w-6xl px-4 pb-section sm:px-5">
+            <ul class="stagger grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-surface lg:grid-cols-4">
+                <For each={ ASSURANCES[lang] } key={ (item) => item.label } let={ item }>
+                    <li class="trust-cell p-4">
+                        <Icon icon={ item.glyph } class="size-5 text-firouze" />
+                        <p class="mt-2.5 text-small font-bold">{ item.label }</p>
+                        <p class="mt-1 text-caption text-muted">{ item.detail }</p>
+                    </li>
+                </For>
+            </ul>
+        </section>
+
+        <section id="cards" class="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
+            <h2 class="font-bold">{ t.cardsTitle }</h2>
+            <p class="mt-3 max-w-xl text-muted">{ t.cardsLede }</p>
+
+            <div class="mt-stack">
+                <Async
+                    loading={ catalog.loading && !catalog.loaded }
+                    error={ catalog.error === CATALOG_UNAVAILABLE ? t.cardsFailed : catalog.error }
+                    empty={ catalog.loaded && catalog.tiers.length === 0 }
+                    emptyText={ t.cardsEmpty }
+                    onRetry={ () => void catalog.load() }
+                    skeleton={
+                        <div class="grid gap-5 md:grid-cols-3">
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                            <div class="anim-pulse h-96 rounded-2xl border border-line bg-surface"></div>
+                        </div>
+                    }
+                >
+                    <div class="grid gap-5 md:grid-cols-3">
+                        { /* Keyed on the amount, and each row looks its tier up again by that
+                             key: the catalogue polls, and a row kept for the same card must still
+                             show the new price and stock. `contents` keeps the wrapper out of
+                             the grid. */ }
+                        <For each={ catalog.tiers } key={ (tier) => tier.amount } let={ tier }>
+                            <div class="contents">
+                                <GiftCard
+                                    tier={ catalog.tiers.find((fresh) => fresh.amount === tier.amount) ?? tier }
+                                />
+                            </div>
+                        </For>
+                    </div>
+                </Async>
+            </div>
+        </section>
+
+        <section id="how" class="border-y border-line bg-surface/40">
+            <div class="mx-auto max-w-6xl scroll-mt-20 px-4 py-section sm:px-5">
+                <h2 class="font-bold">{ t.stepsTitle }</h2>
+                <ol class="mt-stack grid gap-6 md:grid-cols-3">
+                    <For each={ STEPS[lang] } key={ (step) => step.title } let={ step } index={ index }>
+                        <li class="rounded-2xl border border-line bg-surface p-5">
+                            <div class="flex items-center gap-2.5 text-firouze">
+                                <Icon icon={ step.glyph } class="size-5 shrink-0" />
+                                <span dir="ltr" class="latin inline-block text-caption font-bold">{ index + 1 }</span>
+                            </div>
+                            <h3 class="mt-3 font-bold">{ step.title }</h3>
+                            <p class="mt-2 text-small text-muted">{ step.body }</p>
+                        </li>
+                    </For>
+                </ol>
+            </div>
+        </section>
+
+        <section id="faq" class="mx-auto max-w-3xl scroll-mt-20 px-4 py-section sm:px-5">
+            <h2 class="font-bold">{ t.faqTitle }</h2>
+
+            <div class="mt-6 rounded-2xl border border-line bg-surface px-5">
+                <For each={ faqs } key={ (faq) => faq.id } let={ faq }>
+                    <div class="contents">
+                        <FaqItem
+                            id={ faq.id }
+                            question={ faq.question }
+                            answer={ faq.answer }
+                            open={ openFaq === faq.id }
+                            onToggle={ toggleFaq }
+                        />
+                    </div>
+                </For>
+            </div>
+        </section>
+    </div>
+}

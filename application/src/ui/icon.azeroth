@@ -1,0 +1,19 @@
+// One lucide glyph, drawn as inline SVG.
+//
+// Icons are DATA here - the `IconNode` arrays the `lucide` package exports - rather than one
+// component per icon, so a list of steps or a toast tone can carry its glyph in a plain table
+// and this is the only place that turns one into markup. Every glyph on the site is
+// decorative: the text beside it is the accessible name, so it is always hidden from
+// assistive technology.
+//
+// The glyph sits in a `contents` span rather than a bare fragment: a value that can change
+// (a button's glyph swaps when its action completes) needs a real element to be swapped
+// inside, and `contents` keeps the span out of the layout so the SVG is still the flex item.
+import { createElement, type IconNode } from 'lucide';
+
+export default component Icon(props: { icon: IconNode; class?: string })
+{
+    <span class="contents">
+        { createElement(props.icon, { class: props.class ?? 'size-4', 'aria-hidden': 'true' }) }
+    </span>
+}

@@ -1,0 +1,264 @@
+import { MessageSquare, Save, Send } from 'lucide';
+
+import { client, failureText } from '../../../lib/api.ts';
+import type { SettingsView } from '../../../../../server/src/contract/index.ts';
+import { useToasts } from '../../../ui/toast.ts';
+import Async from '../../../ui/async.azeroth';
+import Button from '../../../ui/button.azeroth';
+import Field from '../../../ui/field.azeroth';
+import Icon from '../../../ui/icon.azeroth';
+import TextInput from '../../../ui/text-input.azeroth';
+import { useAdminSession } from '../session.ts';
+
+export default component SmsSettings()
+{
+    const notify = useToasts();
+    const session = useAdminSession();
+    state settings: SettingsView | null = null;
+    state loading = false;
+    state error = '';
+    state saving = false;
+    state testing = false;
+    state apiUrl = '';
+    state sender = '';
+    state username = '';
+    state domain = '';
+    state apiKey = '';
+    state operatorPhone = '';
+    state testPhone = '';
+
+    const load = async (): Promise<void> => {
+        loading = true;
+        error = '';
+        try {
+            const view = await client.admin.settings();
+            settings = view;
+            apiUrl = view.smsApiUrl;
+            sender = view.smsSender;
+            username = view.smsUsername;
+            domain = view.smsDomain;
+            operatorPhone = view.operatorPhone;
+        } catch (failure) {
+            error = failureText(failure, 'تنظیمات پیامک خوانده نشد');
+        } finally {
+            loading = false;
+        }
+    };
+
+    effect (session.revision, session.unlocked) {
+        if (session.unlocked) {
+            void load();
+        }
+    }
+
+    const save = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        if (settings === null) {
+            notify.error('تنظیمات هنوز خوانده نشده است. صفحه را تازه کنید.');
+            return;
+        }
+        if (apiUrl.trim() !== '') {
+            try {
+                const url = new URL(apiUrl);
+                if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+                    throw new Error('invalid protocol');
+                }
+            } catch {
+                notify.error('آدرس API معتبر نیست');
+                return;
+            }
+        }
+
+        saving = true;
+        try {
+            settings = await client.admin.saveSettings({
+                input: {
+                    smsApiUrl: apiUrl,
+                    smsSender: sender,
+                    smsUsername: username,
+                    smsDomain: domain,
+                    operatorPhone,
+                    smsApiKey: apiKey === '' ? undefined : apiKey
+                }
+            });
+            apiKey = '';
+            notify.success('تنظیمات پیامک ذخیره شد');
+        } catch (failure) {
+            notify.error(failureText(failure, 'ذخیره نشد'));
+        } finally {
+            saving = false;
+        }
+    };
+
+    const sendTest = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        testing = true;
+        try {
+            const result = await client.admin.testSms({ input: { phone: testPhone } });
+            if (result.ok) {
+                notify.success('پیامک آزمایشی ارسال شد');
+            } else {
+                notify.error(`ارسال نشد: ${ result.reason }`);
+            }
+        } catch (failure) {
+            notify.error(failureText(failure, 'ارسال نشد'));
+        } finally {
+            testing = false;
+        }
+    };
+
+    <section class="mt-section">
+        <h2 class="flex items-center gap-2 text-h3 font-bold">
+            <Icon icon={ MessageSquare } class="size-5 text-firouze" />
+            پنل پیامک
+        </h2>
+        <p class="mt-2 text-small text-muted">
+            پس از تأیید پرداخت، کد خرید به شماره موبایل خریدار پیامک می‌شود. پیامک یا با «ارسال
+            از طریق لینک» پنل فرستاده می‌شود (آدرس sendsmslink.aspx) یا با وب‌سرویس پنل (آدرس
+            service.asmx)؛ کدام یک، از روی آدرسی که وارد می‌کنید تشخیص داده می‌شود.
+        </p>
+
+        <div class="mt-4">
+            <Async
+                loading={ loading || settings === null }
+                error={ error }
+                onRetry={ () => void load() }
+                skeleton={
+                    <div class="anim-pulse h-64 rounded-2xl border border-line bg-surface"></div>
+                }
+            >
+                <form
+                    class="rounded-2xl border border-line bg-surface p-5"
+                    novalidate
+                    onSubmit={ (event) => void save(event) }
+                >
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <Field
+                            label="آدرس ارسال"
+                            htmlFor="sms-api-url"
+                            hint="آدرس sendsmslink.aspx پنل (لینک نمونه را هم می‌توانید کامل بچسبانید)، یا آدرس وب‌سرویس: https://webservice.0098vip.com/service.asmx"
+                        >
+                            <TextInput
+                                id="sms-api-url"
+                                latin
+                                inputMode="url"
+                                autoComplete="url"
+                                placeholder="https://0098vip.com/sendsmslink.aspx"
+                                value={ apiUrl }
+                                onChange={ (value) => apiUrl = value }
+                            />
+                        </Field>
+                        <Field label="شماره فرستنده (FROM)" htmlFor="sms-sender">
+                            <TextInput
+                                id="sms-sender"
+                                latin
+                                autoComplete="off"
+                                placeholder="شماره یا خط ارسال پنل"
+                                value={ sender }
+                                onChange={ (value) => sender = value }
+                            />
+                        </Field>
+                        <Field label="نام کاربری پنل (USERNAME)" htmlFor="sms-username">
+                            <TextInput
+                                id="sms-username"
+                                latin
+                                autoComplete="off"
+                                value={ username }
+                                onChange={ (value) => username = value }
+                            />
+                        </Field>
+                        <Field
+                            label="رمز عبور پنل (PASSWORD)"
+                            htmlFor="sms-api-key"
+                            hint="پس از ذخیره نمایش داده نمی‌شود. برای نگه داشتن رمز فعلی، کادر را خالی بگذارید."
+                        >
+                            <TextInput
+                                id="sms-api-key"
+                                type="password"
+                                latin
+                                autoComplete="off"
+                                placeholder={
+                                    settings?.smsApiKeySet
+                                        ? `${ settings.smsApiKeyMasked } (برای تغییر وارد کنید)`
+                                        : 'رمز عبور'
+                                }
+                                value={ apiKey }
+                                onChange={ (value) => apiKey = value }
+                            />
+                        </Field>
+                        <Field
+                            label="دامنه (DOMAIN)"
+                            htmlFor="sms-domain"
+                            hint="همان مقداری که پنل شما برای DOMAIN در لینک نمونه می‌دهد. وب‌سرویس به آن نیازی ندارد."
+                        >
+                            <TextInput
+                                id="sms-domain"
+                                latin
+                                autoComplete="off"
+                                placeholder="0098"
+                                value={ domain }
+                                onChange={ (value) => domain = value }
+                            />
+                        </Field>
+                        <Field
+                            label="موبایل اپراتور"
+                            htmlFor="sms-operator-phone"
+                            hint="هر خرید و هر برداشت (redeem) به این شماره پیامک می‌شود. جزئیات در کنسول و تلگرام است. خالی بگذارید تا پیامکی فرستاده نشود."
+                        >
+                            <TextInput
+                                id="sms-operator-phone"
+                                type="tel"
+                                latin
+                                inputMode="tel"
+                                autoComplete="off"
+                                placeholder="09123456789"
+                                value={ operatorPhone }
+                                onChange={ (value) => operatorPhone = value }
+                            />
+                        </Field>
+                    </div>
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <Button type="submit" glyph={ Save } disabled={ saving }>
+                            { saving ? 'در حال ذخیره…' : 'ذخیره تنظیمات پیامک' }
+                        </Button>
+                        <span class="text-caption text-muted">
+                            وضعیت: { settings?.smsReady ? 'آماده' : 'خاموش' }
+                        </span>
+                    </div>
+                </form>
+            </Async>
+
+            <form
+                class="mt-4 rounded-2xl border border-line bg-surface p-5"
+                novalidate
+                onSubmit={ (event) => void sendTest(event) }
+            >
+                <h3 class="font-bold">آزمایش ارسال</h3>
+                <p class="mt-1 text-caption text-muted">
+                    برای اطمینان از تنظیمات، یک پیامک آزمایشی به شماره واردشده می‌فرستد.
+                </p>
+                <div class="mt-4 flex flex-wrap items-end gap-3">
+                    <Field label="شماره موبایل آزمایشی" htmlFor="test-sms-phone">
+                        <TextInput
+                            id="test-sms-phone"
+                            type="tel"
+                            latin
+                            inputMode="tel"
+                            autoComplete="tel"
+                            placeholder="09123456789"
+                            value={ testPhone }
+                            onChange={ (value) => testPhone = value }
+                        />
+                    </Field>
+                    <Button
+                        type="submit"
+                        glyph={ Send }
+                        disabled={ testing || testPhone.trim() === '' }
+                    >
+                        { testing ? 'در حال ارسال…' : 'ارسال پیامک آزمایشی' }
+                    </Button>
+                </div>
+            </form>
+        </div>
+    </section>
+}
