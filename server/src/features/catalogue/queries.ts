@@ -41,11 +41,11 @@ function toTier(row: TierRow): Tier {
 }
 
 export interface TierQueries {
-    tiers(): Tier[];
-    sellableTier(amount: Amount): Tier | undefined;
-    saveTier(tier: TierInput): void;
-    removeTier(amount: Amount): TierRemoval;
-    isCatalogueEmpty(): boolean;
+    tiers(): Promise<Tier[]>;
+    sellableTier(amount: Amount): Promise<Tier | undefined>;
+    saveTier(tier: TierInput): Promise<void>;
+    removeTier(amount: Amount): Promise<TierRemoval>;
+    isCatalogueEmpty(): Promise<boolean>;
 }
 
 export function createTierQueries(db: DatabaseSync): TierQueries {
@@ -70,16 +70,16 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
     const countTiers = db.prepare('SELECT COUNT(*) AS n FROM tiers');
 
     return {
-        tiers() {
+        async tiers() {
             return shaped<TierRow[]>(selectTiers.all()).map(toTier);
         },
 
-        sellableTier(amount) {
+        async sellableTier(amount) {
             const row = shaped<TierRow | undefined>(selectSellable.get(amount));
             return row === undefined ? undefined : toTier(row);
         },
 
-        saveTier(tier) {
+        async saveTier(tier) {
             db.exec('BEGIN IMMEDIATE');
             try {
                 upsertTier.run(
@@ -104,7 +104,7 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
             }
         },
 
-        removeTier(amount) {
+        async removeTier(amount) {
             db.exec('BEGIN IMMEDIATE');
             try {
                 let outcome: TierRemoval;
@@ -123,7 +123,7 @@ export function createTierQueries(db: DatabaseSync): TierQueries {
             }
         },
 
-        isCatalogueEmpty() {
+        async isCatalogueEmpty() {
             return shaped<{ n: number }>(countTiers.get()).n === 0;
         }
     };

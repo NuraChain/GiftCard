@@ -40,7 +40,7 @@ export interface NowPaymentsOptions {
      * The payment ids already learned for an invoice - rule 2. The store holds them, so a
      * restart forgets nothing the reconciler needs.
      */
-    paymentsFor: (invoiceId: string) => string[];
+    paymentsFor: (invoiceId: string) => Promise<string[]>;
 
     fetch?: Fetch;
 
@@ -209,7 +209,7 @@ export function createNowPayments(options: NowPaymentsOptions): NowPayments {
             if (!ID_SHAPE.test(invoiceId)) {
                 return { ok: false, reason: 'nowpayments: verify failed (unreadable invoice id)' };
             }
-            const known = options.paymentsFor(invoiceId).filter((id) => ID_SHAPE.test(id));
+            const known = (await options.paymentsFor(invoiceId)).filter((id) => ID_SHAPE.test(id));
             if (known.length === 0) {
                 // Rule 4: the buyer has not picked a coin yet, or we have not been told.
                 return { ok: false, pending: true, reason: 'nowpayments: no payment yet' };

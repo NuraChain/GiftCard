@@ -15,10 +15,10 @@ import { phoneSearchVariants } from '../../domain/phone.ts';
 import type { Amount, OrderQuery, RedeemOutcome, Redemption } from '../../db/types.ts';
 
 export interface RedemptionQueries {
-    redeemCode(code: string, wallet: string, network: string): RedeemOutcome;
-    markRedemptionNotified(code: string): void;
-    unnotifiedRedemptions(): number;
-    searchRedemptions(query: OrderQuery): { rows: Redemption[]; total: number };
+    redeemCode(code: string, wallet: string, network: string): Promise<RedeemOutcome>;
+    markRedemptionNotified(code: string): Promise<void>;
+    unnotifiedRedemptions(): Promise<number>;
+    searchRedemptions(query: OrderQuery): Promise<{ rows: Redemption[]; total: number }>;
 }
 
 interface RedemptionRow {
@@ -76,7 +76,7 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
     const searchCount = db.prepare(`SELECT COUNT(*) AS n ${matching}`);
 
     return {
-        redeemCode(code, wallet, network) {
+        async redeemCode(code, wallet, network) {
             // IMMEDIATE takes the write lock up front. The lookup and the insert are one act:
             // without it a second connection can commit between them and this transaction
             // discovers it cannot upgrade, which SQLite reports as a busy error rather than
@@ -132,15 +132,15 @@ export function createRedemptionQueries(db: DatabaseSync): RedemptionQueries {
             }
         },
 
-        markRedemptionNotified(code) {
+        async markRedemptionNotified(code) {
             setNotified.run(code);
         },
 
-        unnotifiedRedemptions() {
+        async unnotifiedRedemptions() {
             return shaped<{ n: number }>(countUnnotified.get()).n;
         },
 
-        searchRedemptions(query) {
+        async searchRedemptions(query) {
             const term = query.search.trim();
             const like = `%${term.toLowerCase()}%`;
             const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);

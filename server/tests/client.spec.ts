@@ -23,7 +23,7 @@ const DOCUMENT = '<!doctype html><html lang="fa"><body><div id="root"></div></bo
 const BUNDLE = 'console.log("hello");';
 
 /** Everything buildApp needs that this file does not care about. */
-function stubs(store: Store) {
+async function stubs(store: Store) {
     const rate: TetherRate = {
         current: () => null,
         status: () => ({ rate: null, selling: false, reason: 'no rate', ageSeconds: null })
@@ -31,7 +31,7 @@ function stubs(store: Store) {
     return {
         store,
         rate,
-        settings: createSettings({ store }),
+        settings: await createSettings({ store }),
         payment: {
             request: () => Promise.resolve({ ok: false as const, reason: 'not used' }),
             verify: () => Promise.resolve({ ok: false as const, reason: 'not used' })
@@ -66,13 +66,13 @@ function stubs(store: Store) {
 let store: Store;
 let dist: string;
 
-beforeEach(() => {
-    store = createStore(':memory:');
+beforeEach(async () => {
+    store = await createStore(':memory:');
     dist = mkdtempSync(join(tmpdir(), 'ashbringer-dist-'));
 });
 
-afterEach(() => {
-    store.close();
+afterEach(async () => {
+    await store.close();
     rmSync(dist, { recursive: true, force: true });
 });
 
@@ -86,7 +86,7 @@ function build(): void {
 describe('serving the built client', () => {
     it('answers the document at the root', async () => {
         build();
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const response = await app.inject({ method: 'GET', url: '/' });
 
@@ -102,7 +102,7 @@ describe('serving the built client', () => {
         // `/admin/orders` exists in the client's route table and nowhere on disk. Without
         // this fallback a refresh anywhere but `/` is a 404.
         build();
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const response = await app.inject({ method: 'GET', url: '/admin/orders' });
 
@@ -113,7 +113,7 @@ describe('serving the built client', () => {
 
     it('serves a real asset as itself, cached hard', async () => {
         build();
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const response = await app.inject({ method: 'GET', url: '/assets/index-abc123.js' });
 
@@ -131,7 +131,7 @@ describe('serving the built client', () => {
         // already visited the site.
         build();
         writeFileSync(join(dist, 'favicon-32.png'), 'not really a png');
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const bundle = await app.inject({ method: 'GET', url: '/assets/index-abc123.js' });
         const icon = await app.inject({ method: 'GET', url: '/favicon-32.png' });
@@ -146,7 +146,7 @@ describe('serving the built client', () => {
         // must not be answered with an HTML document - the caller parses JSON, and a page
         // would surface as an unreadable parse error instead of a 404.
         build();
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const response = await app.inject({ method: 'GET', url: '/api/nope' });
 
@@ -161,7 +161,7 @@ describe('serving the built client', () => {
         // A form posting to a path that does not exist is a mistake, not navigation. Only
         // GET and HEAD get the single-page fallback.
         build();
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         const response = await app.inject({ method: 'POST', url: '/whatever' });
 
@@ -173,7 +173,7 @@ describe('serving the built client', () => {
     it('runs as a JSON-only API when there is no build, rather than failing to start', async () => {
         // The directory exists and is EMPTY - somebody deployed without running the build.
         // The half that moves money must not refuse to boot over a missing stylesheet.
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         expect((await app.inject({ method: 'GET', url: '/api/healthz' })).statusCode).toBe(200);
 
@@ -185,7 +185,7 @@ describe('serving the built client', () => {
 
     it('serves nothing at all when no directory is configured', async () => {
         // What every other test in this suite runs as, and what an nginx deployment wants.
-        const app = buildApp(stubs(store));
+        const app = buildApp(await stubs(store));
 
         expect((await app.inject({ method: 'GET', url: '/' })).statusCode).toBe(404);
         expect((await app.inject({ method: 'GET', url: '/api/healthz' })).statusCode).toBe(200);
@@ -197,7 +197,7 @@ describe('serving the built client', () => {
         // @fastify/static refuses it; this is here so that stays true if it is ever replaced.
         build();
         writeFileSync(join(dist, '..', 'ashbringer-secret.txt'), 'the merchant id');
-        const app = buildApp({ ...stubs(store), clientDir: dist });
+        const app = buildApp({ ...(await stubs(store)), clientDir: dist });
 
         for (const url of [
             '/../ashbringer-secret.txt',

@@ -222,14 +222,14 @@ export interface SettingsLogEntry {
  * depends on the four calls it needs rather than on the whole database.
  */
 export interface SettingsStore {
-    /** The raw stored string - sealed, if it is a secret. undefined means "never set". */
-    getSetting(key: string): string | undefined;
+    /** Every stored row, key to raw string - sealed, if it is a secret. An absent key was never set. */
+    allSettings(): Promise<Map<string, string>>;
 
-    putSetting(key: string, value: string): void;
+    putSetting(key: string, value: string): Promise<void>;
 
-    logSetting(entry: SettingsLogEntry): void;
+    logSetting(entry: SettingsLogEntry): Promise<void>;
 
-    settingsLog(limit: number): SettingsLogEntry[];
+    settingsLog(limit: number): Promise<SettingsLogEntry[]>;
 }
 
 /** Everything the application asks of the database. */
@@ -237,33 +237,33 @@ export interface Store extends SettingsStore {
     // --- The catalogue ---
 
     /** Every tier, ordered for display. `active: false` ones are included - the console needs them. */
-    tiers(): Tier[];
+    tiers(): Promise<Tier[]>;
 
     /**
      * The one a purchase is allowed to use: present AND active. Returns undefined otherwise,
      * which is the check that replaced the old `5 | 10 | 25` union at the boundary.
      */
-    sellableTier(amount: Amount): Tier | undefined;
+    sellableTier(amount: Amount): Promise<Tier | undefined>;
 
-    saveTier(tier: TierInput): void;
+    saveTier(tier: TierInput): Promise<void>;
 
     /**
      * Removes a tier, or deactivates it when codes or orders reference it - history must
      * keep the amount it was sold under. The return value says which happened.
      */
-    removeTier(amount: Amount): TierRemoval;
+    removeTier(amount: Amount): Promise<TierRemoval>;
 
     /** True when the catalogue has never been populated, so boot can seed it once. */
-    isCatalogueEmpty(): boolean;
+    isCatalogueEmpty(): Promise<boolean>;
 
     // --- Inventory ---
 
-    stock(): StockLine[];
-    availableFor(amount: Amount): number;
-    addCodes(amount: Amount, codes: string[]): AddCodesResult;
+    stock(): Promise<StockLine[]>;
+    availableFor(amount: Amount): Promise<number>;
+    addCodes(amount: Amount, codes: string[]): Promise<AddCodesResult>;
 
     /** One page of the code inventory itself: what was loaded, and where each one went. */
-    searchCodes(query: CodeQuery): { rows: CodeRow[]; total: number };
+    searchCodes(query: CodeQuery): Promise<{ rows: CodeRow[]; total: number }>;
 
     // --- Orders ---
 
@@ -272,56 +272,56 @@ export interface Store extends SettingsStore {
      * transaction. Returns false when the denomination is sold out - the caller must then
      * refuse the purchase rather than send the buyer to pay for nothing.
      */
-    startOrder(order: NewOrder, holdMs: number): boolean;
+    startOrder(order: NewOrder, holdMs: number): Promise<boolean>;
 
     /**
      * Binds the gateway's handle to the order. False means the handle is already bound to
      * a different order - the caller must then abandon this one rather than proceed with a
      * payment it could not find on the way back.
      */
-    attachAuthority(orderId: string, authority: string): boolean;
+    attachAuthority(orderId: string, authority: string): Promise<boolean>;
 
     /** Undoes {@link Store.startOrder} when the gateway refuses to open the payment. */
-    abandonOrder(orderId: string): void;
+    abandonOrder(orderId: string): Promise<void>;
 
-    orderById(id: string): Order | undefined;
-    orderByAuthority(authority: string): Order | undefined;
+    orderById(id: string): Promise<Order | undefined>;
+    orderByAuthority(authority: string): Promise<Order | undefined>;
 
     /**
      * Unsettled orders whose gateway handle starts with `prefix`, opened after `since` (ISO).
      * What the NOWPayments reconciler re-checks - a crypto payment can confirm long after the buyer
      * closed the tab.
      */
-    pendingOrders(prefix: string, since: string): Order[];
+    pendingOrders(prefix: string, since: string): Promise<Order[]>;
 
     /**
      * Keeps a NOWPayments payment id against the order's stored handle. Only ever called once
      * NOWPayments has said the payment is under that invoice. Repeating one is a no-op.
      */
-    rememberPayment(authority: string, paymentId: string): void;
+    rememberPayment(authority: string, paymentId: string): Promise<void>;
 
     /** The payment ids kept for a handle, oldest first. */
-    paymentsFor(authority: string): string[];
+    paymentsFor(authority: string): Promise<string[]>;
 
     /**
      * Settles a verified payment: keeps the held code (or claims a fresh one if the hold
      * lapsed and it was taken), and returns the code, or null for the owed state.
      */
-    settlePaid(orderId: string, refId: number): string | null;
+    settlePaid(orderId: string, refId: number): Promise<string | null>;
 
     /** Settles an unpaid attempt and returns the held code to stock. */
-    settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
+    settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): Promise<void>;
 
-    markSmsDelivered(orderId: string, delivered: boolean): void;
+    markSmsDelivered(orderId: string, delivered: boolean): Promise<void>;
 
     /** The ledger, newest first, owed orders pinned to the top. */
-    recentOrders(limit: number): Order[];
+    recentOrders(limit: number): Promise<Order[]>;
 
     /** One page of the ledger, plus how many rows the search matched in total. */
-    searchOrders(query: OrderQuery): { rows: Order[]; total: number };
+    searchOrders(query: OrderQuery): Promise<{ rows: Order[]; total: number }>;
 
     /** Paid orders with no code, across the WHOLE table - not just the page being shown. */
-    owedCount(): number;
+    owedCount(): Promise<number>;
 
     // --- Redemptions ---
 
@@ -333,16 +333,16 @@ export interface Store extends SettingsStore {
      * matter how they interleave. A code that was never sold is `unknown` - a free code is
      * inventory the shop still owns, and redeeming one would be giving it away.
      */
-    redeemCode(code: string, wallet: string, network: string): RedeemOutcome;
+    redeemCode(code: string, wallet: string, network: string): Promise<RedeemOutcome>;
 
     /** Records that the operator was actually told. See {@link Redemption.notified}. */
-    markRedemptionNotified(code: string): void;
+    markRedemptionNotified(code: string): Promise<void>;
 
     /** How many spent codes nobody has been told about. Somebody is waiting on each of these. */
-    unnotifiedRedemptions(): number;
+    unnotifiedRedemptions(): Promise<number>;
 
     /** One page of the payout requests, unnotified first, then newest first. */
-    searchRedemptions(query: OrderQuery): { rows: Redemption[]; total: number };
+    searchRedemptions(query: OrderQuery): Promise<{ rows: Redemption[]; total: number }>;
 
     /**
      * Writes a CONSISTENT snapshot of the whole database to `file`.
@@ -351,7 +351,7 @@ export interface Store extends SettingsStore {
      * captures a half-written page and a WAL that does not match it, which restores to
      * nothing. This is what the scheduled Telegram backup sends.
      */
-    backupTo(file: string): void;
+    backupTo(file: string): Promise<void>;
 
-    close(): void;
+    close(): Promise<void>;
 }

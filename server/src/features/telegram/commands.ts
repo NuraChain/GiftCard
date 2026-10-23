@@ -87,13 +87,13 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
     const { telegram, settings, rate, store, backup, log } = options;
 
     /** @internal The shop's prices right now, one line each, or why there are none. */
-    function priceLines(): string[] {
+    async function priceLines(): Promise<string[]> {
         const live = rate.current();
         if (live === null) {
             return ['قیمتی در دسترس نیست - نرخ تتر تنظیم نشده است.'];
         }
         const margin = settings.current().marginPercent;
-        const tiers = store.tiers().filter((tier) => tier.active);
+        const tiers = (await store.tiers()).filter((tier) => tier.active);
         if (tiers.length === 0) {
             return ['هیچ کارت فعالی برای فروش نیست.'];
         }
@@ -138,7 +138,7 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                         : `نرخ تتر: ${money(live.toman)} تومان${live.stale ? ' (قدیمی)' : ''}`,
                     `درصد سود: ${margin}٪`,
                     '',
-                    ...priceLines()
+                    ...(await priceLines())
                 ].join('\n');
             }
 
@@ -161,12 +161,16 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                 }
 
                 const before = rate.current();
-                settings.save({ tetherToman: wanted });
+                await settings.save({ tetherToman: wanted });
 
                 // The prices are read back AFTER the save, from the same function the shop
                 // uses - so what this message shows is what a buyer would be charged, not a
                 // prediction of it.
-                const lines = [`نرخ تتر روی ${money(wanted)} تومان ثبت شد.`, '', ...priceLines()];
+                const lines = [
+                    `نرخ تتر روی ${money(wanted)} تومان ثبت شد.`,
+                    '',
+                    ...(await priceLines())
+                ];
 
                 if (before !== null) {
                     const move = (Math.abs(wanted - before.toman) / before.toman) * 100;
@@ -191,13 +195,13 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
                 if (!Number.isFinite(wanted) || wanted < 0 || wanted > MAX_MARGIN_PERCENT) {
                     return `درصد سود باید عددی بین ۰ تا ${MAX_MARGIN_PERCENT} باشد.`;
                 }
-                settings.save({ marginPercent: wanted });
+                await settings.save({ marginPercent: wanted });
                 log?.warn({ marginPercent: wanted }, 'margin set from telegram');
-                return [`درصد سود روی ${wanted}٪ ثبت شد.`, '', ...priceLines()].join('\n');
+                return [`درصد سود روی ${wanted}٪ ثبت شد.`, '', ...(await priceLines())].join('\n');
             }
 
             case '/stock': {
-                const stock = store.stock();
+                const stock = await store.stock();
                 if (stock.length === 0) {
                     return 'هیچ کدی در انبار نیست.';
                 }
@@ -213,12 +217,12 @@ export function createCommandBot(options: CommandBotOptions): CommandBot {
             case '/status': {
                 const status = rate.status();
                 const live = status.rate;
-                const total = store.stock().reduce((sum, line) => sum + line.available, 0);
+                const total = (await store.stock()).reduce((sum, line) => sum + line.available, 0);
 
                 // A redemption the operator was never told about is somebody waiting on a
                 // transfer that is not coming, and it happens exactly when Telegram was
                 // unreachable - so /status is the one place guaranteed to be read afterwards.
-                const owedPayouts = store.unnotifiedRedemptions();
+                const owedPayouts = await store.unnotifiedRedemptions();
 
                 return [
                     `فروش: ${status.selling ? 'باز' : 'بسته'}`,

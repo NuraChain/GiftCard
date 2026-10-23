@@ -43,12 +43,12 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
         },
 
         // GET /api/admin/overview
-        overview: () => ({ stock: store.stock(), owed: store.owedCount() }),
+        overview: async () => ({ stock: await store.stock(), owed: await store.owedCount() }),
 
         // GET /api/admin/orders
-        orders: ({ query }) => {
+        orders: async ({ query }) => {
             const page = Math.max(1, query.page ?? 1);
-            const found = store.searchOrders({
+            const found = await store.searchOrders({
                 search: query.search ?? '',
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE
@@ -76,9 +76,9 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
         },
 
         // GET /api/admin/redemptions
-        redemptions: ({ query }) => {
+        redemptions: async ({ query }) => {
             const page = Math.max(1, query.page ?? 1);
-            const found = store.searchRedemptions({
+            const found = await store.searchRedemptions({
                 search: query.search ?? '',
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE

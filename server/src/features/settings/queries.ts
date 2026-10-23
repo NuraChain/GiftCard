@@ -8,7 +8,7 @@ import { shaped } from '../../platform/db.ts';
 import type { SettingsStore } from '../../db/types.ts';
 
 export function createSettingQueries(db: DatabaseSync): SettingsStore {
-    const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
+    const allSettings = db.prepare('SELECT key, value FROM settings');
     const putSetting = db.prepare(
         'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
     );
@@ -20,19 +20,24 @@ export function createSettingQueries(db: DatabaseSync): SettingsStore {
     );
 
     return {
-        getSetting(key) {
-            return shaped<{ value: string } | undefined>(getSetting.get(key))?.value;
+        async allSettings() {
+            return new Map(
+                shaped<Array<{ key: string; value: string }>>(allSettings.all()).map((row) => [
+                    row.key,
+                    row.value
+                ])
+            );
         },
 
-        putSetting(key, value) {
+        async putSetting(key, value) {
             putSetting.run(key, value);
         },
 
-        logSetting(entry) {
+        async logSetting(entry) {
             insertSettingLog.run(entry.key, entry.before, entry.after, entry.changedAt);
         },
 
-        settingsLog(limit) {
+        async settingsLog(limit) {
             return shaped<
                 Array<{ key: string; before: string; after: string; changed_at: string }>
             >(selectSettingLog.all(limit)).map((row) => ({

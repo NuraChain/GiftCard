@@ -256,7 +256,7 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
             // A CONSISTENT snapshot, taken through SQLite itself. Copying the file by hand
             // while the shop is trading would capture a half-written page and a WAL that
             // does not match it - a backup that restores to nothing.
-            options.store.backupTo(path);
+            await options.store.backupTo(path);
 
             const bytes = await readFile(path);
 

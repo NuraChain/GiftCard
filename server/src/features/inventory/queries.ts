@@ -20,9 +20,9 @@ import type {
 
 export interface CodeQueries {
     stock(tiers: Tier[]): StockLine[];
-    availableFor(amount: Amount): number;
-    addCodes(amount: Amount, codes: string[]): AddCodesResult;
-    searchCodes(query: CodeQuery): { rows: CodeRow[]; total: number };
+    availableFor(amount: Amount): Promise<number>;
+    addCodes(amount: Amount, codes: string[]): Promise<AddCodesResult>;
+    searchCodes(query: CodeQuery): Promise<{ rows: CodeRow[]; total: number }>;
 
     /** Frees holds whose window has passed, so an abandoned tab cannot sit on stock. */
     sweep(): void;
@@ -132,12 +132,12 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries {
             return [...lines, ...byAmount.values()];
         },
 
-        availableFor(amount) {
+        async availableFor(amount) {
             sweep();
             return shaped<{ n: number }>(countAvailable.get(amount)).n;
         },
 
-        addCodes(amount, codes) {
+        async addCodes(amount, codes) {
             const result: AddCodesResult = { added: 0, duplicate: 0, invalid: [] };
             const seen = new Set<string>();
             db.exec('BEGIN');
@@ -173,7 +173,7 @@ export function createCodeQueries(db: DatabaseSync): CodeQueries {
             return result;
         },
 
-        searchCodes(query) {
+        async searchCodes(query) {
             const term = query.search.trim().toLowerCase();
             const like = `%${term}%`;
             const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);

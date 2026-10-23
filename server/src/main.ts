@@ -124,21 +124,21 @@ if (
     }
     log.warn({ from: previousDatabaseFile, to: config.databaseFile }, 'database file renamed');
 }
-const store = createStore(config.databaseFile, (names) =>
+const store = await createStore(config.databaseFile, (names) =>
     log.warn({ migrations: names }, 'database schema migrated')
 );
 
 // A catalogue is seeded exactly once. After this the console owns it, so a later change to
 // seed.ts has no effect on a shop that is already trading - which is the point of moving the
 // catalogue into the database.
-if (store.isCatalogueEmpty()) {
+if (await store.isCatalogueEmpty()) {
     for (const tier of seedTiers()) {
-        store.saveTier(tier);
+        await store.saveTier(tier);
     }
     log.info({ tiers: 3 }, 'catalogue seeded');
 }
 
-const settings = createSettings({ store });
+const settings = await createSettings({ store });
 
 // THE SHIPPED DEFAULT IS A PUBLISHED CREDENTIAL. It is written down in this repository, so a
 // shop reachable from the internet that still answers to it is open to anybody who has read
@@ -344,8 +344,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
         stopBackups();
         stopCommands();
-        void app.close().then(() => {
-            store.close();
+        void app.close().then(async () => {
+            await store.close();
             process.exit(0);
         });
     });

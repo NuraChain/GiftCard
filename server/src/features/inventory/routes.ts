@@ -23,12 +23,12 @@ export function inventoryHandlers(options: InventoryOptions): InventoryHandlers 
 
     return {
         // POST /api/admin/codes
-        addCodes: ({ input }) => store.addCodes(input.amount, input.codes),
+        addCodes: async ({ input }) => await store.addCodes(input.amount, input.codes),
 
         // GET /api/admin/codes
-        codes: ({ query }) => {
+        codes: async ({ query }) => {
             const page = Math.max(1, query.page ?? 1);
-            const found = store.searchCodes({
+            const found = await store.searchCodes({
                 search: query.search ?? '',
                 state: query.state ?? null,
                 amount: query.amount ?? null,

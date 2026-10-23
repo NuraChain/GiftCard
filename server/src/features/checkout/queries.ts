@@ -12,20 +12,20 @@ import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
 import { phoneSearchVariants } from '../../domain/phone.ts';
 
 export interface OrderQueries {
-    startOrder(order: NewOrder, holdMs: number): boolean;
-    attachAuthority(orderId: string, authority: string): boolean;
-    abandonOrder(orderId: string): void;
-    orderById(id: string): Order | undefined;
-    orderByAuthority(authority: string): Order | undefined;
-    pendingOrders(prefix: string, since: string): Order[];
-    rememberPayment(authority: string, paymentId: string): void;
-    paymentsFor(authority: string): string[];
-    settlePaid(orderId: string, refId: number): string | null;
-    settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): void;
-    markSmsDelivered(orderId: string, delivered: boolean): void;
-    recentOrders(limit: number): Order[];
-    searchOrders(query: OrderQuery): { rows: Order[]; total: number };
-    owedCount(): number;
+    startOrder(order: NewOrder, holdMs: number): Promise<boolean>;
+    attachAuthority(orderId: string, authority: string): Promise<boolean>;
+    abandonOrder(orderId: string): Promise<void>;
+    orderById(id: string): Promise<Order | undefined>;
+    orderByAuthority(authority: string): Promise<Order | undefined>;
+    pendingOrders(prefix: string, since: string): Promise<Order[]>;
+    rememberPayment(authority: string, paymentId: string): Promise<void>;
+    paymentsFor(authority: string): Promise<string[]>;
+    settlePaid(orderId: string, refId: number): Promise<string | null>;
+    settleUnpaid(orderId: string, status: 'cancelled' | 'failed'): Promise<void>;
+    markSmsDelivered(orderId: string, delivered: boolean): Promise<void>;
+    recentOrders(limit: number): Promise<Order[]>;
+    searchOrders(query: OrderQuery): Promise<{ rows: Order[]; total: number }>;
+    owedCount(): Promise<number>;
 }
 
 export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
@@ -80,7 +80,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
     const searchCount = db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE ${MATCHES}`);
 
     return {
-        startOrder(order, holdMs) {
+        async startOrder(order, holdMs) {
             codes.sweep();
             db.exec('BEGIN IMMEDIATE');
             try {
@@ -104,7 +104,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        attachAuthority(orderId, authority) {
+        async attachAuthority(orderId, authority) {
             try {
                 setAuthority.run(authority, orderId);
                 return true;
@@ -116,7 +116,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        abandonOrder(orderId) {
+        async abandonOrder(orderId) {
             db.exec('BEGIN IMMEDIATE');
             try {
                 codes.release(orderId);
@@ -128,31 +128,31 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        orderById(id) {
+        async orderById(id) {
             const row = shaped<OrderRow | undefined>(selectById.get(id));
             return row === undefined ? undefined : toOrder(row);
         },
 
-        orderByAuthority(authority) {
+        async orderByAuthority(authority) {
             const row = shaped<OrderRow | undefined>(selectByAuthority.get(authority));
             return row === undefined ? undefined : toOrder(row);
         },
 
-        pendingOrders(prefix, since) {
+        async pendingOrders(prefix, since) {
             return shaped<OrderRow[]>(selectPending.all(prefix.length, prefix, since)).map(toOrder);
         },
 
-        rememberPayment(authority, paymentId) {
+        async rememberPayment(authority, paymentId) {
             insertPayment.run(authority, paymentId);
         },
 
-        paymentsFor(authority) {
+        async paymentsFor(authority) {
             return shaped<Array<{ payment_id: string }>>(selectPayments.all(authority)).map(
                 (row) => row.payment_id
             );
         },
 
-        settlePaid(orderId, refId) {
+        async settlePaid(orderId, refId) {
             db.exec('BEGIN IMMEDIATE');
             try {
                 // The usual case: the hold survived, so the buyer gets the code reserved at
@@ -179,7 +179,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        settleUnpaid(orderId, status) {
+        async settleUnpaid(orderId, status) {
             db.exec('BEGIN IMMEDIATE');
             try {
                 codes.release(orderId);
@@ -191,15 +191,15 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             }
         },
 
-        markSmsDelivered(orderId, delivered) {
+        async markSmsDelivered(orderId, delivered) {
             setSms.run(delivered ? 1 : 0, orderId);
         },
 
-        recentOrders(limit) {
+        async recentOrders(limit) {
             return shaped<OrderRow[]>(selectRecent.all(limit)).map(toOrder);
         },
 
-        searchOrders(query) {
+        async searchOrders(query) {
             const term = query.search.trim();
             const like = `%${term.toLowerCase()}%`;
             const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);
@@ -212,7 +212,7 @@ export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQ
             };
         },
 
-        owedCount() {
+        async owedCount() {
             return shaped<{ n: number }>(countOwed.get()).n;
         }
     };

@@ -11,7 +11,10 @@ import { createTierQueries } from '../features/catalogue/queries.ts';
 import { createRedemptionQueries } from '../features/redeem/queries.ts';
 import type { Store } from './types.ts';
 
-export function createStore(file: string, onMigrate?: (names: string[]) => void): Store {
+export async function createStore(
+    file: string,
+    onMigrate?: (names: string[]) => void
+): Promise<Store> {
     const db = openDatabase(file, onMigrate);
 
     const settings = createSettingQueries(db);
@@ -29,15 +32,19 @@ export function createStore(file: string, onMigrate?: (names: string[]) => void)
 
         // The stock strip is driven by the CATALOGUE rather than by whatever happens to be
         // in the codes table, so this is the one call that needs both modules.
-        stock: () => codes.stock(tiers.tiers()),
+        stock: async () => codes.stock(await tiers.tiers()),
 
         // `VACUUM INTO` is SQLite's own consistent-snapshot call: it takes the same locks a
         // read does, so a purchase committing mid-backup is either fully in the snapshot or
         // fully absent - never half. The single quotes in the path are doubled because the
         // destination is a SQL string literal, and this is the one place a path becomes one.
-        backupTo: (destination) => db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`),
+        backupTo: async (destination) => {
+            db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
+        },
 
-        close: () => db.close()
+        close: async () => {
+            db.close();
+        }
     };
 }
 

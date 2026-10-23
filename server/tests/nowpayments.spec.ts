@@ -75,7 +75,7 @@ function nowpayments(answer: (url: URL) => unknown, known: string[] = []) {
         ...wire,
         gateway: createNowPayments({
             settings: () => SETTINGS,
-            paymentsFor: () => known,
+            paymentsFor: async () => known,
             fetch: wire.fetch
         })
     };
@@ -153,7 +153,7 @@ describe('opening a NOWPayments invoice', () => {
         const wire = recorder(() => CREATED);
         const gateway = createNowPayments({
             settings: () => ({ ...SETTINGS, apiKey: '' }),
-            paymentsFor: () => [],
+            paymentsFor: async () => [],
             fetch: wire.fetch
         });
         expect(await gateway.request(INVOICE)).toEqual({
@@ -194,7 +194,7 @@ describe('opening a NOWPayments invoice', () => {
     it('answers a host that is not a URL instead of throwing', async () => {
         const gateway = createNowPayments({
             settings: () => ({ apiKey: 'k', baseUrl: 'not a url' }),
-            paymentsFor: () => [],
+            paymentsFor: async () => [],
             fetch: () => Promise.reject(new Error('never called'))
         });
         expect((await gateway.request(INVOICE)).ok).toBe(false);

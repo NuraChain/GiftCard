@@ -38,10 +38,10 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers 
      * The row is written out field by field rather than spread: this is a WIRE shape, and a
      * spread would silently publish whatever column the tier table grows next.
      */
-    function priced(): Array<Tier & { toman: number | null }> {
+    async function priced(): Promise<Array<Tier & { toman: number | null }>> {
         const live = rate.current();
         const margin = settings.current().marginPercent;
-        return store.tiers().map((tier) => ({
+        return (await store.tiers()).map((tier) => ({
             amount: tier.amount,
             toman: live === null ? null : tomanPrice(tier.amount, live.toman, margin),
             title: tier.title,
@@ -56,18 +56,18 @@ export function catalogueHandlers(options: CatalogueOptions): CatalogueHandlers 
 
     return {
         // GET /api/admin/tiers
-        tiers: () => ({ tiers: priced() }),
+        tiers: async () => ({ tiers: await priced() }),
 
         // POST /api/admin/tiers
-        saveTier: ({ input }) => {
-            store.saveTier(input);
+        saveTier: async ({ input }) => {
+            await store.saveTier(input);
             log?.info({ amount: input.amount, active: input.active }, 'tier saved');
-            return { tiers: priced() };
+            return { tiers: await priced() };
         },
 
         // DELETE /api/admin/tiers
-        removeTier: ({ query }) => {
-            const outcome = store.removeTier(query.amount);
+        removeTier: async ({ query }) => {
+            const outcome = await store.removeTier(query.amount);
             log?.info({ amount: query.amount, outcome }, 'tier removed');
             return { outcome };
         }

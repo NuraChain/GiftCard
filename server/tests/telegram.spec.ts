@@ -836,8 +836,8 @@ describe('the sale notification', () => {
 describe('the scheduled backup', () => {
     it('sends a ZIP whose contents are a restorable database, then deletes it', async () => {
         const dir = await scratch();
-        const store = createStore(':memory:');
-        store.addCodes(10, [crypto.randomUUID()]);
+        const store = await createStore(':memory:');
+        await store.addCodes(10, [crypto.randomUUID()]);
 
         let uploaded: Uint8Array | null = null;
         let uploadedName = '';
@@ -891,13 +891,13 @@ describe('the scheduled backup', () => {
         // the file this test wrote itself should remain.
         expect(await readdir(dir)).toEqual(['restored.db']);
 
-        store.close();
+        await store.close();
         await rm(dir, { recursive: true, force: true });
     });
 
     it('refuses rather than pretending when there is no bot', async () => {
         const dir = await scratch();
-        const store = createStore(':memory:');
+        const store = await createStore(':memory:');
         const bot: Telegram = {
             configured: () => false,
             receive: () => Promise.resolve([]),
@@ -919,7 +919,7 @@ describe('the scheduled backup', () => {
         // Nothing was written, so there is nothing to leak.
         expect(await readdir(dir)).toEqual([]);
 
-        store.close();
+        await store.close();
         await rm(dir, { recursive: true, force: true });
     });
 });
@@ -950,17 +950,17 @@ function askCounter(): Telegram & { asked: number } {
 }
 
 /** A started schedule over a throwaway database. The returned function stops and closes both. */
-function scheduled(bot: Telegram, everyMinutes: () => number): () => void {
-    const store = createStore(':memory:');
+async function scheduled(bot: Telegram, everyMinutes: () => number): Promise<() => Promise<void>> {
+    const store = await createStore(':memory:');
     const stop = createBackupJob({
         store,
         telegram: bot,
         appName: () => 'x',
         everyMinutes
     }).start();
-    return (): void => {
+    return async (): Promise<void> => {
         stop();
-        store.close();
+        await store.close();
     };
 }
 
@@ -968,7 +968,7 @@ describe('the backup schedule', () => {
     it('waits out the configured gap before the first backup, and not longer', async () => {
         vi.useFakeTimers();
         const bot = askCounter();
-        const stop = scheduled(bot, () => 10);
+        const stop = await scheduled(bot, () => 10);
 
         try {
             // Nothing on boot. A process that restarts often would otherwise copy the whole
@@ -983,7 +983,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(10 * 60_000);
             expect(bot.asked).toBe(2);
         } finally {
-            stop();
+            await stop();
             vi.useRealTimers();
         }
     });
@@ -996,7 +996,7 @@ describe('the backup schedule', () => {
         // the moment it is armed, so an operator who cut a daily backup to a ten-minute one
         // after a scare would get the first short gap A DAY LATER - on the one day it mattered.
         let minutes = 24 * 60;
-        const stop = scheduled(bot, () => minutes);
+        const stop = await scheduled(bot, () => minutes);
 
         try {
             await vi.advanceTimersByTimeAsync(30 * 60_000);
@@ -1007,7 +1007,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(60_000);
             expect(bot.asked).toBe(1);
         } finally {
-            stop();
+            await stop();
             vi.useRealTimers();
         }
     });
@@ -1016,7 +1016,7 @@ describe('the backup schedule', () => {
         vi.useFakeTimers();
         const bot = askCounter();
         let minutes = 10;
-        const stop = scheduled(bot, () => minutes);
+        const stop = await scheduled(bot, () => minutes);
 
         try {
             await vi.advanceTimersByTimeAsync(9 * 60_000);
@@ -1027,7 +1027,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(60 * 60_000);
             expect(bot.asked).toBe(0);
         } finally {
-            stop();
+            await stop();
             vi.useRealTimers();
         }
     });
@@ -1035,8 +1035,8 @@ describe('the backup schedule', () => {
     it('stops when told to', async () => {
         vi.useFakeTimers();
         const bot = askCounter();
-        const stop = scheduled(bot, () => MIN_BACKUP_MINUTES);
-        stop();
+        const stop = await scheduled(bot, () => MIN_BACKUP_MINUTES);
+        await stop();
 
         try {
             await vi.advanceTimersByTimeAsync(60 * 60_000);

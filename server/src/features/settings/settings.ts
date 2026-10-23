@@ -273,18 +273,20 @@ export interface Settings {
         changes: Partial<Omit<RuntimeSettings, 'appNames'>> & {
             appNames?: Partial<Record<keyof ShopNames, string | undefined>>;
         }
-    ): void;
+    ): Promise<void>;
 
     /** True when the given key matches the stored hash, or the bootstrap key if none exists. */
     matchesAdminKey(candidate: string): boolean;
 
     /** Replaces the admin key with a hash of `next`. */
-    rotateAdminKey(next: string): void;
+    rotateAdminKey(next: string): Promise<void>;
 
     /** True once a key has been rotated into the database. */
     adminKeyRotated(): boolean;
 
-    log(limit: number): Array<{ key: string; before: string; after: string; changedAt: string }>;
+    log(
+        limit: number
+    ): Promise<Array<{ key: string; before: string; after: string; changedAt: string }>>;
 }
 
 /** The masked shape the console receives. Mirrors `settingsView` in the contract. */
@@ -471,25 +473,34 @@ function keyMatchesHash(candidate: string, stored: string): boolean {
     return timingSafeEqual(expected, actual);
 }
 
-export function createSettings(options: SettingsOptions): Settings {
+/**
+ * Reads every stored setting once, then answers from memory.
+ *
+ * `current()` is asked on every request, so it cannot wait on the database. Only this module
+ * writes the table, and a write lands in the copy as soon as it has landed in the table - so the
+ * copy IS the table, for as long as this is the one process serving the shop.
+ */
+export async function createSettings(options: SettingsOptions): Promise<Settings> {
+    const rows = await options.store.allSettings();
     let cache: RuntimeSettings | null = null;
 
-    const read = (name: SettingKey): string => options.store.getSetting(name) ?? '';
+    const read = (name: SettingKey): string => rows.get(name) ?? '';
 
-    const write = (name: SettingKey, value: string): void => {
+    const write = async (name: SettingKey, value: string): Promise<void> => {
         const before = read(name);
         if (before === value) {
             return;
         }
-        options.store.putSetting(name, value);
+        await options.store.putSetting(name, value);
         // The audit records MASKED values for the same reason `view` does: a log that prints
         // credentials is a second copy of them.
-        options.store.logSetting({
+        await options.store.logSetting({
             key: name,
             before: audited(name, before),
             after: audited(name, value),
             changedAt: new Date().toISOString()
         });
+        rows.set(name, value);
         cache = null;
     };
 
@@ -499,7 +510,7 @@ export function createSettings(options: SettingsOptions): Settings {
             // default, which is why `??` on the RAW row is wrong here: only an ABSENT row
             // takes the fallback.
             const pick = (name: SettingKey, fallback: string): string =>
-                options.store.getSetting(name) === undefined ? fallback : read(name);
+                rows.has(name) ? read(name) : fallback;
 
             cache = {
                 appName: pick('appName', DEFAULTS.appName),
@@ -584,11 +595,11 @@ export function createSettings(options: SettingsOptions): Settings {
                     sender: live.smsSender
                 }),
                 callbackUrl,
-                keyRotated: options.store.getSetting('adminKeyHash') !== undefined
+                keyRotated: rows.has('adminKeyHash')
             };
         },
 
-        save(changes) {
+        async save(changes) {
             // Read BEFORE the loop. The stamp below must move only when the rate actually
             // CHANGED: the pricing form posts its rate box on every save, so stamping on
             // presence would make a two-day-old rate look like it was set this minute and
@@ -599,7 +610,7 @@ export function createSettings(options: SettingsOptions): Settings {
                 if (value !== undefined) {
                     // The margin and the rate are numbers and everything else is a string; the
                     // settings table holds text either way, and `current()` converts back.
-                    write(
+                    await write(
                         name as SettingKey,
                         name === 'telegramProxies'
                             ? JSON.stringify(
@@ -625,7 +636,7 @@ export function createSettings(options: SettingsOptions): Settings {
             // whether it can still be trusted. Stamped from the clock here rather than taken
             // from the request, so nobody can post a fresh-looking date with a stale number.
             if (read('tetherToman') !== rateBefore) {
-                write('tetherSetAt', new Date().toISOString());
+                await write('tetherSetAt', new Date().toISOString());
             }
         },
 
@@ -645,15 +656,15 @@ export function createSettings(options: SettingsOptions): Settings {
         },
 
         rotateAdminKey(next) {
-            write('adminKeyHash', hashKey(next));
+            return write('adminKeyHash', hashKey(next));
         },
 
         adminKeyRotated() {
-            return options.store.getSetting('adminKeyHash') !== undefined;
+            return rows.has('adminKeyHash');
         },
 
-        log(limit) {
-            return options.store.settingsLog(limit);
+        async log(limit) {
+            return await options.store.settingsLog(limit);
         }
     };
 }

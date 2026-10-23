@@ -64,7 +64,7 @@ export function createReconciler(options: ReconcilerOptions): Reconciler {
             const since = new Date(Date.now() - windowMs).toISOString();
             // One at a time, deliberately: a backlog of unsettled invoices must not become a
             // burst of calls against the same API key.
-            for (const order of store.pendingOrders(NOWPAYMENTS_PREFIX, since)) {
+            for (const order of await store.pendingOrders(NOWPAYMENTS_PREFIX, since)) {
                 await checkout.settle(order, true);
             }
         } catch (error) {

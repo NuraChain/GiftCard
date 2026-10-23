@@ -120,7 +120,7 @@ export function mountPayCallback(app: FastifyInstance, options: PayOptions): voi
         async (request, reply) => {
             const returned = readReturn(request.query as Record<string, unknown>);
             const order =
-                returned === null ? undefined : store.orderByAuthority(returned.authority);
+                returned === null ? undefined : await store.orderByAuthority(returned.authority);
             if (returned === null || order === undefined) {
                 // A forged callback, or one for an order that no longer exists. The two are
                 // indistinguishable from here and neither is told anything specific.
@@ -153,15 +153,15 @@ export async function pointAndSettle(
         ID_SHAPE.test(paymentId) &&
         authority.startsWith(NOWPAYMENTS_PREFIX)
     ) {
-        const known = store.paymentsFor(authority).includes(paymentId);
+        const known = (await store.paymentsFor(authority)).includes(paymentId);
         if (
             !known &&
             (await nowpayments.learn(authority.slice(NOWPAYMENTS_PREFIX.length), paymentId))
         ) {
-            store.rememberPayment(authority, paymentId);
+            await store.rememberPayment(authority, paymentId);
         }
     }
-    await checkout.settle(store.orderById(order.id) ?? order, true);
+    await checkout.settle((await store.orderById(order.id)) ?? order, true);
 }
 
 /** @internal An id out of somebody else's JSON or form - a number or a string - as a string. */
@@ -214,7 +214,7 @@ export function mountNowPaymentsCallback(app: FastifyInstance, options: PayOptio
                 const body = request.body as Record<string, unknown> | null | undefined;
                 const invoiceId = idField(body?.invoice_id);
                 const order = ID_SHAPE.test(invoiceId)
-                    ? store.orderByAuthority(`${NOWPAYMENTS_PREFIX}${invoiceId}`)
+                    ? await store.orderByAuthority(`${NOWPAYMENTS_PREFIX}${invoiceId}`)
                     : undefined;
                 if (order === undefined) {
                     log?.warn('nowpayments callback for no known invoice');
@@ -262,7 +262,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
         }
         asked.set(order.id, now);
         await pointAndSettle(options, order, paymentId);
-        return store.orderById(order.id) ?? order;
+        return (await store.orderById(order.id)) ?? order;
     }
 
     return {
@@ -287,11 +287,13 @@ export function payHandlers(options: PayOptions): PayHandlers {
         },
 
         // GET /api/pay/catalog
-        catalog: () => {
+        catalog: async () => {
             // Only ACTIVE tiers reach the shop. A disabled card is not "hidden by the page" -
             // it never leaves the server, so nothing on the client can reveal an amount the
             // operator has withdrawn from sale.
-            const stock = new Map(store.stock().map((line) => [line.amount, line.available]));
+            const stock = new Map(
+                (await store.stock()).map((line) => [line.amount, line.available])
+            );
 
             // ONE rate for the whole response. Reading it per tier would let a save from
             // the console land mid-map and price three cards off two different rates.
@@ -301,8 +303,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             return {
                 appName: settings.current().appName,
                 appNames: settings.current().appNames,
-                tiers: store
-                    .tiers()
+                tiers: (await store.tiers())
                     .filter((tier) => tier.active)
                     .map((tier) => ({
                         amount: tier.amount,
@@ -332,7 +333,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // we actually sell is a lookup, and it happens before a code is claimed or a
             // gateway is called. An unknown or withdrawn denomination is refused exactly as a
             // forged one used to be.
-            const tier = store.sellableTier(input.amount);
+            const tier = await store.sellableTier(input.amount);
             if (tier === undefined) {
                 throw new ConflictError('این کارت برای فروش نیست');
             }
@@ -373,7 +374,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
 
             // Stock is claimed BEFORE the gateway is opened. A buyer is never sent to pay for
             // a card that has already been sold to someone else.
-            if (!store.startOrder(order, HOLD_MS)) {
+            if (!(await store.startOrder(order, HOLD_MS))) {
                 throw new ConflictError('این کارت فعلاً موجود نیست');
             }
 
@@ -388,10 +389,10 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // because the buyer would pay against an order we cannot find on the way back.
             // Either way the held code goes straight back to stock rather than sitting out
             // the hold window.
-            const tracked = opened.ok && store.attachAuthority(order.id, opened.authority);
+            const tracked = opened.ok && (await store.attachAuthority(order.id, opened.authority));
             if (!tracked) {
                 const reason = opened.ok ? 'duplicate authority' : opened.reason;
-                store.abandonOrder(order.id);
+                await store.abandonOrder(order.id);
                 log?.error({ amount: input.amount, reason }, 'could not open a trackable payment');
 
                 // 503, NOT THE 502 THIS IS. The shop sits behind a CDN, and a 502 from here
@@ -431,7 +432,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
             if (email === null) {
                 throw new ConflictError('Enter a valid email address');
             }
-            const tier = store.sellableTier(input.amount);
+            const tier = await store.sellableTier(input.amount);
             if (tier === undefined) {
                 throw new ConflictError('This card is not for sale');
             }
@@ -451,7 +452,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
                 lang: 'en' as const,
                 createdAt: new Date().toISOString()
             };
-            if (!store.startOrder(order, HOLD_EN_MINUTES * 60 * 1000)) {
+            if (!(await store.startOrder(order, HOLD_EN_MINUTES * 60 * 1000))) {
                 throw new ConflictError('This card is out of stock right now');
             }
 
@@ -467,10 +468,10 @@ export function payHandlers(options: PayOptions): PayHandlers {
             // The same single exit as `start`, for the same reasons.
             const tracked =
                 opened.ok &&
-                store.attachAuthority(order.id, `${NOWPAYMENTS_PREFIX}${opened.authority}`);
+                (await store.attachAuthority(order.id, `${NOWPAYMENTS_PREFIX}${opened.authority}`));
             if (!tracked) {
                 const reason = opened.ok ? 'duplicate authority' : opened.reason;
-                store.abandonOrder(order.id);
+                await store.abandonOrder(order.id);
                 log?.error(
                     { amount: input.amount, reason },
                     'could not open a NOWPayments invoice'
@@ -490,7 +491,7 @@ export function payHandlers(options: PayOptions): PayHandlers {
 
         // GET /api/pay/receipt
         receipt: async ({ query }) => {
-            let order = store.orderById(query.token);
+            let order = await store.orderById(query.token);
             if (
                 order?.status === 'pending' &&
                 order.lang === 'en' &&

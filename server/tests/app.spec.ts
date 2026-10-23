@@ -293,16 +293,16 @@ let rate: FakeRate;
 let settings: Settings;
 let app: ReturnType<typeof buildApp>;
 
-beforeEach(() => {
-    store = createStore(':memory:');
+beforeEach(async () => {
+    store = await createStore(':memory:');
     fake = fakes();
     rate = fakeRate();
     // The catalogue is data now, so every test starts from the same seeded shop the first
     // boot would produce.
     for (const tier of seedTiers()) {
-        store.saveTier(tier);
+        await store.saveTier(tier);
     }
-    settings = createSettings({ store });
+    settings = await createSettings({ store });
     app = buildApp({
         store,
         settings,
@@ -367,7 +367,7 @@ async function send(
 // that leaks either runs fine and then hangs the runner on the way out.
 afterEach(async () => {
     await app.close();
-    store.close();
+    await store.close();
 });
 
 function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Answer> {
@@ -400,8 +400,8 @@ async function buy(amount = 10, phone = '+989121234567', quotedToman?: number): 
 }
 
 /** The authority and receipt token of the most recent order. */
-function lastOrder(): { authority: string; token: string } {
-    const order = store.recentOrders(1)[0];
+async function lastOrder(): Promise<{ authority: string; token: string }> {
+    const order = (await store.recentOrders(1))[0];
     return { authority: order.authority ?? '', token: order.id };
 }
 
@@ -411,7 +411,7 @@ describe('the shop', () => {
     });
 
     it('reports stock, price and copy per denomination', async () => {
-        store.addCodes(10, uuids(3));
+        await store.addCodes(10, uuids(3));
         const body = (await (await get('/api/pay/catalog')).json()) as {
             tiers: Array<{
                 amount: number;
@@ -434,7 +434,7 @@ describe('the shop', () => {
     });
 
     it('does not offer a withdrawn denomination at all', async () => {
-        store.saveTier({ ...seedTiers()[0], active: false });
+        await store.saveTier({ ...seedTiers()[0], active: false });
         const body = (await (await get('/api/pay/catalog')).json()) as {
             tiers: Array<{ amount: number }>;
         };
@@ -448,7 +448,7 @@ describe('the shop', () => {
         // the schema can only prove the amount is a positive integer; that 7 dollars is not
         // a thing we sell is now a lookup against the live tier table, and it happens before
         // a code is claimed or a gateway is called.
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         expect(
             (
                 await post('/api/pay/start', {
@@ -459,33 +459,33 @@ describe('the shop', () => {
             ).status
         ).toBe(409);
         expect(fake.opened).toBe(0);
-        expect(store.availableFor(10)).toBe(1);
+        expect(await store.availableFor(10)).toBe(1);
     });
 
     it('refuses a denomination the operator has taken off sale', async () => {
-        store.addCodes(3, uuids(1));
+        await store.addCodes(3, uuids(1));
         const five = seedTiers()[0];
-        store.saveTier({ ...five, active: false });
+        await store.saveTier({ ...five, active: false });
 
         // Disabling has to mean unbuyable, not merely hidden - otherwise a stale page or a
         // hand-written request still sells it.
         expect(await buy(3)).toBe(409);
         expect(fake.opened).toBe(0);
-        expect(store.availableFor(3)).toBe(1);
+        expect(await store.availableFor(3)).toBe(1);
     });
 
     it('charges the price it computed, never one from the request', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
 
         // The client asserts the correct price, so the sale goes through - and the stored
         // order carries the figure THIS SERVER worked out, which is what the verify step is
         // later held to.
         expect(await buy(10)).toBe(200);
-        expect(store.recentOrders(1)[0].toman).toBe(PRICES[10]);
+        expect((await store.recentOrders(1))[0].toman).toBe(PRICES[10]);
     });
 
     it('refuses a purchase quoted at a price that has moved', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
 
         // The oldest trick there is: send back a price of your own choosing. It is not
         // treated as the amount - it is compared against ours, and disagreeing refuses the
@@ -494,11 +494,11 @@ describe('the shop', () => {
 
         // Nothing was opened and no code was taken: the refusal lands before either.
         expect(fake.opened).toBe(0);
-        expect(store.availableFor(10)).toBe(1);
+        expect(await store.availableFor(10)).toBe(1);
     });
 
     it('names a moved price so the card can re-quote instead of showing an error', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         const response = await post('/api/pay/start', {
             amount: 10,
             phone: '+989121234567',
@@ -511,7 +511,7 @@ describe('the shop', () => {
     });
 
     it('reprices every card the moment the rate moves', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         rate.set({ toman: 200_000, at: new Date().toISOString(), stale: false });
 
         const body = (await (await get('/api/pay/catalog')).json()) as {
@@ -526,7 +526,7 @@ describe('the shop', () => {
     });
 
     it('closes the shop rather than pricing without a rate', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         rate.set(null);
 
         const raw = await (await get('/api/pay/catalog')).text();
@@ -544,7 +544,7 @@ describe('the shop', () => {
         // And the purchase route refuses too - a page left open must not be able to buy.
         expect(await buy(10)).toBe(503);
         expect(fake.opened).toBe(0);
-        expect(store.availableFor(10)).toBe(1);
+        expect(await store.availableFor(10)).toBe(1);
     });
 
     it('rejects a malformed address with a field map the form can display', async () => {
@@ -567,24 +567,24 @@ describe('the shop', () => {
     });
 
     it('holds a code for the buyer as soon as checkout starts', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         expect(await buy(10)).toBe(200);
-        expect(store.availableFor(10)).toBe(0);
-        expect(store.stock().find((line) => line.amount === 10)?.held).toBe(1);
+        expect(await store.availableFor(10)).toBe(0);
+        expect((await store.stock()).find((line) => line.amount === 10)?.held).toBe(1);
     });
 
     it('gives the code back when the gateway refuses to open a payment', async () => {
-        store.addCodes(3, uuids(1));
+        await store.addCodes(3, uuids(1));
         fake.requestOverride = { ok: false, reason: 'request failed (code -9)' };
         // 503 and not 502: a CDN in front replaces a 502's body with its own page, and the
         // sentence the buyer is owed never arrives.
         expect(await buy(3)).toBe(503);
         // An order that never reached the gateway must not sit on stock for half an hour.
-        expect(store.availableFor(3)).toBe(1);
+        expect(await store.availableFor(3)).toBe(1);
     });
 
     it('explains a refused gateway to the operator, and to nobody else', async () => {
-        store.addCodes(3, uuids(2));
+        await store.addCodes(3, uuids(2));
         const reason = 'zibal: request failed (code 104: invalid merchant)';
         fake.requestOverride = { ok: false, reason };
         const purchase = {
@@ -617,7 +617,7 @@ describe('the shop', () => {
     });
 
     it('refuses a payment it could not track, and keeps the code', async () => {
-        store.addCodes(10, uuids(2));
+        await store.addCodes(10, uuids(2));
         // The gateway hands back the SAME handle twice. An order we cannot find on the way
         // back is worse than a refused one, so the second is refused.
         fake.requestOverride = {
@@ -627,11 +627,11 @@ describe('the shop', () => {
         };
         expect(await buy(10)).toBe(200);
         expect(await buy(10)).toBe(503);
-        expect(store.availableFor(10)).toBe(1);
+        expect(await store.availableFor(10)).toBe(1);
     });
 
     it('throttles checkout, because each attempt costs money downstream', async () => {
-        store.addCodes(10, uuids(20));
+        await store.addCodes(10, uuids(20));
         const statuses: number[] = [];
         for (let attempt = 0; attempt < 9; attempt += 1) {
             statuses.push(await buy(10));
@@ -647,11 +647,11 @@ describe('the shop', () => {
         expect(refused.status).toBe(429);
         expect(refused.headers.get('retry-after')).not.toBeNull();
         // A refused request must not have taken stock with it.
-        expect(store.availableFor(10)).toBe(12);
+        expect(await store.availableFor(10)).toBe(12);
     });
 
     it('never sells one code to two buyers', async () => {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         const [first, second] = await Promise.all([buy(10), buy(10)]);
         expect([first, second].toSorted((a, b) => a - b)).toEqual([200, 409]);
     });
@@ -662,9 +662,9 @@ describe('the callback', () => {
     async function pending(
         amount: 3 | 10 | 20 = 10
     ): Promise<{ authority: string; token: string }> {
-        store.addCodes(amount, uuids(1));
+        await store.addCodes(amount, uuids(1));
         await buy(amount);
-        return lastOrder();
+        return await lastOrder();
     }
 
     it('verifies with OUR stored amount, never one from the request', async () => {
@@ -724,10 +724,10 @@ describe('the callback', () => {
     it('flags the owed sale to the bot as the thing needing a human', async () => {
         const { authority } = await pending();
         // The hold lapses and the last code goes elsewhere before this payment lands.
-        store.settleUnpaid(store.recentOrders(1)[0].id, 'failed');
-        const drain = store.availableFor(10);
+        await store.settleUnpaid((await store.recentOrders(1))[0].id, 'failed');
+        const drain = await store.availableFor(10);
         for (let index = 0; index < drain; index += 1) {
-            store.startOrder(
+            await store.startOrder(
                 {
                     id: `drain-${index}`,
                     amount: 10,
@@ -759,9 +759,9 @@ describe('the callback', () => {
     });
 
     it('returns the SAME code on a replayed callback and never takes a second from stock', async () => {
-        store.addCodes(10, uuids(5));
+        await store.addCodes(10, uuids(5));
         await buy(10);
-        const { authority, token } = lastOrder();
+        const { authority, token } = await lastOrder();
 
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         const first = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
@@ -778,7 +778,7 @@ describe('the callback', () => {
         };
 
         expect(again.code).toBe(first.code);
-        expect(store.stock().find((line) => line.amount === 10)?.sold).toBe(1);
+        expect((await store.stock()).find((line) => line.amount === 10)?.sold).toBe(1);
         expect(fake.smsSent).toHaveLength(1);
     });
 
@@ -803,7 +803,7 @@ describe('the callback', () => {
         expect(receipt.code).toBeNull();
         expect(fake.smsSent).toHaveLength(0);
         // The code goes back on the shelf.
-        expect(store.availableFor(10)).toBe(1);
+        expect(await store.availableFor(10)).toBe(1);
     });
 
     it('cannot be told a verified payment was cancelled', async () => {
@@ -839,14 +839,14 @@ describe('the callback', () => {
      * switch would.
      */
     async function pendingOnZibal(trackId: string): Promise<{ authority: string; token: string }> {
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         fake.requestOverride = {
             ok: true,
             authority: `zibal:${trackId}`,
             payUrl: `https://zibal.test/start/${trackId}`
         };
         await buy(10);
-        return lastOrder();
+        return await lastOrder();
     }
 
     it("settles a payment that comes back in Zibal's spelling", async () => {
@@ -884,7 +884,7 @@ describe('the callback', () => {
 
         expect(response.headers.get('location')).toBe('/?pay=unknown');
         expect(fake.verifyCalls).toHaveLength(0);
-        expect(store.orderById(zarinpal.token)?.status).toBe('pending');
+        expect((await store.orderById(zarinpal.token))?.status).toBe('pending');
     });
 
     it("cannot cancel a Zibal payment by dressing it in Zarinpal's spelling", async () => {
@@ -898,7 +898,7 @@ describe('the callback', () => {
 
         expect(response.headers.get('location')).toBe('/?pay=unknown');
         expect(fake.verifyCalls).toHaveLength(0);
-        expect(store.orderById(token)?.status).toBe('pending');
+        expect((await store.orderById(token))?.status).toBe('pending');
     });
 
     it('turns away a return that names the same payment twice', async () => {
@@ -931,11 +931,11 @@ describe('the callback', () => {
         // landed. The money is real, so the order is PAID - with no code. Calling it a
         // failure would be a lie about money that has moved, and the buyer would stop
         // chasing a refund they are owed.
-        store.settleUnpaid(store.recentOrders(1)[0].id, 'failed');
-        store.addCodes(10, []);
-        const remaining = store.availableFor(10);
+        await store.settleUnpaid((await store.recentOrders(1))[0].id, 'failed');
+        await store.addCodes(10, []);
+        const remaining = await store.availableFor(10);
         for (let index = 0; index < remaining; index += 1) {
-            store.startOrder(
+            await store.startOrder(
                 {
                     id: `drain-${index}`,
                     amount: 10,
@@ -1025,14 +1025,14 @@ describe('the console', () => {
 
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ added: 2, duplicate: 1, invalid: ['NOT-A-UUID'] });
-        expect(store.availableFor(10)).toBe(2);
+        expect(await store.availableFor(10)).toBe(2);
     });
 
     it('shows stock and the count that needs a human', async () => {
         const cookie = await signIn();
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         await buy(10, '+989121234567');
-        const { authority } = lastOrder();
+        const { authority } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
         const overview = (await (await get('/api/admin/overview', { cookie })).json()) as {
@@ -1046,9 +1046,9 @@ describe('the console', () => {
 
     it('lists the ledger with the buyer, the money and the code', async () => {
         const cookie = await signIn();
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         await buy(10, '+989121234567');
-        const { authority } = lastOrder();
+        const { authority } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
         const page = (await (await get('/api/admin/orders', { cookie })).json()) as {
@@ -1066,11 +1066,11 @@ describe('the console', () => {
 
     it('finds an order by any of the things a support call starts with', async () => {
         const cookie = await signIn();
-        store.addCodes(3, uuids(1));
+        await store.addCodes(3, uuids(1));
         await buy(3, '09121234567');
-        const { authority } = lastOrder();
+        const { authority } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
-        const code = store.recentOrders(1)[0].code ?? '';
+        const code = (await store.recentOrders(1))[0].code ?? '';
 
         const search = async (term: string): Promise<number> => {
             const found = (await (
@@ -1092,11 +1092,11 @@ describe('the console', () => {
 
     it('pages the ledger without losing or repeating a row', async () => {
         const cookie = await signIn();
-        store.addCodes(3, uuids(30));
+        await store.addCodes(3, uuids(30));
         // Straight into the store: 30 checkouts through the HTTP route would trip the
         // purchase throttle, which is a different test's subject.
         for (let index = 0; index < 30; index += 1) {
-            store.startOrder(
+            await store.startOrder(
                 {
                     id: `order-${String(index).padStart(3, '0')}`,
                     amount: 3,
@@ -1128,9 +1128,9 @@ describe('the console', () => {
     it('shows every code and where it went', async () => {
         const cookie = await signIn();
         const loaded = uuids(3);
-        store.addCodes(10, loaded);
+        await store.addCodes(10, loaded);
         await buy(10, '+989121234567');
-        const { authority } = lastOrder();
+        const { authority } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         // A second checkout that has not settled: its code is HELD, not sold.
         await buy(10, '+989171234567');
@@ -1208,7 +1208,7 @@ describe('the catalogue', () => {
         );
 
         expect(created.status).toBe(200);
-        store.addCodes(50, uuids(1));
+        await store.addCodes(50, uuids(1));
         // A denomination the code did not know about at compile time is immediately buyable.
         expect(await buy(50)).toBe(200);
     });
@@ -1237,9 +1237,9 @@ describe('the catalogue', () => {
 
     it('deactivates rather than deletes a tier that has been sold', async () => {
         const cookie = await signedIn();
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         await buy(10);
-        const { authority } = lastOrder();
+        const { authority } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
 
         // The amount rides in the query string, not a DELETE body: a body on DELETE has no
@@ -1248,15 +1248,15 @@ describe('the catalogue', () => {
 
         // Dropping the row would orphan the history that explains what someone paid.
         expect(await removed.json()).toEqual({ outcome: 'deactivated' });
-        expect(store.tiers().find((tier) => tier.amount === 10)?.active).toBe(false);
-        expect(store.recentOrders(1)[0].amount).toBe(10);
+        expect((await store.tiers()).find((tier) => tier.amount === 10)?.active).toBe(false);
+        expect((await store.recentOrders(1))[0].amount).toBe(10);
     });
 
     it('deletes a tier nobody ever used', async () => {
         const cookie = await signedIn();
         const removed = await send('DELETE', '/api/admin/tiers?amount=20', undefined, { cookie });
         expect(await removed.json()).toEqual({ outcome: 'deleted' });
-        expect(store.tiers().map((tier) => tier.amount)).toEqual([3, 10]);
+        expect((await store.tiers()).map((tier) => tier.amount)).toEqual([3, 10]);
     });
 });
 
@@ -1395,16 +1395,16 @@ describe('runtime settings', () => {
         expect(settings.current().telegramProxies).toEqual([]);
     });
 
-    it('reads what this list held before it held HTTP proxies as no proxies at all', () => {
+    it('reads what this list held before it held HTTP proxies as no proxies at all', async () => {
         // The row is read on every request. One that no longer parses must cost the proxies
         // and nothing else - not the shop.
         for (const legacy of [
             ['https://proxy-one.example'],
             [{ server: 'one.proxy.example', port: 443, secret: '00112233445566778899aabbccddeeff' }]
         ]) {
-            store.putSetting('telegramProxies', JSON.stringify(legacy));
+            await store.putSetting('telegramProxies', JSON.stringify(legacy));
 
-            expect(createSettings({ store }).current().telegramProxies).toEqual([]);
+            expect((await createSettings({ store })).current().telegramProxies).toEqual([]);
         }
     });
 
@@ -1516,15 +1516,15 @@ describe('runtime settings', () => {
         expect(settings.current().paymentGateway).toBe('zarinpal');
     });
 
-    it('reads an unrecognisable stored gateway as Zarinpal rather than as a decision', () => {
+    it('reads an unrecognisable stored gateway as Zarinpal rather than as a decision', async () => {
         // Only reachable by a row written by hand. It must not be read as "move the money".
-        store.putSetting('paymentGateway', 'Zibal ');
-        expect(createSettings({ store }).current().paymentGateway).toBe('zarinpal');
+        await store.putSetting('paymentGateway', 'Zibal ');
+        expect((await createSettings({ store })).current().paymentGateway).toBe('zarinpal');
     });
 
-    it('opens a fresh install with the shipped default key and says so', () => {
-        const bare = createStore(':memory:');
-        const fresh = createSettings({ store: bare });
+    it('opens a fresh install with the shipped default key and says so', async () => {
+        const bare = await createStore(':memory:');
+        const fresh = await createSettings({ store: bare });
 
         expect(fresh.matchesAdminKey(DEFAULT_ADMIN_KEY)).toBe(true);
         expect(fresh.matchesAdminKey('SOME-OTHE-RKEY-HERE')).toBe(false);
@@ -1532,25 +1532,27 @@ describe('runtime settings', () => {
         // Nothing is stored until somebody changes it, and that is what the boot warning and
         // the console banner both read.
         expect(fresh.adminKeyRotated()).toBe(false);
-        expect(bare.getSetting('adminKeyHash')).toBeUndefined();
-        bare.close();
+        expect((await bare.allSettings()).has('adminKeyHash')).toBe(false);
+        await bare.close();
     });
 
-    it('stops answering to the default the moment a real key is set', () => {
+    it('stops answering to the default the moment a real key is set', async () => {
         // THE CLAIM: the default is a way IN, not a permanent back door. Once the database
         // holds a key, the shipped one is dead - and it can never be rotated back to, because
         // ADMIN_KEY_PATTERN has no 0 or 1 in its alphabet.
-        const bare = createStore(':memory:');
-        const fresh = createSettings({ store: bare });
+        const bare = await createStore(':memory:');
+        const fresh = await createSettings({ store: bare });
 
-        fresh.rotateAdminKey('ABCD-EFGH-JKLM-NPQR');
+        await fresh.rotateAdminKey('ABCD-EFGH-JKLM-NPQR');
 
         expect(fresh.matchesAdminKey(DEFAULT_ADMIN_KEY)).toBe(false);
         expect(fresh.matchesAdminKey('ABCD-EFGH-JKLM-NPQR')).toBe(true);
         expect(fresh.adminKeyRotated()).toBe(true);
         // Stored as a hash, never as the key.
-        expect(bare.getSetting('adminKeyHash') ?? '').not.toContain('ABCD-EFGH-JKLM-NPQR');
-        bare.close();
+        expect((await bare.allSettings()).get('adminKeyHash') ?? '').not.toContain(
+            'ABCD-EFGH-JKLM-NPQR'
+        );
+        await bare.close();
     });
 
     it('keeps every admin route behind the session', async () => {
@@ -1619,7 +1621,7 @@ describe('testing the gateway', () => {
         expect(fake.opened).toBe(1);
         expect(fake.callbacks).toEqual([`${settings.current().publicBaseUrl}/api/pay/callback`]);
         // And no order: a test is not a sale.
-        expect(store.recentOrders(10)).toHaveLength(0);
+        expect(await store.recentOrders(10)).toHaveLength(0);
     });
 
     it('passes on why the gateway refused, naming the gateway that was asked', async () => {
@@ -1642,8 +1644,8 @@ describe('the tether rate, as the console sets it', () => {
     }
 
     /** Every stamp the audit has recorded for the rate's timestamp, oldest last. */
-    function stamps(): number {
-        return settings.log(50).filter((entry) => entry.key === 'tetherSetAt').length;
+    async function stamps(): Promise<number> {
+        return (await settings.log(50)).filter((entry) => entry.key === 'tetherSetAt').length;
     }
 
     it('stores the rate and stamps when it was set', async () => {
@@ -1661,19 +1663,19 @@ describe('the tether rate, as the console sets it', () => {
         const cookie = await signedIn();
         await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
         const setAt = settings.current().tetherSetAt;
-        const before = stamps();
+        const before = await stamps();
 
         await post('/api/admin/settings', { tetherToman: 123_450, marginPercent: 9 }, { cookie });
 
         expect(settings.current().tetherSetAt).toBe(setAt);
-        expect(stamps()).toBe(before);
+        expect(await stamps()).toBe(before);
         expect(settings.current().marginPercent).toBe(9);
     });
 
     it('re-stamps when the rate actually moves', async () => {
         const cookie = await signedIn();
         await post('/api/admin/settings', { tetherToman: 123_450 }, { cookie });
-        const before = stamps();
+        const before = await stamps();
 
         // The stamp is an ISO string to the millisecond, and two injected requests land well
         // inside one. The pause is about the CLOCK'S RESOLUTION, not about the code under
@@ -1683,7 +1685,7 @@ describe('the tether rate, as the console sets it', () => {
         await post('/api/admin/settings', { tetherToman: 128_000 }, { cookie });
 
         expect(settings.current().tetherToman).toBe(128_000);
-        expect(stamps()).toBe(before + 1);
+        expect(await stamps()).toBe(before + 1);
     });
 
     it('refuses a rate outside the band without disturbing the working one', async () => {
@@ -1725,7 +1727,7 @@ describe('the public address', () => {
         const cookie = await signedIn();
         await post('/api/admin/settings', { publicBaseUrl: 'https://shop.example' }, { cookie });
 
-        store.addCodes(3, uuids(1));
+        await store.addCodes(3, uuids(1));
         await post('/api/pay/start', {
             amount: 3,
             phone: '+989121234567',
@@ -1761,7 +1763,10 @@ describe('the operations bot', () => {
 
     it('reports what is configured without handing the token back', async () => {
         const cookie = await signedIn();
-        settings.save({ telegramBotToken: '1234:SECRETTOKEN9999', telegramChatId: '-100123' });
+        await settings.save({
+            telegramBotToken: '1234:SECRETTOKEN9999',
+            telegramChatId: '-100123'
+        });
 
         const view = await (await get('/api/admin/telegram', { cookie })).text();
 
@@ -1889,11 +1894,11 @@ describe('the operations bot', () => {
         expect(settings.current().backupEveryMinutes).toBe(30);
     });
 
-    it('falls back to the shipped interval rather than stopping when the stored value is junk', () => {
+    it('falls back to the shipped interval rather than stopping when the stored value is junk', async () => {
         // Not reachable through the API - the boundary above refuses it - but reachable
         // through a hand-edited database, and a schedule that reads `NaN` is a schedule that
         // never fires again. Silence is the one failure a backup must not have.
-        store.putSetting('backupEveryMinutes', 'nonsense');
+        await store.putSetting('backupEveryMinutes', 'nonsense');
 
         expect(settings.current().backupEveryMinutes).toBe(DEFAULT_BACKUP_MINUTES);
     });
@@ -1949,7 +1954,7 @@ describe('rotating the admin key', () => {
         expect((await get('/api/admin/overview', { cookie })).status).toBe(401);
 
         // A leaked database yields a hash, never a usable key.
-        expect(store.getSetting('adminKeyHash') ?? '').not.toContain(NEW_KEY);
+        expect((await store.allSettings()).get('adminKeyHash') ?? '').not.toContain(NEW_KEY);
         await signedIn(NEW_KEY);
     });
 });
@@ -1971,7 +1976,7 @@ describe('the shop name', () => {
     it('reaches the gateway as the payment description', async () => {
         const cookie = await signedIn();
         await post('/api/admin/settings', { appName: 'برند تازه' }, { cookie });
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
 
         // The description is what the buyer sees on the bank's own page, so a rename that
         // stopped at the shop would leave them paying "نورا چین" for something else.
@@ -1997,9 +2002,9 @@ describe('redeeming a code', () => {
      * checkout produces that.
      */
     async function bought(amount = 10): Promise<string> {
-        store.addCodes(amount, uuids(1));
+        await store.addCodes(amount, uuids(1));
         await buy(amount);
-        const { authority, token } = lastOrder();
+        const { authority, token } = await lastOrder();
         await get(`/api/pay/callback?Authority=${authority}&Status=OK`);
         const receipt = (await (await get(`/api/pay/receipt?token=${token}`)).json()) as {
             code: string;
@@ -2131,14 +2136,16 @@ describe('redeeming a code', () => {
     it('gives ONE answer for an unknown code and an unsold one', async () => {
         // Telling them apart would confirm a guess at inventory the shop still owns. Both
         // are 404 with the same message.
-        store.addCodes(10, uuids(1));
-        const unsold = store.searchCodes({
-            search: '',
-            state: 'free',
-            amount: 10,
-            limit: 1,
-            offset: 0
-        }).rows[0].code;
+        await store.addCodes(10, uuids(1));
+        const unsold = (
+            await store.searchCodes({
+                search: '',
+                state: 'free',
+                amount: 10,
+                limit: 1,
+                offset: 0
+            })
+        ).rows[0].code;
 
         const stranger = await post('/api/redeem', { code: crypto.randomUUID(), wallet: WALLET });
         const free = await post('/api/redeem', { code: unsold, wallet: WALLET });
@@ -2152,15 +2159,17 @@ describe('redeeming a code', () => {
     it('will not pay out a code that is only HELD by a checkout in flight', async () => {
         // Held is not sold: the buyer has not come back from the bank and may never. Paying
         // out here would hand away a card nobody has bought.
-        store.addCodes(10, uuids(1));
+        await store.addCodes(10, uuids(1));
         await buy(10);
-        const held = store.searchCodes({
-            search: '',
-            state: 'held',
-            amount: 10,
-            limit: 1,
-            offset: 0
-        }).rows[0].code;
+        const held = (
+            await store.searchCodes({
+                search: '',
+                state: 'held',
+                amount: 10,
+                limit: 1,
+                offset: 0
+            })
+        ).rows[0].code;
 
         expect((await post('/api/redeem', { code: held, wallet: WALLET })).status).toBe(404);
         expect(fake.payoutsAsked).toHaveLength(0);
@@ -2179,7 +2188,7 @@ describe('redeeming a code', () => {
         expect(response.status).toBe(200);
         // The holder is told plainly rather than left to assume a message arrived.
         expect(response.json()).toMatchObject({ notified: false });
-        expect(store.unnotifiedRedemptions()).toBe(1);
+        expect(await store.unnotifiedRedemptions()).toBe(1);
 
         // And it is still spent. A failed notification is not a second chance.
         expect((await post('/api/redeem', { code, wallet: WALLET })).status).toBe(409);
@@ -2277,9 +2286,9 @@ describe('redeeming a code', () => {
 describe('the English shop', () => {
     const EMAIL = 'Buyer@Example.com';
 
-    beforeEach(() => {
-        store.addCodes(10, uuids(2));
-        settings.save({ nowPaymentsApiKey: 'nowpayments-secret' });
+    beforeEach(async () => {
+        await store.addCodes(10, uuids(2));
+        await settings.save({ nowPaymentsApiKey: 'nowpayments-secret' });
     });
 
     /** Starts an English checkout and hands back the receipt token and the stored handle. */
@@ -2287,7 +2296,7 @@ describe('the English shop', () => {
         const started = await post('/api/pay/start-en', { amount, email: EMAIL });
         expect(started.status).toBe(200);
         const { receipt } = started.json<{ receipt: string }>();
-        return { token: receipt, authority: store.orderById(receipt)?.authority ?? '' };
+        return { token: receipt, authority: (await store.orderById(receipt))?.authority ?? '' };
     }
 
     /** The first invoice the fake opens, and a payment under it. */
@@ -2323,7 +2332,7 @@ describe('the English shop', () => {
         const { receipt } = started.json<{ receipt: string }>();
         expect(JSON.stringify(fake.nowPaymentsRequests[0])).not.toContain(receipt);
 
-        expect(store.orderById(receipt)).toMatchObject({
+        expect(await store.orderById(receipt)).toMatchObject({
             lang: 'en',
             toman: 0,
             phone: 'buyer@example.com',
@@ -2335,7 +2344,7 @@ describe('the English shop', () => {
     });
 
     it("sends the buyer back to their own language's page, and only to one of the list", async () => {
-        settings.save({ publicBaseUrl: 'https://shop.test' });
+        await settings.save({ publicBaseUrl: 'https://shop.test' });
         expect((await post('/api/pay/start-en', { amount: 10, email: EMAIL })).status).toBe(200);
         expect(fake.nowPaymentsRequests[0]?.returnUrl).toBe(
             'https://shop.test/en?pay=return#purchase'
@@ -2356,9 +2365,9 @@ describe('the English shop', () => {
     });
 
     it('names the shop per language, falling back to English and then to Ashbringer', async () => {
-        settings.save({ appName: 'فروشگاه', appNames: { fr: 'Boutique' } });
+        await settings.save({ appName: 'فروشگاه', appNames: { fr: 'Boutique' } });
         // A later save of one language keeps the others.
-        settings.save({ appNames: { en: 'Shop' } });
+        await settings.save({ appNames: { en: 'Shop' } });
 
         const catalog = (await get('/api/pay/catalog')).json<{
             appName: string;
@@ -2393,12 +2402,12 @@ describe('the English shop', () => {
     });
 
     it('is closed until NOWPayments has a key', async () => {
-        settings.save({ nowPaymentsApiKey: '' });
+        await settings.save({ nowPaymentsApiKey: '' });
         const started = await post('/api/pay/start-en', { amount: 10, email: EMAIL });
 
         expect(started.status).toBe(503);
         expect(fake.nowPaymentsRequests).toHaveLength(0);
-        expect(store.availableFor(10)).toBe(2);
+        expect(await store.availableFor(10)).toBe(2);
     });
 
     it('refuses a malformed email in English', async () => {
@@ -2415,7 +2424,7 @@ describe('the English shop', () => {
         expect(started.json<{ error: { message: string } }>().error.message).toContain(
             'payment gateway is unavailable'
         );
-        expect(store.availableFor(10)).toBe(2);
+        expect(await store.availableFor(10)).toBe(2);
     });
 
     it('settles a paid invoice, verifying the DOLLAR amount, and emails the code', async () => {
@@ -2427,8 +2436,8 @@ describe('the English shop', () => {
         expect(fake.verifyCalls).toEqual([{ authority, toman: 10 }]);
         // The payment was vouched for by NOWPayments before it was kept against the order.
         expect(fake.learnCalls).toEqual([{ invoiceId: INVOICE, paymentId: PAYMENT }]);
-        expect(store.paymentsFor(authority)).toEqual([PAYMENT]);
-        const order = store.orderById(token);
+        expect(await store.paymentsFor(authority)).toEqual([PAYMENT]);
+        const order = await store.orderById(token);
         expect(order?.status).toBe('paid');
         expect(fake.mailSent).toEqual([
             { email: 'buyer@example.com', code: order?.code, amount: 10 }
@@ -2453,8 +2462,8 @@ describe('the English shop', () => {
 
         await nudge(INVOICE);
 
-        expect(store.orderById(token)?.status).toBe('pending');
-        expect(store.availableFor(10)).toBe(1);
+        expect((await store.orderById(token))?.status).toBe('pending');
+        expect(await store.availableFor(10)).toBe(1);
         expect(fake.mailSent).toHaveLength(0);
 
         const receipt = await get(`/api/pay/receipt?token=${token}`);
@@ -2488,8 +2497,8 @@ describe('the English shop', () => {
 
         await nudge(INVOICE);
 
-        expect(store.orderById(token)?.status).toBe('failed');
-        expect(store.availableFor(10)).toBe(2);
+        expect((await store.orderById(token))?.status).toBe('failed');
+        expect(await store.availableFor(10)).toBe(2);
     });
 
     it('does nothing for a callback about an invoice that is not ours', async () => {
@@ -2512,7 +2521,7 @@ describe('the English shop', () => {
         await nudge(INVOICE, '5000000777');
 
         expect(fake.learnCalls).toEqual([{ invoiceId: INVOICE, paymentId: '5000000777' }]);
-        expect(store.paymentsFor(authority)).toEqual([]);
+        expect(await store.paymentsFor(authority)).toEqual([]);
     });
 
     it('learns the payment from the address the buyer came back on', async () => {
@@ -2522,7 +2531,7 @@ describe('the English shop', () => {
         const receipt = await get(`/api/pay/receipt?token=${token}&payment=5000000002`);
 
         expect(receipt.status).toBe(200);
-        expect(store.paymentsFor(authority)).toEqual(['5000000002']);
+        expect(await store.paymentsFor(authority)).toEqual(['5000000002']);
         // Anything but digits is refused before it reaches the gateway.
         expect((await get(`/api/pay/receipt?token=${token}&payment=../x`)).status).toBe(422);
     });
@@ -2536,7 +2545,7 @@ describe('the English shop', () => {
             payload: `invoice_id=${INVOICE}&payment_id=${PAYMENT}&payment_status=finished`
         });
         expect(form.statusCode).toBe(200);
-        await vi.waitFor(() => expect(store.orderById(token)?.status).toBe('paid'));
+        await vi.waitFor(async () => expect((await store.orderById(token))?.status).toBe('paid'));
 
         // The parser lives in the callback's own scope: the rest of the API still refuses forms.
         const signIn = await app.inject({
@@ -2559,7 +2568,7 @@ describe('the English shop', () => {
 
     it('keeps reporting a pending PERSIAN order as nothing to report', async () => {
         expect(await buy(10)).toBe(200);
-        const { token } = lastOrder();
+        const { token } = await lastOrder();
         expect((await get(`/api/pay/receipt?token=${token}`)).status).toBe(404);
     });
 
@@ -2577,7 +2586,7 @@ describe('the English shop', () => {
 
         await reconciler.runOnce();
 
-        expect(store.orderById(token)?.status).toBe('paid');
+        expect((await store.orderById(token))?.status).toBe('paid');
         expect(fake.mailSent).toHaveLength(1);
     });
 

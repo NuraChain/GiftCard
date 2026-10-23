@@ -65,20 +65,20 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
         settings: () => view(),
 
         // POST /api/admin/settings
-        saveSettings: ({ input }) => {
+        saveSettings: async ({ input }) => {
             // An ABSENT field keeps its value; an empty string is an explicit clear. That
             // distinction is what lets the console send only what changed without a blank
             // secret input wiping a working credential.
-            settings.save(input);
+            await settings.save(input);
             log?.warn({ fields: Object.keys(input) }, 'runtime settings changed');
             return view();
         },
 
         // GET /api/admin/settings/log
-        settingsLog: () => ({ entries: settings.log(50) }),
+        settingsLog: async () => ({ entries: await settings.log(50) }),
 
         // POST /api/admin/key
-        rotateKey: ({ input, request, reply }) => {
+        rotateKey: async ({ input, request, reply }) => {
             // A session proves someone was the admin at sign-in. Replacing the credential
             // should prove they still are, so the current key is required even though this
             // route already sits behind the guard.
@@ -88,7 +88,7 @@ export function settingsHandlers(options: SettingsOptions): SettingsHandlers {
             if (!ADMIN_KEY_PATTERN.test(input.newKey)) {
                 throw new ConflictError('کلید تازه باید به شکل XXXX-XXXX-XXXX-XXXX باشد');
             }
-            settings.rotateAdminKey(input.newKey);
+            await settings.rotateAdminKey(input.newKey);
             // Every open session dies with the old key, including this one: a rotation that
             // leaves the previous holder signed in has not rotated anything.
             admin.signOutAll();

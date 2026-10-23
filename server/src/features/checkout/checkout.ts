@@ -83,7 +83,7 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
         if (!verified.ok) {
-            store.settleUnpaid(order.id, gatewaySaidOk ? 'failed' : 'cancelled');
+            await store.settleUnpaid(order.id, gatewaySaidOk ? 'failed' : 'cancelled');
             log?.warn(
                 { amount: order.amount, said: gatewaySaidOk, reason: verified.reason },
                 'payment not verified'
@@ -91,7 +91,7 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             return;
         }
 
-        const code = store.settlePaid(order.id, verified.refId);
+        const code = await store.settlePaid(order.id, verified.refId);
 
         // Announced HERE - after the money and the code are decided, before the SMS is
         // attempted. The operator hears about the sale even when the SMS provider is hanging,
@@ -103,7 +103,7 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             phone: order.phone,
             refId: verified.refId,
             receipt: order.id,
-            remaining: store.availableFor(order.amount),
+            remaining: await store.availableFor(order.amount),
             codeDelivered: code !== null
         });
 
@@ -122,7 +122,7 @@ export function createCheckout(options: CheckoutOptions): Checkout {
             order.lang === 'en'
                 ? await mail.sendCode(order.phone, code, order.amount)
                 : await sms.sendCode(order.phone, code, order.amount);
-        store.markSmsDelivered(order.id, sent.ok);
+        await store.markSmsDelivered(order.id, sent.ok);
         if (!sent.ok) {
             log?.error(
                 { refId: verified.refId, reason: sent.reason },

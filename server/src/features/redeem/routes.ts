@@ -100,7 +100,7 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
                 );
             }
 
-            const result = store.redeemCode(code, wallet.address, wallet.network);
+            const result = await store.redeemCode(code, wallet.address, wallet.network);
 
             if (result.state === 'unknown') {
                 // ONE ANSWER FOR TWO CASES: no such code, and a code this shop holds but has
@@ -133,7 +133,7 @@ export function redeemHandlers(options: RedeemOptions): RedeemHandlers {
             });
 
             if (sent.ok) {
-                store.markRedemptionNotified(code);
+                await store.markRedemptionNotified(code);
             } else {
                 // The code is spent and the operator does not know. The row stays, the count
                 // shows up in the bot's /status, and this line is the other way to find it.
