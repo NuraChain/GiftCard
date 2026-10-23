@@ -148,7 +148,8 @@ export interface CodeRow {
  * A payout request: one gift code, spent, and where its value was asked to go.
  *
  * The row IS the spend. There is no "redeemed" flag anywhere else, so this table existing is
- * the only thing that stops a code being cashed twice - see platform/schema.ts.
+ * the only thing that stops a code being cashed twice - see the migration in
+ * platform/migrations.
  */
 export interface Redemption {
     /** The code that was consumed, canonical and lowercased. The row's identity. */
@@ -345,13 +346,11 @@ export interface Store extends SettingsStore {
     searchRedemptions(query: OrderQuery): Promise<{ rows: Redemption[]; total: number }>;
 
     /**
-     * Writes a CONSISTENT snapshot of the whole database to `file`.
-     *
-     * Through SQLite itself, not a file copy: copying the file while the shop is trading
-     * captures a half-written page and a WAL that does not match it, which restores to
-     * nothing. This is what the scheduled Telegram backup sends.
+     * The whole database as one SQL script, read from ONE consistent state of it - a purchase
+     * committing mid-dump is either wholly in it or wholly absent. This is what the scheduled
+     * Telegram backup sends. See platform/dump.ts for how it restores.
      */
-    backupTo(file: string): Promise<void>;
+    dumpSql(): Promise<string>;
 
     close(): Promise<void>;
 }

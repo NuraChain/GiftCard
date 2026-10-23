@@ -3,27 +3,18 @@
 // The rule that lives here rather than in a route: a tier with codes or orders behind it is
 // DEACTIVATED rather than deleted, because dropping the row would orphan the history that
 // explains what someone paid.
-//
-// THE `toman` COLUMN IS DEAD and this file is where it is buried. Prices are derived from the
-// tether rate now, so no per-card Toman figure is read from or written to this table -
-// every insert parks a zero in the column. It is still in the schema because
-// `CREATE TABLE IF NOT EXISTS` cannot drop a column from a database that already exists, and
-// the shops already trading have real numbers in it. It goes when schema.ts grows a
-// migration runner; until then, nothing reads it and nothing may start.
-import type { DatabaseSync } from 'node:sqlite';
-
-import { shaped } from '../../platform/db.ts';
+import type { Database, Sql } from '../../platform/db.ts';
 import type { Amount, Tier, TierInput, TierRemoval } from '../../db/types.ts';
 
-/** The row shape SQLite returns; booleans are integers. `toman` is the dead column - unread. */
+/** A tier as it comes off the table. */
 interface TierRow {
     amount: number;
     title: string;
     blurb: string;
     title_en: string;
     blurb_en: string;
-    recommended: number;
-    active: number;
+    recommended: boolean;
+    active: boolean;
     sort: number;
 }
 
@@ -34,8 +25,8 @@ function toTier(row: TierRow): Tier {
         blurb: row.blurb,
         titleEn: row.title_en,
         blurbEn: row.blurb_en,
-        recommended: row.recommended === 1,
-        active: row.active === 1,
+        recommended: row.recommended,
+        active: row.active,
         sort: row.sort
     };
 }
@@ -48,83 +39,89 @@ export interface TierQueries {
     isCatalogueEmpty(): Promise<boolean>;
 }
 
-export function createTierQueries(db: DatabaseSync): TierQueries {
-    const selectTiers = db.prepare('SELECT * FROM tiers ORDER BY sort, amount');
-    const selectSellable = db.prepare('SELECT * FROM tiers WHERE amount = ? AND active = 1');
-    const upsertTier = db.prepare(`
-        INSERT INTO tiers (amount, toman, title, blurb, recommended, active, sort, title_en, blurb_en)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(amount) DO UPDATE SET
-            title = excluded.title, blurb = excluded.blurb,
-            title_en = excluded.title_en, blurb_en = excluded.blurb_en,
-            recommended = excluded.recommended, active = excluded.active,
-            sort = excluded.sort`);
-    // At most one recommended card: the treatment means "most people pick this", and two of
-    // them means nothing. Clearing the others is cheaper than validating the whole table.
-    const clearRecommended = db.prepare('UPDATE tiers SET recommended = 0 WHERE amount <> ?');
-    const deleteTier = db.prepare('DELETE FROM tiers WHERE amount = ?');
-    const deactivateTier = db.prepare('UPDATE tiers SET active = 0 WHERE amount = ?');
-    const tierIsUsed = db.prepare(`
-        SELECT EXISTS(SELECT 1 FROM codes WHERE amount = ?)
-            OR EXISTS(SELECT 1 FROM orders WHERE amount = ?) AS used`);
-    const countTiers = db.prepare('SELECT COUNT(*) AS n FROM tiers');
+/**
+ * One edit of the catalogue at a time. Saving a recommended card clears the flag on every
+ * other row, so two saves at once would each lock rows the other is about to touch; readers
+ * are never held up by this.
+ */
+async function editingCatalogue(tx: Sql): Promise<void> {
+    await tx.run('LOCK TABLE tiers IN SHARE ROW EXCLUSIVE MODE');
+}
 
+export function createTierQueries(db: Database): TierQueries {
     return {
         async tiers() {
-            return shaped<TierRow[]>(selectTiers.all()).map(toTier);
+            const rows = await db.rows<TierRow>('SELECT * FROM tiers ORDER BY sort, amount');
+            return rows.map(toTier);
         },
 
         async sellableTier(amount) {
-            const row = shaped<TierRow | undefined>(selectSellable.get(amount));
+            const row = await db.row<TierRow>('SELECT * FROM tiers WHERE amount = $1 AND active', [
+                amount
+            ]);
             return row === undefined ? undefined : toTier(row);
         },
 
         async saveTier(tier) {
-            db.exec('BEGIN IMMEDIATE');
-            try {
-                upsertTier.run(
-                    tier.amount,
-                    // The dead column, fed the only value that cannot be mistaken for a price.
-                    0,
-                    tier.title,
-                    tier.blurb,
-                    tier.recommended ? 1 : 0,
-                    tier.active ? 1 : 0,
-                    tier.sort,
-                    tier.titleEn,
-                    tier.blurbEn
+            await db.transaction(async (tx) => {
+                await editingCatalogue(tx);
+                await tx.run(
+                    `INSERT INTO tiers (amount, title, blurb, title_en, blurb_en, recommended, active, sort)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     ON CONFLICT (amount) DO UPDATE SET
+                         title = EXCLUDED.title, blurb = EXCLUDED.blurb,
+                         title_en = EXCLUDED.title_en, blurb_en = EXCLUDED.blurb_en,
+                         recommended = EXCLUDED.recommended, active = EXCLUDED.active,
+                         sort = EXCLUDED.sort`,
+                    [
+                        tier.amount,
+                        tier.title,
+                        tier.blurb,
+                        tier.titleEn,
+                        tier.blurbEn,
+                        tier.recommended,
+                        tier.active,
+                        tier.sort
+                    ]
                 );
+                // At most one recommended card: the treatment means "most people pick this",
+                // and two of them means nothing. Clearing the others is cheaper than
+                // validating the whole table.
                 if (tier.recommended) {
-                    clearRecommended.run(tier.amount);
+                    await tx.run('UPDATE tiers SET recommended = FALSE WHERE amount <> $1', [
+                        tier.amount
+                    ]);
                 }
-                db.exec('COMMIT');
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+            });
         },
 
         async removeTier(amount) {
-            db.exec('BEGIN IMMEDIATE');
-            try {
-                let outcome: TierRemoval;
-                if (shaped<{ used: number }>(tierIsUsed.get(amount, amount)).used === 1) {
+            return db.transaction(async (tx): Promise<TierRemoval> => {
+                await editingCatalogue(tx);
+                const usage = await tx.row<{ used: boolean }>(
+                    `SELECT EXISTS (SELECT 1 FROM codes WHERE amount = $1)
+                         OR EXISTS (SELECT 1 FROM orders WHERE amount = $1) AS used`,
+                    [amount]
+                );
+                if (usage?.used === true) {
                     // Codes or orders carry this amount. Dropping the row would orphan the
                     // history that explains what someone paid, so it is only hidden.
-                    outcome = deactivateTier.run(amount).changes === 1 ? 'deactivated' : 'missing';
-                } else {
-                    outcome = deleteTier.run(amount).changes === 1 ? 'deleted' : 'missing';
+                    const hidden = await tx.run(
+                        'UPDATE tiers SET active = FALSE WHERE amount = $1',
+                        [amount]
+                    );
+                    return hidden === 1 ? 'deactivated' : 'missing';
                 }
-                db.exec('COMMIT');
-                return outcome;
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+                const deleted = await tx.run('DELETE FROM tiers WHERE amount = $1', [amount]);
+                return deleted === 1 ? 'deleted' : 'missing';
+            });
         },
 
         async isCatalogueEmpty() {
-            return shaped<{ n: number }>(countTiers.get()).n === 0;
+            const row = await db.row<{ populated: boolean }>(
+                'SELECT EXISTS (SELECT 1 FROM tiers) AS populated'
+            );
+            return row?.populated !== true;
         }
     };
 }

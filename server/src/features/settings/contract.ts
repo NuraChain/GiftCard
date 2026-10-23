@@ -20,7 +20,7 @@ import { MAX_TETHER_TOMAN, MIN_TETHER_TOMAN } from '../../domain/pricing.ts';
 /**
  * The band the automatic backup interval has to land in, in minutes.
  *
- * THE FLOOR IS NOT ARBITRARY. Every backup is a VACUUM of the whole database, a compression
+ * THE FLOOR IS NOT ARBITRARY. Every backup is a dump of the whole database, a compression
  * pass and a full upload to a chat server, so a gap short enough for two of them to overlap
  * turns one mistyped number into a machine that spends its day copying itself. The ceiling is
  * a week, past which "automatic" has stopped meaning anything - an operator who wants backups

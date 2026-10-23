@@ -1,8 +1,7 @@
 // The environment, read ONCE into a typed object - one boot error names every problem.
 //
 // WHAT IS AND IS NOT HERE. This file holds only what the DATABASE CANNOT hold: where the
-// process listens, where its file is, where the built pages are, and how it is fronted.
-// Five values.
+// process listens, where the database is, where the built pages are, and how it is fronted.
 //
 // EVERYTHING ELSE MOVED TO THE CONSOLE, including the two that used to be here. The public
 // origin is a field beside the merchant id now, because it is the same kind of fact and
@@ -67,10 +66,15 @@ export const config = loadConfig({
     // --- Storage ---
 
     /**
-     * The gift codes, the order ledger, the catalogue and the settings. One SQLite file;
-     * back it up like money, because unsold codes in it ARE money.
+     * The PostgreSQL database holding the gift codes, the order ledger, the catalogue and the
+     * settings; back it up like money, because unsold codes in it ARE money. No default: a
+     * shop silently pointed at the wrong database is worse than one that refuses to start.
+     * Secret, because it carries the password.
      */
-    databaseFile: str('DATABASE_FILE', { default: 'data/ashbringer.db' }),
+    databaseUrl: str('DATABASE_URL', { secret: true }),
+
+    /** Connections the pool may hold. A request uses one at a time. */
+    databasePoolSize: num('DATABASE_POOL_SIZE', { default: 10 }),
 
     // --- The built client ---
 

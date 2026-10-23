@@ -3,10 +3,12 @@
 // The cross-table operations live HERE rather than in the codes module because the
 // transaction is the unit, not the table: claiming a code and creating the order it belongs
 // to is one indivisible act, and so is settling a payment.
-import type { DatabaseSync } from 'node:sqlite';
-
+//
+// EVERY TRANSACTION HERE TAKES THE ORDER'S ROW BEFORE THE CODE IT HOLDS. Two of them over one
+// order therefore queue rather than interleave, and never wait on each other in a circle.
 import type { CodeQueries } from '../inventory/queries.ts';
-import { shaped } from '../../platform/db.ts';
+import type { Database } from '../../platform/db.ts';
+import { isUniqueViolation } from '../../platform/db.ts';
 import { toOrder, type OrderRow } from '../../db/shared.ts';
 import type { NewOrder, Order, OrderQuery } from '../../db/types.ts';
 import { phoneSearchVariants } from '../../domain/phone.ts';
@@ -28,192 +30,189 @@ export interface OrderQueries {
     owedCount(): Promise<number>;
 }
 
-export function createOrderQueries(db: DatabaseSync, codes: CodeQueries): OrderQueries {
-    const insertOrder = db.prepare(`
-        INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at, lang)
-        VALUES (?, NULL, ?, ?, ?, 'pending', NULL, NULL, 0, ?, NULL, ?)`);
-    const setAuthority = db.prepare('UPDATE orders SET authority = ? WHERE id = ?');
-    const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
-    const selectById = db.prepare('SELECT * FROM orders WHERE id = ?');
-    const selectByAuthority = db.prepare('SELECT * FROM orders WHERE authority = ?');
-    // `substr` rather than LIKE: a prefix is matched literally, with no wildcard to escape.
-    const selectPending = db.prepare(`
-        SELECT * FROM orders
-        WHERE status = 'pending' AND substr(authority, 1, ?) = ? AND created_at >= ?
-        ORDER BY created_at`);
-    const insertPayment = db.prepare(
-        'INSERT OR IGNORE INTO gateway_payments (authority, payment_id) VALUES (?, ?)'
-    );
-    const selectPayments = db.prepare(
-        'SELECT payment_id FROM gateway_payments WHERE authority = ? ORDER BY rowid'
-    );
-    const setPaid = db.prepare(
-        "UPDATE orders SET status = 'paid', code = ?, ref_id = ?, settled_at = ? WHERE id = ?"
-    );
-    const setUnpaid = db.prepare('UPDATE orders SET status = ?, settled_at = ? WHERE id = ?');
-    const setSms = db.prepare('UPDATE orders SET sms_delivered = ? WHERE id = ?');
-    // Owed orders first: money taken, no code. They are the only rows needing a human.
-    const selectRecent = db.prepare(`
-        SELECT * FROM orders
-        ORDER BY (status = 'paid' AND code IS NULL) DESC, created_at DESC
-        LIMIT ?`);
-    const countOwed = db.prepare(
-        "SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND code IS NULL"
-    );
+/**
+ * PostgreSQL text cannot hold a NUL, so no stored key contains one - and a lookup by one is
+ * refused as an error rather than answered as the miss it is. Both lookups below take a key a
+ * stranger wrote: a receipt link, a gateway's redirect.
+ */
+const unstorable = (key: string): boolean => key.includes('\u0000');
 
-    // One WHERE clause, shared by the page and its count so the two can never disagree.
-    //
-    // New mobile numbers have one canonical spelling. The substring search also continues to
-    // find historical email values retained in the phone column during migration.
-    const MATCHES = `(
-        ? = ''
-        OR id = ?
-        OR phone LIKE ?
-        OR phone LIKE ?
-        OR code LIKE ?
-        OR CAST(ref_id AS TEXT) LIKE ?
-    )`;
-    const searchPage = db.prepare(`
-        SELECT * FROM orders WHERE ${MATCHES}
-        ORDER BY (status = 'paid' AND code IS NULL) DESC, created_at DESC
-        LIMIT ? OFFSET ?`);
-    const searchCount = db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE ${MATCHES}`);
+// Owed orders first: money taken, no code. They are the only rows needing a human.
+const LEDGER_ORDER = "(status = 'paid' AND code IS NULL) DESC, created_at DESC";
 
+// One WHERE clause, shared by the page and its count so the two can never disagree. The phone
+// column holds a canonical mobile number on a Persian order and a canonical email on an
+// English one, so the substring search finds either.
+const MATCHES = `(
+    $1 = ''
+    OR id = $1
+    OR phone LIKE $2
+    OR phone LIKE $3
+    OR code LIKE $4
+    OR ref_id::text LIKE $4
+)`;
+
+export function createOrderQueries(db: Database, codes: CodeQueries): OrderQueries {
     return {
         async startOrder(order, holdMs) {
-            codes.sweep();
-            db.exec('BEGIN IMMEDIATE');
-            try {
-                if (!codes.claim(order.id, Date.now() + holdMs, order.amount)) {
-                    db.exec('ROLLBACK');
+            await codes.sweep();
+            return db.transaction(async (tx) => {
+                if ((await codes.claim(tx, order.id, Date.now() + holdMs, order.amount)) === null) {
                     return false;
                 }
-                insertOrder.run(
-                    order.id,
-                    order.amount,
-                    order.toman,
-                    order.phone,
-                    order.createdAt,
-                    order.lang
+                await tx.run(
+                    `INSERT INTO orders (id, authority, amount, toman, phone, status, code, ref_id, sms_delivered, created_at, settled_at, lang)
+                     VALUES ($1, NULL, $2, $3, $4, 'pending', NULL, NULL, FALSE, $5, NULL, $6)`,
+                    [order.id, order.amount, order.toman, order.phone, order.createdAt, order.lang]
                 );
-                db.exec('COMMIT');
                 return true;
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+            });
         },
 
         async attachAuthority(orderId, authority) {
             try {
-                setAuthority.run(authority, orderId);
+                await db.run('UPDATE orders SET authority = $1 WHERE id = $2', [
+                    authority,
+                    orderId
+                ]);
                 return true;
-            } catch {
-                // The UNIQUE index on `authority` is the guard: one gateway handle, one
+            } catch (error) {
+                // The unique index on `authority` is the guard: one gateway handle, one
                 // order, always. Hitting it is the database refusing an ambiguity, not a
                 // crash to propagate.
-                return false;
+                if (isUniqueViolation(error)) {
+                    return false;
+                }
+                throw error;
             }
         },
 
         async abandonOrder(orderId) {
-            db.exec('BEGIN IMMEDIATE');
-            try {
-                codes.release(orderId);
-                deleteOrder.run(orderId);
-                db.exec('COMMIT');
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+            await db.transaction(async (tx) => {
+                await tx.run('DELETE FROM orders WHERE id = $1', [orderId]);
+                await codes.release(tx, orderId);
+            });
         },
 
         async orderById(id) {
-            const row = shaped<OrderRow | undefined>(selectById.get(id));
+            if (unstorable(id)) {
+                return undefined;
+            }
+            const row = await db.row<OrderRow>('SELECT * FROM orders WHERE id = $1', [id]);
             return row === undefined ? undefined : toOrder(row);
         },
 
         async orderByAuthority(authority) {
-            const row = shaped<OrderRow | undefined>(selectByAuthority.get(authority));
+            if (unstorable(authority)) {
+                return undefined;
+            }
+            const row = await db.row<OrderRow>('SELECT * FROM orders WHERE authority = $1', [
+                authority
+            ]);
             return row === undefined ? undefined : toOrder(row);
         },
 
         async pendingOrders(prefix, since) {
-            return shaped<OrderRow[]>(selectPending.all(prefix.length, prefix, since)).map(toOrder);
+            // `starts_with` rather than LIKE: a prefix is matched literally, with no wildcard
+            // to escape.
+            const rows = await db.rows<OrderRow>(
+                `SELECT * FROM orders
+                 WHERE status = 'pending' AND starts_with(authority, $1) AND created_at >= $2
+                 ORDER BY created_at`,
+                [prefix, since]
+            );
+            return rows.map(toOrder);
         },
 
         async rememberPayment(authority, paymentId) {
-            insertPayment.run(authority, paymentId);
-        },
-
-        async paymentsFor(authority) {
-            return shaped<Array<{ payment_id: string }>>(selectPayments.all(authority)).map(
-                (row) => row.payment_id
+            await db.run(
+                'INSERT INTO gateway_payments (authority, payment_id) VALUES ($1, $2) ON CONFLICT (authority, payment_id) DO NOTHING',
+                [authority, paymentId]
             );
         },
 
+        async paymentsFor(authority) {
+            const rows = await db.rows<{ payment_id: string }>(
+                'SELECT payment_id FROM gateway_payments WHERE authority = $1 ORDER BY id',
+                [authority]
+            );
+            return rows.map((row) => row.payment_id);
+        },
+
         async settlePaid(orderId, refId) {
-            db.exec('BEGIN IMMEDIATE');
-            try {
+            return db.transaction(async (tx) => {
+                // The order's row first, held to the end: a second settlement of the same
+                // order waits here, and then finds the code this one kept rather than taking
+                // a second from stock.
+                const order = await tx.row<{ amount: number }>(
+                    'SELECT amount FROM orders WHERE id = $1 FOR UPDATE',
+                    [orderId]
+                );
                 // The usual case: the hold survived, so the buyer gets the code reserved at
                 // checkout. Clearing the hold is what turns a reservation into a sale.
-                let code = codes.heldCode(orderId) ?? null;
-                if (code === null) {
+                let code = await codes.keepCode(tx, orderId);
+                if (code === null && order !== undefined) {
                     // The hold lapsed and the code went back to stock before this payment
                     // landed. The money is real, so take any free code of the denomination.
-                    const order = shaped<OrderRow | undefined>(selectById.get(orderId));
-                    if (order !== undefined && codes.claim(orderId, null, order.amount)) {
-                        code = codes.heldCode(orderId) ?? null;
-                    }
-                } else {
-                    codes.keepCode(orderId);
+                    code = await codes.claim(tx, orderId, null, order.amount);
                 }
                 // A null code here is the owed state, and it is still `paid`: pretending a
                 // verified payment failed would be a lie about money that has moved.
-                setPaid.run(code, refId, new Date().toISOString(), orderId);
-                db.exec('COMMIT');
+                await tx.run(
+                    "UPDATE orders SET status = 'paid', code = $1, ref_id = $2, settled_at = $3 WHERE id = $4",
+                    [code, refId, new Date().toISOString(), orderId]
+                );
                 return code;
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+            });
         },
 
         async settleUnpaid(orderId, status) {
-            db.exec('BEGIN IMMEDIATE');
-            try {
-                codes.release(orderId);
-                setUnpaid.run(status, new Date().toISOString(), orderId);
-                db.exec('COMMIT');
-            } catch (error) {
-                db.exec('ROLLBACK');
-                throw error;
-            }
+            await db.transaction(async (tx) => {
+                await tx.run('UPDATE orders SET status = $1, settled_at = $2 WHERE id = $3', [
+                    status,
+                    new Date().toISOString(),
+                    orderId
+                ]);
+                await codes.release(tx, orderId);
+            });
         },
 
         async markSmsDelivered(orderId, delivered) {
-            setSms.run(delivered ? 1 : 0, orderId);
+            await db.run('UPDATE orders SET sms_delivered = $1 WHERE id = $2', [
+                delivered,
+                orderId
+            ]);
         },
 
         async recentOrders(limit) {
-            return shaped<OrderRow[]>(selectRecent.all(limit)).map(toOrder);
+            const rows = await db.rows<OrderRow>(
+                `SELECT * FROM orders ORDER BY ${LEDGER_ORDER} LIMIT $1`,
+                [limit]
+            );
+            return rows.map(toOrder);
         },
 
         async searchOrders(query) {
             const term = query.search.trim();
             const like = `%${term.toLowerCase()}%`;
             const phoneLike = phoneSearchVariants(term).map((variant) => `%${variant}%`);
-            const bind = [term, term, phoneLike[0] ?? like, phoneLike[1] ?? like, like, like];
-            return {
-                rows: shaped<OrderRow[]>(searchPage.all(...bind, query.limit, query.offset)).map(
-                    toOrder
-                ),
-                total: shaped<{ n: number }>(searchCount.get(...bind)).n
-            };
+            const bind = [term, phoneLike[0] ?? like, phoneLike[1] ?? like, like];
+            const rows = await db.rows<OrderRow>(
+                `SELECT * FROM orders WHERE ${MATCHES} ORDER BY ${LEDGER_ORDER} LIMIT $5 OFFSET $6`,
+                [...bind, query.limit, query.offset]
+            );
+            const counted = await db.row<{ n: number }>(
+                `SELECT COUNT(*) AS n FROM orders WHERE ${MATCHES}`,
+                bind
+            );
+            return { rows: rows.map(toOrder), total: counted?.n ?? 0 };
         },
 
         async owedCount() {
-            return shaped<{ n: number }>(countOwed.get()).n;
+            const row = await db.row<{ n: number }>(
+                "SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND code IS NULL"
+            );
+            return row?.n ?? 0;
         }
     };
 }

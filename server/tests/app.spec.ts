@@ -1,9 +1,10 @@
 // The whole integration-testing story in one line: `app.inject(...)` - Fastify's own
 // in-process dispatch, so there is no socket, no port, and no test server.
 //
-// The gateway and SMS sender are INJECTED fakes; the database is a real SQLite
-// running in memory. So every claim about money below is tested against the engine that
-// ships, and none of it needs a merchant account, an API key, or a network.
+// The gateway and SMS sender are INJECTED fakes; the database is a real PostgreSQL, in a
+// schema of its own per test (tests/support/database.ts). So every claim about money below is
+// tested against the engine that ships, and none of it needs a merchant account, an API key,
+// or a network.
 //
 // WHAT THESE TESTS DO NOT PROVE: that Zarinpal and a real mail server behave as documented. Their
 // wire shapes here are transcribed from their published docs, not observed from a live
@@ -41,7 +42,8 @@ import {
 } from '../src/features/settings/settings.ts';
 import { DEFAULT_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from '../src/features/settings/contract.ts';
 import type { SmsResult, SmsSender } from '../src/features/checkout/panelsms.ts';
-import { createStore, type Store } from '../src/db/index.ts';
+import type { Store } from '../src/db/index.ts';
+import { openTestStore } from './support/database.ts';
 
 /** The shipped default. A fresh database answers to this and nothing else. */
 const ADMIN_KEY = DEFAULT_ADMIN_KEY;
@@ -294,7 +296,7 @@ let settings: Settings;
 let app: ReturnType<typeof buildApp>;
 
 beforeEach(async () => {
-    store = await createStore(':memory:');
+    store = await openTestStore();
     fake = fakes();
     rate = fakeRate();
     // The catalogue is data now, so every test starts from the same seeded shop the first
@@ -363,11 +365,10 @@ async function send(
     };
 }
 
-// One Fastify instance and one connection per test, both handed back afterwards. A suite
-// that leaks either runs fine and then hangs the runner on the way out.
+// One Fastify instance per test, handed back afterwards; the harness does the same for the
+// store. A suite that leaks either runs fine and then hangs the runner on the way out.
 afterEach(async () => {
     await app.close();
-    await store.close();
 });
 
 function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Answer> {
@@ -1523,7 +1524,7 @@ describe('runtime settings', () => {
     });
 
     it('opens a fresh install with the shipped default key and says so', async () => {
-        const bare = await createStore(':memory:');
+        const bare = await openTestStore();
         const fresh = await createSettings({ store: bare });
 
         expect(fresh.matchesAdminKey(DEFAULT_ADMIN_KEY)).toBe(true);
@@ -1533,14 +1534,13 @@ describe('runtime settings', () => {
         // the console banner both read.
         expect(fresh.adminKeyRotated()).toBe(false);
         expect((await bare.allSettings()).has('adminKeyHash')).toBe(false);
-        await bare.close();
     });
 
     it('stops answering to the default the moment a real key is set', async () => {
         // THE CLAIM: the default is a way IN, not a permanent back door. Once the database
         // holds a key, the shipped one is dead - and it can never be rotated back to, because
         // ADMIN_KEY_PATTERN has no 0 or 1 in its alphabet.
-        const bare = await createStore(':memory:');
+        const bare = await openTestStore();
         const fresh = await createSettings({ store: bare });
 
         await fresh.rotateAdminKey('ABCD-EFGH-JKLM-NPQR');
@@ -1552,7 +1552,6 @@ describe('runtime settings', () => {
         expect((await bare.allSettings()).get('adminKeyHash') ?? '').not.toContain(
             'ABCD-EFGH-JKLM-NPQR'
         );
-        await bare.close();
     });
 
     it('keeps every admin route behind the session', async () => {
@@ -2083,13 +2082,8 @@ describe('redeeming a code', () => {
     it('pays out once when two requests overlap', async () => {
         // Two requests for one code, in flight together. They genuinely interleave: the
         // handler awaits the address checksum, so the second request starts before the first
-        // reaches the database.
-        //
-        // WHAT THIS DOES NOT PROVE. node:sqlite is synchronous, so once a request enters
-        // `redeemCode` it runs to completion uninterrupted - a naive read-then-write would
-        // survive this test. The guard against a REAL race is the primary key on
-        // `redemptions.code` and the IMMEDIATE transaction around it, which is a claim about
-        // the schema rather than about this process, and is stated where it lives.
+        // reaches the database - and each then runs on a connection of its own, so it is the
+        // primary key on `redemptions.code` that decides which one spends the code.
         const code = await bought(20);
 
         const results = await Promise.all([

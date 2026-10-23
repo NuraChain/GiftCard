@@ -1,9 +1,8 @@
 // Composing the five query modules into one Store.
 //
-// Opening the connection is platform/db.ts's job; this file only assembles. `:memory:`
-// gives tests the REAL engine rather than a fake, so the claim semantics under test are
-// the ones that ship.
-import { openDatabase } from '../platform/db.ts';
+// Opening the connection is platform/db.ts's job; this file only assembles.
+import { openDatabase, type Connection } from '../platform/db.ts';
+import { dumpSql } from '../platform/dump.ts';
 import { createCodeQueries } from '../features/inventory/queries.ts';
 import { createOrderQueries } from '../features/checkout/queries.ts';
 import { createSettingQueries } from '../features/settings/queries.ts';
@@ -12,10 +11,10 @@ import { createRedemptionQueries } from '../features/redeem/queries.ts';
 import type { Store } from './types.ts';
 
 export async function createStore(
-    file: string,
+    connection: Connection,
     onMigrate?: (names: string[]) => void
 ): Promise<Store> {
-    const db = openDatabase(file, onMigrate);
+    const db = await openDatabase(connection, onMigrate);
 
     const settings = createSettingQueries(db);
     const tiers = createTierQueries(db);
@@ -34,17 +33,8 @@ export async function createStore(
         // in the codes table, so this is the one call that needs both modules.
         stock: async () => codes.stock(await tiers.tiers()),
 
-        // `VACUUM INTO` is SQLite's own consistent-snapshot call: it takes the same locks a
-        // read does, so a purchase committing mid-backup is either fully in the snapshot or
-        // fully absent - never half. The single quotes in the path are doubled because the
-        // destination is a SQL string literal, and this is the one place a path becomes one.
-        backupTo: async (destination) => {
-            db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
-        },
-
-        close: async () => {
-            db.close();
-        }
+        dumpSql: () => dumpSql(db),
+        close: () => db.close()
     };
 }
 

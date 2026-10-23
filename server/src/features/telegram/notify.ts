@@ -4,8 +4,8 @@
 // NEITHER MAY EVER BREAK A PURCHASE. That is the rule both halves are built around. The
 // notification is fire-and-forget - `sold()` returns void, on purpose, so no caller can
 // accidentally await it and put a chat server on the path between a buyer and their code. The
-// backup runs on its own schedule, touches nothing the shop is using, and compresses off the
-// event loop (platform/zip.ts) so a checkout in flight never waits on it.
+// backup runs on its own schedule, reads inside a read-only snapshot that blocks no purchase,
+// and compresses off the event loop (platform/zip.ts) so a checkout in flight never waits on it.
 //
 // THE PAYOUT NOTIFICATION IS THE EXCEPTION, AND IT IS AWAITED. `redeemed()` returns a result
 // rather than void because this message is not an FYI - it is the ONLY thing that tells a
@@ -13,14 +13,14 @@
 // paid for and delivered; a redemption nobody is pinged about is a person waiting forever. So
 // the caller waits for the answer and records whether it arrived.
 //
-// THE BACKUP IS SENT AS A ZIP. A SQLite file is mostly page padding and repeated text, so it
-// deflates to a small fraction of itself - which pushes the 50MB ceiling Telegram puts on a
-// bot upload much further away, costs less of somebody's data allowance to pull down on a
-// phone, and arrives as one file every operating system can open without a tool.
-import { readFile, unlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
+// THE BACKUP IS SENT AS A ZIP. A SQL dump is mostly repeated statement text, so it deflates to
+// a small fraction of itself - which pushes the 50MB ceiling Telegram puts on a bot upload much
+// further away, costs less of somebody's data allowance to pull down on a phone, and arrives as
+// one file every operating system can open without a tool.
+//
+// IT NEVER TOUCHES THE DISK. The dump is a complete copy of the business, credentials
+// included; built in memory and handed straight to the upload, it never sits in a temp
+// directory for anyone else on the machine to read.
 import type { Logger } from '../../platform/logging.ts';
 import { zipOne } from '../../platform/zip.ts';
 import type { Store } from '../../db/types.ts';
@@ -38,8 +38,8 @@ const TICK_MS = 60 * 1000;
  * so passing it would take a very long time and a great many sales, but a backup that fails
  * silently at 3am is exactly the kind of thing nobody notices until they need the backup.
  *
- * MEASURED AGAINST THE ZIP, not the database, because the zip is what is actually uploaded. A
- * SQLite file that deflates ten to one reaches this ceiling ten times later than it used to.
+ * MEASURED AGAINST THE ZIP, not the dump, because the zip is what is actually uploaded. A dump
+ * that deflates ten to one reaches this ceiling ten times later than the dump itself would.
  */
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -211,7 +211,8 @@ export interface BackupJob {
 }
 
 export interface BackupJobOptions {
-    store: Store;
+    /** Only the dump: the one call a backup makes of the database. */
+    store: Pick<Store, 'dumpSql'>;
     telegram: Telegram;
     appName: () => string;
 
@@ -225,9 +226,6 @@ export interface BackupJobOptions {
     everyMinutes: () => number;
 
     log?: Logger;
-
-    /** Overridden by tests so a backup does not land in the real temp directory. */
-    scratchDir?: string;
 }
 
 export function createBackupJob(options: BackupJobOptions): BackupJob {
@@ -245,24 +243,20 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
         running = true;
 
         // Colons are legal in a filename on Linux and illegal on Windows, and this string
-        // becomes both a path here and a filename in a chat. Dashes work everywhere and
-        // still sort correctly, which is what an operator scrolling a year of these needs.
+        // becomes a filename on whichever machine the operator saves it to. Dashes work
+        // everywhere and still sort correctly, which is what an operator scrolling a year of
+        // these needs.
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-        const name = `ashbringer-${stamp}.db`;
+        const name = `ashbringer-${stamp}.sql`;
         const archive = `ashbringer-${stamp}.zip`;
-        const path = join(options.scratchDir ?? tmpdir(), name);
 
         try {
-            // A CONSISTENT snapshot, taken through SQLite itself. Copying the file by hand
-            // while the shop is trading would capture a half-written page and a WAL that
-            // does not match it - a backup that restores to nothing.
-            await options.store.backupTo(path);
-
-            const bytes = await readFile(path);
+            // ONE CONSISTENT STATE of the whole database - see platform/dump.ts.
+            const bytes = Buffer.from(await options.store.dumpSql(), 'utf8');
 
             // Compressed BEFORE the size is judged: the ceiling belongs to the upload, and the
-            // upload is the zip. The .db name is kept for the entry INSIDE the archive, so an
-            // operator who extracts it gets a file SQLite opens by its own extension.
+            // upload is the zip. The .sql name is kept for the entry INSIDE the archive, so an
+            // operator who extracts it gets a script psql runs as it is.
             const zipped = await zipOne(name, bytes);
             if (zipped.byteLength > MAX_UPLOAD_BYTES) {
                 return {
@@ -293,11 +287,6 @@ export function createBackupJob(options: BackupJobOptions): BackupJob {
             return { ok: false, reason };
         } finally {
             running = false;
-            // The snapshot is a COMPLETE COPY OF THE BUSINESS sitting in a world-readable
-            // temp directory. It goes as soon as it has been read, whatever happened above.
-            await unlink(path).catch(() => {
-                options.log?.warn({ path }, 'could not remove the backup snapshot');
-            });
         }
     }
 

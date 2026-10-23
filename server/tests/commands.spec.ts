@@ -1,15 +1,15 @@
 // The bot's command side: what it does, what it refuses, and who it refuses to listen to.
 //
 // `handle()` is driven directly, so every command below runs against a REAL settings object and
-// a REAL SQLite database with no bot, no network and no timer. The claims worth making are that
-// a price typed into a chat reaches the shop's own pricing function, and that a message from
-// the wrong chat reaches nothing at all.
+// a REAL PostgreSQL database with no bot, no network and no timer. The claims worth making are
+// that a price typed into a chat reaches the shop's own pricing function, and that a message
+// from the wrong chat reaches nothing at all.
 import { describe, it, expect } from 'vitest';
 
 import { createCommandBot } from '../src/features/telegram/commands.ts';
 import { createTetherRate } from '../src/features/rate/rate.ts';
 import { createSettings } from '../src/features/settings/settings.ts';
-import { createStore } from '../src/db/index.ts';
+import { openTestStore } from './support/database.ts';
 import { seedTiers } from '../src/domain/seed.ts';
 import { tomanPrice } from '../src/domain/pricing.ts';
 import type { BackupJob } from '../src/features/telegram/notify.ts';
@@ -18,7 +18,7 @@ import type { Telegram, TelegramUpdate } from '../src/features/telegram/telegram
 const CHAT = '-100999';
 
 async function harness(options: { backup?: BackupJob; updates?: TelegramUpdate[] } = {}) {
-    const store = await createStore(':memory:');
+    const store = await openTestStore();
     for (const tier of seedTiers()) {
         await store.saveTier(tier);
     }
@@ -71,7 +71,6 @@ describe('the bot commands', () => {
         // operator sees what a buyer would actually be charged.
         const margin = h.settings.current().marginPercent;
         expect(reply).toContain(tomanPrice(3, 245_000, margin).toLocaleString('en-US'));
-        await h.store.close();
     });
 
     it('accepts a Persian-keyboard number and a grouped one', async () => {
@@ -84,7 +83,6 @@ describe('the bot commands', () => {
 
         await h.bot.handle('/setprice 250,000');
         expect(h.settings.current().tetherToman).toBe(250_000);
-        await h.store.close();
     });
 
     it('refuses a rate outside the band without changing anything', async () => {
@@ -96,7 +94,6 @@ describe('the bot commands', () => {
 
         expect(reply).toContain('باید بین');
         expect(h.settings.current().tetherToman).toBe(245_000);
-        await h.store.close();
     });
 
     it('shouts when the new rate is far from the old one, but still applies it', async () => {
@@ -109,7 +106,6 @@ describe('the bot commands', () => {
 
         expect(reply).toContain('هشدار');
         expect(h.settings.current().tetherToman).toBe(24_500);
-        await h.store.close();
     });
 
     it('sets the margin, and refuses an absurd one', async () => {
@@ -120,7 +116,6 @@ describe('the bot commands', () => {
 
         await h.bot.handle('/margin 900');
         expect(h.settings.current().marginPercent).toBe(12);
-        await h.store.close();
     });
 
     it('answers /status and /stock from the real database', async () => {
@@ -131,13 +126,11 @@ describe('the bot commands', () => {
         await h.bot.handle('/setprice 245000');
         expect(await h.bot.handle('/status')).toContain('باز');
         expect(await h.bot.handle('/stock')).toContain('2');
-        await h.store.close();
     });
 
     it('names the commands rather than going silent on a typo', async () => {
         const h = await harness();
         expect(await h.bot.handle('/setpirce 245000')).toContain('/setprice');
-        await h.store.close();
     });
 
     it('ONLY obeys the configured chat', async () => {
@@ -156,7 +149,6 @@ describe('the bot commands', () => {
         expect(h.settings.current().tetherToman).toBe(0);
         // Not even a refusal: replying would confirm the bot is live to whoever probed it.
         expect(h.sent).toEqual([]);
-        await h.store.close();
     });
 
     it('obeys the configured chat and answers into it', async () => {
@@ -171,14 +163,12 @@ describe('the bot commands', () => {
         expect(h.settings.current().tetherToman).toBe(245_000);
         expect(h.sent).toHaveLength(1);
         expect(h.sent[0]).toContain('245,000');
-        await h.store.close();
     });
 
     it('strips the @botname Telegram adds in a group', async () => {
         const h = await harness();
         await h.bot.handle('/setprice@ashbringer_ops_bot 245000');
         expect(h.settings.current().tetherToman).toBe(245_000);
-        await h.store.close();
     });
 
     it('reports a failed backup instead of claiming one was sent', async () => {
@@ -191,6 +181,5 @@ describe('the bot commands', () => {
         });
 
         expect(await h.bot.handle('/backup')).toContain('telegram unreachable');
-        await h.store.close();
     });
 });

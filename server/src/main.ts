@@ -3,7 +3,7 @@
 //
 // This is the ONLY file that reads the environment or constructs a real gateway, SMS sender
 // or database. `buildApp` takes them as arguments, which is what lets the tests drive the
-// entire payment flow without a network, a merchant account, or a file on disk.
+// entire payment flow without a network or a merchant account, on a database of their own.
 //
 // The environment is the SEED. Once the console has written a value it wins, so most of what
 // happens here is deciding what a FIRST boot starts from.
@@ -13,8 +13,6 @@
 // both were about HTML this process does not emit any more. What stayed is everything that
 // decides whether money moved.
 import { shopName } from './domain/langs.ts';
-import { existsSync, mkdirSync, renameSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
 
 import { pino } from 'pino';
 
@@ -106,26 +104,9 @@ const log = pino({
     }
 });
 
-mkdirSync(dirname(config.databaseFile), { recursive: true });
-
-// The database file was renamed with the shop. A deployment still holding it under the
-// previous name has it moved - with its WAL and shared-memory files - once, before it is
-// opened. Starting on a fresh empty file instead would lose every unsold code.
-const previousDatabaseFile = join(dirname(config.databaseFile), 'guardian-service.db');
-if (
-    basename(config.databaseFile) === 'ashbringer.db' &&
-    !existsSync(config.databaseFile) &&
-    existsSync(previousDatabaseFile)
-) {
-    for (const suffix of ['', '-wal', '-shm']) {
-        if (existsSync(previousDatabaseFile + suffix)) {
-            renameSync(previousDatabaseFile + suffix, config.databaseFile + suffix);
-        }
-    }
-    log.warn({ from: previousDatabaseFile, to: config.databaseFile }, 'database file renamed');
-}
-const store = await createStore(config.databaseFile, (names) =>
-    log.warn({ migrations: names }, 'database schema migrated')
+const store = await createStore(
+    { url: config.databaseUrl, poolSize: config.databasePoolSize },
+    (names) => log.warn({ migrations: names }, 'database schema migrated')
 );
 
 // A catalogue is seeded exactly once. After this the console owns it, so a later change to

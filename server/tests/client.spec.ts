@@ -16,7 +16,8 @@ import { join } from 'node:path';
 import { buildApp } from '../src/app.ts';
 import { createAdmin } from '../src/features/console/session.ts';
 import { createSettings } from '../src/features/settings/settings.ts';
-import { createStore, type Store } from '../src/db/index.ts';
+import type { Store } from '../src/db/index.ts';
+import { openTestStore } from './support/database.ts';
 import type { TetherRate } from '../src/features/rate/rate.ts';
 
 const DOCUMENT = '<!doctype html><html lang="fa"><body><div id="root"></div></body></html>';
@@ -67,12 +68,11 @@ let store: Store;
 let dist: string;
 
 beforeEach(async () => {
-    store = await createStore(':memory:');
+    store = await openTestStore();
     dist = mkdtempSync(join(tmpdir(), 'ashbringer-dist-'));
 });
 
-afterEach(async () => {
-    await store.close();
+afterEach(() => {
     rmSync(dist, { recursive: true, force: true });
 });
 

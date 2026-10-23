@@ -1,23 +1,24 @@
-// The operations bot: what it sends, what it refuses to send, and what it cleans up.
+// The operations bot: what it sends, what it refuses to send, and what it backs up.
 //
-// The backup half is tested against a REAL SQLite database rather than a stub, because the
-// thing most worth proving is that the snapshot it produces is a database somebody could
-// actually restore - and a fake store would prove nothing about that at all.
+// The backup half is tested against a REAL PostgreSQL rather than a stub, because the thing
+// most worth proving is that the dump it produces restores into a database the shop could run
+// from - and a fake store would prove nothing about that at all.
 import { describe, it, expect, vi } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { connect, type AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-import { createStore } from '../src/db/index.ts';
-import { createBackupJob, createSaleNotifier, type Sale } from '../src/features/telegram/notify.ts';
+import {
+    createBackupJob,
+    createSaleNotifier,
+    type BackupJobOptions,
+    type Sale
+} from '../src/features/telegram/notify.ts';
 import { createTelegram, type Telegram } from '../src/features/telegram/telegram.ts';
 import type { Fetch } from '../src/features/checkout/zarinpal.ts';
 import { keepPasswords, parseProxyUrl, type TelegramProxy } from '../src/contract/shared.ts';
 import { DEFAULT_BACKUP_MINUTES, MIN_BACKUP_MINUTES } from '../src/features/settings/contract.ts';
+import { inspect, openTestStore, schemaOf } from './support/database.ts';
 
 const SETTINGS = {
     botToken: '1234:TOKEN',
@@ -130,8 +131,16 @@ function spyBot(): Telegram & { sent: string[] } {
     };
 }
 
-function scratch(): Promise<string> {
-    return mkdtemp(join(tmpdir(), 'ashbringer-backup-test-'));
+/** A database the job is handed and never reads: what a backup with no bot, or no tick, sees. */
+function untouched(): BackupJobOptions['store'] & { dumps: number } {
+    const store = {
+        dumps: 0,
+        dumpSql: (): Promise<string> => {
+            store.dumps += 1;
+            return Promise.resolve('');
+        }
+    };
+    return store;
 }
 
 describe('the telegram client', () => {
@@ -193,7 +202,7 @@ describe('the telegram client', () => {
         const spy = recorder();
         const telegram = createTelegram({ settings: () => SETTINGS, fetch: spy.fetch });
 
-        await telegram.sendDocument('backup.db', new Uint8Array([1, 2, 3]), 'caption');
+        await telegram.sendDocument('backup.zip', new Uint8Array([1, 2, 3]), 'caption');
 
         expect(spy.calls[0].url).toBe('https://telegram.test/bot1234:TOKEN/sendDocument');
         expect(spy.calls[0].init?.body).toBeInstanceOf(FormData);
@@ -834,9 +843,8 @@ describe('the sale notification', () => {
 });
 
 describe('the scheduled backup', () => {
-    it('sends a ZIP whose contents are a restorable database, then deletes it', async () => {
-        const dir = await scratch();
-        const store = await createStore(':memory:');
+    it('sends a ZIP whose contents restore into a working shop', async () => {
+        const store = await openTestStore();
         await store.addCodes(10, [crypto.randomUUID()]);
 
         let uploaded: Uint8Array | null = null;
@@ -857,47 +865,35 @@ describe('the scheduled backup', () => {
             store,
             telegram: bot,
             appName: () => 'اشبرینگر',
-            everyMinutes: () => DEFAULT_BACKUP_MINUTES,
-            scratchDir: dir
+            everyMinutes: () => DEFAULT_BACKUP_MINUTES
         }).runNow();
 
         expect(result).toEqual({ ok: true });
         expect(uploaded).not.toBeNull();
 
-        // The chat shows a .zip; the file an operator extracts from it is a .db, so SQLite
-        // opens it by its own extension without anybody renaming anything.
+        // The chat shows a .zip; the file an operator extracts from it is a .sql script, which
+        // psql runs as it is without anybody renaming anything.
         expect(uploadedName).toMatch(/^ashbringer-.+\.zip$/);
 
-        // THE CLAIM WORTH MAKING: what was uploaded UNZIPS to a database with the row in it.
-        // A backup that cannot be restored is not a backup, and now there is a container
+        // THE CLAIM WORTH MAKING: what was uploaded UNZIPS to a script that brings the row
+        // back. A backup that cannot be restored is not a backup, and there is a container
         // between the upload and the database that could get that wrong.
         const archive = Buffer.from(uploaded as unknown as Uint8Array);
         const nameLength = archive.readUInt16LE(26);
         const entryName = archive.subarray(30, 30 + nameLength).toString('utf8');
-        expect(entryName).toMatch(/^ashbringer-.+\.db$/);
+        expect(entryName).toMatch(/^ashbringer-.+\.sql$/);
 
         const start = 30 + nameLength + archive.readUInt16LE(28);
         const payload = archive.subarray(start, start + archive.readUInt32LE(18));
-        const snapshot = archive.readUInt16LE(8) === 8 ? inflateRawSync(payload) : payload;
+        const script = archive.readUInt16LE(8) === 8 ? inflateRawSync(payload) : payload;
 
-        const restoredPath = join(dir, 'restored.db');
-        await writeFile(restoredPath, snapshot);
-        const restored = new DatabaseSync(restoredPath);
-        const count = restored.prepare('SELECT COUNT(*) AS n FROM codes').get() as { n: number };
-        expect(count.n).toBe(1);
-        restored.close();
-
-        // The snapshot is a complete copy of the business sitting in a temp directory. Only
-        // the file this test wrote itself should remain.
-        expect(await readdir(dir)).toEqual(['restored.db']);
-
-        await store.close();
-        await rm(dir, { recursive: true, force: true });
+        const restored = await openTestStore();
+        await inspect(script.toString('utf8'), schemaOf(restored));
+        expect(await restored.availableFor(10)).toBe(1);
     });
 
     it('refuses rather than pretending when there is no bot', async () => {
-        const dir = await scratch();
-        const store = await createStore(':memory:');
+        const store = untouched();
         const bot: Telegram = {
             configured: () => false,
             receive: () => Promise.resolve([]),
@@ -911,16 +907,12 @@ describe('the scheduled backup', () => {
                 store,
                 telegram: bot,
                 appName: () => 'x',
-                everyMinutes: () => DEFAULT_BACKUP_MINUTES,
-                scratchDir: dir
+                everyMinutes: () => DEFAULT_BACKUP_MINUTES
             }).runNow()
         ).toEqual({ ok: false, reason: 'telegram is not configured' });
 
-        // Nothing was written, so there is nothing to leak.
-        expect(await readdir(dir)).toEqual([]);
-
-        await store.close();
-        await rm(dir, { recursive: true, force: true });
+        // Nothing was read, so there is nothing to leak.
+        expect(store.dumps).toBe(0);
     });
 });
 
@@ -929,7 +921,7 @@ describe('the scheduled backup', () => {
  *
  * THE QUESTION IS THE MEASUREMENT. `configured()` is the first thing a backup does and the only
  * part of it that is synchronous; an unconfigured bot turns the whole job into a no-op that
- * reads no file and compresses nothing, so a fake clock can drive a day of ticks through it and
+ * reads nothing and compresses nothing, so a fake clock can drive a day of ticks through it and
  * count the decisions exactly. What a CONFIGURED backup actually produces is proved against a
  * real database and a real clock in `the scheduled backup` - these are about WHEN it runs, and
  * a fake clock cannot advance the threadpool the real one uses.
@@ -949,26 +941,21 @@ function askCounter(): Telegram & { asked: number } {
     return bot;
 }
 
-/** A started schedule over a throwaway database. The returned function stops and closes both. */
-async function scheduled(bot: Telegram, everyMinutes: () => number): Promise<() => Promise<void>> {
-    const store = await createStore(':memory:');
-    const stop = createBackupJob({
-        store,
+/** A started schedule. The returned function stops it. */
+function scheduled(bot: Telegram, everyMinutes: () => number): () => void {
+    return createBackupJob({
+        store: untouched(),
         telegram: bot,
         appName: () => 'x',
         everyMinutes
     }).start();
-    return async (): Promise<void> => {
-        stop();
-        await store.close();
-    };
 }
 
 describe('the backup schedule', () => {
     it('waits out the configured gap before the first backup, and not longer', async () => {
         vi.useFakeTimers();
         const bot = askCounter();
-        const stop = await scheduled(bot, () => 10);
+        const stop = scheduled(bot, () => 10);
 
         try {
             // Nothing on boot. A process that restarts often would otherwise copy the whole
@@ -983,7 +970,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(10 * 60_000);
             expect(bot.asked).toBe(2);
         } finally {
-            await stop();
+            stop();
             vi.useRealTimers();
         }
     });
@@ -996,7 +983,7 @@ describe('the backup schedule', () => {
         // the moment it is armed, so an operator who cut a daily backup to a ten-minute one
         // after a scare would get the first short gap A DAY LATER - on the one day it mattered.
         let minutes = 24 * 60;
-        const stop = await scheduled(bot, () => minutes);
+        const stop = scheduled(bot, () => minutes);
 
         try {
             await vi.advanceTimersByTimeAsync(30 * 60_000);
@@ -1007,7 +994,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(60_000);
             expect(bot.asked).toBe(1);
         } finally {
-            await stop();
+            stop();
             vi.useRealTimers();
         }
     });
@@ -1016,7 +1003,7 @@ describe('the backup schedule', () => {
         vi.useFakeTimers();
         const bot = askCounter();
         let minutes = 10;
-        const stop = await scheduled(bot, () => minutes);
+        const stop = scheduled(bot, () => minutes);
 
         try {
             await vi.advanceTimersByTimeAsync(9 * 60_000);
@@ -1027,7 +1014,7 @@ describe('the backup schedule', () => {
             await vi.advanceTimersByTimeAsync(60 * 60_000);
             expect(bot.asked).toBe(0);
         } finally {
-            await stop();
+            stop();
             vi.useRealTimers();
         }
     });
@@ -1035,8 +1022,8 @@ describe('the backup schedule', () => {
     it('stops when told to', async () => {
         vi.useFakeTimers();
         const bot = askCounter();
-        const stop = await scheduled(bot, () => MIN_BACKUP_MINUTES);
-        await stop();
+        const stop = scheduled(bot, () => MIN_BACKUP_MINUTES);
+        stop();
 
         try {
             await vi.advanceTimersByTimeAsync(60 * 60_000);

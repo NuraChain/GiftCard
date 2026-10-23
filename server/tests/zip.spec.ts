@@ -50,18 +50,18 @@ function readEntry(archive: Buffer): {
 
 describe('the backup archive', () => {
     it('round-trips a file byte for byte', async () => {
-        const body = Buffer.from('CREATE TABLE codes (id INTEGER, code TEXT);\n'.repeat(500));
-        const entry = readEntry(await zipOne('ashbringer.db', body));
+        const body = Buffer.from("INSERT INTO codes (id, code) VALUES (1, 'a');\n".repeat(500));
+        const entry = readEntry(await zipOne('ashbringer.sql', body));
 
-        expect(entry.name).toBe('ashbringer.db');
+        expect(entry.name).toBe('ashbringer.sql');
         expect(entry.bytes.equals(body)).toBe(true);
     });
 
     it('actually compresses - that is the whole point of the change', async () => {
-        // A SQLite file is page padding and repeated SQL text. If this ratio ever collapses,
-        // the archive has stopped earning the CPU it costs and somebody should know.
+        // A SQL dump is repeated statement text. If this ratio ever collapses, the archive has
+        // stopped earning the CPU it costs and somebody should know.
         const body = Buffer.from('x'.repeat(100_000));
-        const entry = readEntry(await zipOne('big.db', body));
+        const entry = readEntry(await zipOne('big.sql', body));
 
         expect(entry.method).toBe(8);
         expect(entry.stored).toBeLessThan(entry.original / 10);
@@ -82,7 +82,7 @@ describe('the backup archive', () => {
     it('writes a central directory a reader can find from the end', async () => {
         // Readers open a zip BACKWARDS - end record first, then the central directory it
         // points at. An archive with a good local header and a bad tail opens nowhere.
-        const archive = await zipOne('one.db', Buffer.from('hello'));
+        const archive = await zipOne('one.sql', Buffer.from('hello'));
 
         const end = archive.byteLength - 22;
         expect(archive.readUInt32LE(end)).toBe(END_OF_CENTRAL);
@@ -101,10 +101,10 @@ describe('the backup archive', () => {
     });
 
     it('flags the name as UTF-8 so a non-ASCII one survives', async () => {
-        const archive = await zipOne('پشتیبان.db', Buffer.from('x'));
+        const archive = await zipOne('پشتیبان.sql', Buffer.from('x'));
 
         // Bit 11. Without it a reader may decode the name as CP437 and produce mojibake.
         expect(archive.readUInt16LE(6) & 0x0800).toBe(0x0800);
-        expect(readEntry(archive).name).toBe('پشتیبان.db');
+        expect(readEntry(archive).name).toBe('پشتیبان.sql');
     });
 });
