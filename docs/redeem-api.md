@@ -26,9 +26,9 @@ No session, cookie or API key. Whoever holds the code can redeem it, once.
 
 The network is worked out from the address. There is no network field.
 
-| Network | Shape                                    | Check                                                                              |
-| ------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
-| `ERC20` | `0x` + 40 hex characters                 | Shape only. EIP-55 is not verified here, so the letter case is kept as sent.       |
+| Network | Shape                    | Check                                                                        |
+| ------- | ------------------------ | ---------------------------------------------------------------------------- |
+| `ERC20` | `0x` + 40 hex characters | Shape only. EIP-55 is not verified here, so the letter case is kept as sent. |
 
 Invisible characters (zero-width and bidi marks that come with text pasted from Telegram) are
 removed before the address is checked.
