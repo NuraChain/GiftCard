@@ -4,9 +4,6 @@ dist/
 *.local
 .idea
 
-# The gift-code inventory and the order ledger. Unsold codes in it are money.
-server/data/
-
 # Runtime logs, wherever the process happens to be started from.
 logs/
 server/logs/

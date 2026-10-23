@@ -3,18 +3,18 @@
 #   docker build -t ashbringer .
 #   docker run -d --name ashbringer --restart unless-stopped \
 #       -p 127.0.0.1:4600:4600 \
-#       -v ashbringer-data:/app/server/data \
+#       -e DATABASE_URL=postgres://ashbringer:<password>@<database host>:5432/ashbringer \
 #       ashbringer
 #
 # PUBLISH ON 127.0.0.1 and put nginx in front, as without Docker - see the note on `listen`
 # in server/src/main.ts. Running with nothing in front (or testing over plain http) means
 # adding `-e TRUST_PROXY_HOPS=0 -e COOKIE_SECURE=false`.
 #
-# THE VOLUME IS THE BUSINESS. The SQLite file in it holds unsold codes and the gateway
-# credentials; an image rebuilt without it is an empty shop.
+# THE DATABASE IS THE BUSINESS. PostgreSQL holds the unsold codes and the gateway credentials,
+# outside the image: a container rebuilt or replaced loses nothing but its own logs.
 #
 # Every COPY names its paths rather than copying the checkout, so a local node_modules (built
-# for another OS), server/data, server/logs and .env never end up in an image.
+# for another OS), server/logs and .env never end up in an image.
 
 FROM node:24-slim AS build
 WORKDIR /app
@@ -49,11 +49,10 @@ RUN npm ci --omit=dev --workspace server && npm cache clean --force
 COPY server/src server/src
 COPY --from=build /app/application/dist application/dist
 
-RUN mkdir -p server/data server/logs && chown -R node:node server/data server/logs
+RUN mkdir -p server/logs && chown -R node:node server/logs
 USER node
 
 WORKDIR /app/server
-VOLUME /app/server/data
 EXPOSE 4600
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
