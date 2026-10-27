@@ -227,6 +227,32 @@ describe('learning a payment', () => {
     });
 });
 
+describe('naming the invoice a payment is under', () => {
+    it('takes the invoice NOWPayments names for the payment, not one the request carried', async () => {
+        const { gateway, asked } = nowpayments(() => payment('waiting'));
+
+        expect(await gateway.invoiceOf('5745459419')).toBe('4522625843');
+        expect(asked[0].url.href).toBe('https://nowpayments.test/v1/payment/5745459419');
+        expect(asked[0].headers['x-api-key']).toBe(SETTINGS.apiKey);
+    });
+
+    it('names nothing when NOWPayments cannot read the payment', async () => {
+        const { gateway } = nowpayments(() => ({ status: 404, body: { message: 'not found' } }));
+        expect(await gateway.invoiceOf('5745459419')).toBeNull();
+    });
+
+    it('names nothing when NOWPayments is unreachable', async () => {
+        const { gateway } = nowpayments(() => new TypeError('fetch failed'));
+        expect(await gateway.invoiceOf('5745459419')).toBeNull();
+    });
+
+    it('asks nobody about an id that is not digits', async () => {
+        const { gateway, asked } = nowpayments(() => payment('finished'));
+        expect(await gateway.invoiceOf('../payout')).toBeNull();
+        expect(asked).toHaveLength(0);
+    });
+});
+
 describe('reading a NOWPayments invoice back', () => {
     const KNOWN = ['5745459419'];
 

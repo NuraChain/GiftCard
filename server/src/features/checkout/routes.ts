@@ -146,22 +146,124 @@ export async function pointAndSettle(
     order: Order,
     paymentId: string
 ): Promise<void> {
-    const { store, nowpayments, checkout } = options;
+    await pointAt(options, order, paymentId);
+    await options.checkout.settle((await options.store.orderById(order.id)) ?? order, true);
+}
+
+/**
+ * The first half of `pointAndSettle`: keeps `paymentId` against the order once NOWPayments says
+ * it is under the order's invoice. Answers whether it is kept now, whether learned here or before.
+ */
+async function pointAt(
+    options: Pick<PayOptions, 'store' | 'nowpayments'>,
+    order: Order,
+    paymentId: string
+): Promise<boolean> {
+    const { store, nowpayments } = options;
     const authority = order.authority ?? '';
     if (
-        order.status !== 'paid' &&
-        ID_SHAPE.test(paymentId) &&
-        authority.startsWith(NOWPAYMENTS_PREFIX)
+        order.status === 'paid' ||
+        !ID_SHAPE.test(paymentId) ||
+        !authority.startsWith(NOWPAYMENTS_PREFIX)
     ) {
-        const known = (await store.paymentsFor(authority)).includes(paymentId);
-        if (
-            !known &&
-            (await nowpayments.learn(authority.slice(NOWPAYMENTS_PREFIX.length), paymentId))
-        ) {
-            await store.rememberPayment(authority, paymentId);
-        }
+        return false;
     }
-    await checkout.settle((await store.orderById(order.id)) ?? order, true);
+    if ((await store.paymentsFor(authority)).includes(paymentId)) {
+        return true;
+    }
+    if (!(await nowpayments.learn(authority.slice(NOWPAYMENTS_PREFIX.length), paymentId))) {
+        return false;
+    }
+    await store.rememberPayment(authority, paymentId);
+    return true;
+}
+
+/**
+ * Finds the order an IPN is about and settles it. The body's `invoice_id` is taken when it is
+ * there; when it is missing or null - NOWPayments sends that on some payloads - the payment id is
+ * asked about with our key, and the invoice NOWPayments names is the order. Either way the
+ * payment is still learned by `pointAndSettle`, which checks it under that invoice first.
+ */
+async function settleFromCallback(
+    options: PayOptions,
+    invoiceId: string,
+    paymentId: string
+): Promise<void> {
+    const { store, nowpayments, log } = options;
+    let invoice = ID_SHAPE.test(invoiceId) ? invoiceId : '';
+    if (invoice === '' && ID_SHAPE.test(paymentId)) {
+        invoice = (await nowpayments.invoiceOf(paymentId)) ?? '';
+    }
+    const order =
+        invoice === ''
+            ? undefined
+            : await store.orderByAuthority(`${NOWPAYMENTS_PREFIX}${invoice}`);
+    if (order === undefined) {
+        log?.warn('nowpayments callback for no known invoice');
+        return;
+    }
+    await pointAndSettle(options, order, paymentId);
+}
+
+/** What an operator's rescue of a stuck English order came to. */
+export interface RescueOutcome {
+    /** `refused`: NOWPayments does not put the payment under this order's invoice, so nothing was kept. */
+    outcome: 'pending' | 'paid' | 'cancelled' | 'failed' | 'refused';
+
+    /** The payment ids now kept for the order, oldest first. */
+    paymentIds: string[];
+
+    /** Why it is not paid yet, or why it was refused. Empty once it is settled. */
+    reason: string;
+}
+
+/**
+ * The operator's way out for an English order whose payment never reached us - the IPN lost,
+ * and no return carried its id. The operator copies the payment id from NOWPayments' panel and
+ * hands it here. It goes through the same `pointAndSettle` the IPN and the buyer's return use,
+ * so NOWPayments, asked with our key, still has to confirm the payment is under this invoice. A
+ * wrong id is refused, not believed. `partially_paid` stays pending by design: the operator
+ * reads that in NOWPayments' panel, and no button here changes it.
+ */
+export async function rescueEnglishOrder(
+    options: Pick<PayOptions, 'store' | 'nowpayments' | 'checkout' | 'payment'>,
+    orderId: string,
+    paymentId: string
+): Promise<RescueOutcome> {
+    const { store, payment } = options;
+    const order = await store.orderById(orderId);
+    if (order === undefined) {
+        throw new NotFoundError('No order has that id');
+    }
+    const authority = order.authority ?? '';
+    if (order.lang !== 'en' || !authority.startsWith(NOWPAYMENTS_PREFIX)) {
+        throw new ConflictError('This order was not paid through NOWPayments');
+    }
+
+    if (order.status === 'paid') {
+        return { outcome: 'paid', paymentIds: await store.paymentsFor(authority), reason: '' };
+    }
+    // A refused id settles nothing: it is not ours to read the order against.
+    if (!(await pointAt(options, order, paymentId))) {
+        return {
+            outcome: 'refused',
+            paymentIds: await store.paymentsFor(authority),
+            reason: `NOWPayments does not put payment ${paymentId} under this order's invoice`
+        };
+    }
+    await options.checkout.settle((await store.orderById(orderId)) ?? order, true);
+
+    const settled = (await store.orderById(orderId)) ?? order;
+    const paymentIds = await store.paymentsFor(authority);
+    if (settled.status !== 'pending') {
+        return { outcome: settled.status, paymentIds, reason: '' };
+    }
+    const verified = await payment.verify(authority, settled.amount);
+    return {
+        outcome: 'pending',
+        paymentIds,
+        reason: verified.ok ? '' : verified.reason
+    };
 }
 
 /** @internal An id out of somebody else's JSON or form - a number or a string - as a string. */
@@ -191,7 +293,7 @@ function idField(raw: unknown): string {
  * accepting them here costs nothing, since this route believes no body at all.
  */
 export function mountNowPaymentsCallback(app: FastifyInstance, options: PayOptions): void {
-    const { store, log } = options;
+    const { log } = options;
     const limit = throttle(60, 60_000);
 
     app.register((scope, _opts, done) => {
@@ -212,19 +314,13 @@ export function mountNowPaymentsCallback(app: FastifyInstance, options: PayOptio
             },
             async (request, reply) => {
                 const body = request.body as Record<string, unknown> | null | undefined;
-                const invoiceId = idField(body?.invoice_id);
-                const order = ID_SHAPE.test(invoiceId)
-                    ? await store.orderByAuthority(`${NOWPAYMENTS_PREFIX}${invoiceId}`)
-                    : undefined;
-                if (order === undefined) {
-                    log?.warn('nowpayments callback for no known invoice');
-                } else {
-                    pointAndSettle(options, order, idField(body?.payment_id)).catch(
-                        (error: unknown) => {
-                            log?.error({ err: error }, 'nowpayments callback could not settle');
-                        }
-                    );
-                }
+                settleFromCallback(
+                    options,
+                    idField(body?.invoice_id),
+                    idField(body?.payment_id)
+                ).catch((error: unknown) => {
+                    log?.error({ err: error }, 'nowpayments callback could not settle');
+                });
                 return reply.send({ ok: true });
             }
         );

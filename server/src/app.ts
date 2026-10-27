@@ -47,6 +47,7 @@ import { createCheckout } from './features/checkout/checkout.ts';
 import {
     mountPayCallback,
     mountNowPaymentsCallback,
+    rescueEnglishOrder,
     payHandlers
 } from './features/checkout/routes.ts';
 import type { MailSender } from './features/checkout/mailer.ts';
@@ -235,10 +236,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
      */
     const callbackUrl = (): string => `${settings.current().publicBaseUrl}/api/pay/callback`;
 
-    // The English shop's two addresses, by the same rule. `json=true` is how NOWPayments is asked
-    // to post JSON rather than a PHP-shaped form; the route reads either. The return lands on
-    // the buyer's own language's page - one of a fixed list, never a path the request wrote -
-    // which knows from its own storage which receipt it is waiting for.
+    // The English shop's two addresses, by the same rule. NOWPayments posts its IPN as JSON; the
+    // route also accepts a form post. The return lands on the buyer's own language's page - one
+    // of a fixed list, never a path the request wrote - which knows from its own storage which
+    // receipt it is waiting for.
     const nowPaymentsCallbackUrl = (): string =>
         `${settings.current().publicBaseUrl}/api/pay/nowpayments`;
     const nowPaymentsReturnUrl = (lang: IntlLang): string =>
@@ -430,7 +431,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
             'admin.testSms': [requireAdmin, guard(throttle(5, 60_000))],
             'admin.testGateway': [requireAdmin, guard(throttle(5, 60_000))],
             'admin.testEmail': [requireAdmin, guard(throttle(5, 60_000))],
-            'admin.testNowPayments': [requireAdmin, guard(throttle(5, 60_000))]
+            'admin.testNowPayments': [requireAdmin, guard(throttle(5, 60_000))],
+
+            // Each call is a lookup at NOWPayments with our key, and an operator fixing a stuck
+            // order needs a handful of them, not a hundred.
+            'admin.settleOrder': [requireAdmin, guard(throttle(20, 60_000))]
         },
 
         // One line per feature. `mountApi` proves the union covers every route in the
@@ -439,7 +444,12 @@ export function buildApp(options: AppOptions): FastifyInstance {
             pay: payHandlers(pay),
             redeem: redeemHandlers({ store, payouts, log }),
             admin: {
-                ...consoleHandlers({ store, admin }),
+                ...consoleHandlers({
+                    store,
+                    admin,
+                    settleEnglish: (orderId, paymentId) =>
+                        rescueEnglishOrder(pay, orderId, paymentId)
+                }),
                 ...catalogueHandlers({ store, rate, settings, log }),
                 ...inventoryHandlers({ store }),
                 ...settingsHandlers({

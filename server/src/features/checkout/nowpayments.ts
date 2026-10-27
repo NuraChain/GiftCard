@@ -80,6 +80,13 @@ export interface NowPayments {
      */
     learn(invoiceId: string, paymentId: string): Promise<boolean>;
 
+    /**
+     * The invoice a payment is under, as NOWPayments says it with our key, or null when it
+     * cannot say. An IPN can arrive with its `invoice_id` missing or null; the payment id is then
+     * the only way back to the order, and this is how it is spent.
+     */
+    invoiceOf(paymentId: string): Promise<string | null>;
+
     /** `usdAmount` MUST come from our stored order, never from anything the request carried. */
     verify(invoiceId: string, usdAmount: number): Promise<VerifyResult>;
 }
@@ -203,6 +210,15 @@ export function createNowPayments(options: NowPaymentsOptions): NowPayments {
             }
             const answer = await readPayment(paymentId);
             return answer.status === 200 && idOf(answer.body?.invoice_id) === invoiceId;
+        },
+
+        async invoiceOf(paymentId) {
+            if (!ID_SHAPE.test(paymentId)) {
+                return null;
+            }
+            const answer = await readPayment(paymentId);
+            const invoiceId = idOf(answer.body?.invoice_id);
+            return answer.status === 200 && invoiceId !== '' ? invoiceId : null;
         },
 
         async verify(invoiceId, usdAmount) {

@@ -145,6 +145,8 @@ interface Fakes {
     /** Every payment the routes asked NOWPayments to vouch for, and what it says back. */
     learnCalls: Array<{ invoiceId: string; paymentId: string }>;
     learnAnswer: boolean;
+    invoiceOfCalls: string[];
+    invoiceOfAnswer: string | null;
 
     mail: MailSender;
     mailSent: Array<{ email: string; code: string; amount: number }>;
@@ -195,6 +197,8 @@ function fakes(): Fakes {
         nowPaymentsOverride: null,
         learnCalls: [],
         learnAnswer: true,
+        invoiceOfCalls: [],
+        invoiceOfAnswer: '4522600001',
         nowpayments: {
             request: (input) => {
                 state.nowPaymentsRequests.push(input);
@@ -211,6 +215,10 @@ function fakes(): Fakes {
             learn: (invoiceId, paymentId) => {
                 state.learnCalls.push({ invoiceId, paymentId });
                 return Promise.resolve(state.learnAnswer);
+            },
+            invoiceOf: (paymentId) => {
+                state.invoiceOfCalls.push(paymentId);
+                return Promise.resolve(state.invoiceOfAnswer);
             },
             verify: () => Promise.reject(new Error('verified through payment, never directly'))
         },
@@ -2297,6 +2305,12 @@ describe('the English shop', () => {
     const INVOICE = '4522600001';
     const PAYMENT = '5000000001';
 
+    /** A console session, for the operator's rescue of a stuck order. */
+    async function operator(): Promise<string> {
+        const response = await post('/api/admin/session', { key: ADMIN_KEY });
+        return response.headers.get('set-cookie') ?? '';
+    }
+
     /**
      * Posts an IPN and waits for the settlement it starts. The route answers BEFORE settling
      * (NOWPayments allows it three seconds), so the answer alone says nothing has happened yet.
@@ -2528,6 +2542,124 @@ describe('the English shop', () => {
         expect(await store.paymentsFor(authority)).toEqual(['5000000002']);
         // Anything but digits is refused before it reaches the gateway.
         expect((await get(`/api/pay/receipt?token=${token}&payment=../x`)).status).toBe(422);
+    });
+
+    it('finds the order from the payment when the IPN arrives with a null invoice id', async () => {
+        const { token, authority } = await startEn();
+        fake.verifyResult = { ok: true, refId: 5000000001, alreadyVerified: false };
+
+        const answer = await post('/api/pay/nowpayments', {
+            invoice_id: null,
+            payment_id: Number(PAYMENT),
+            payment_status: 'finished'
+        });
+
+        expect(answer.status).toBe(200);
+        await vi.waitFor(async () => expect((await store.orderById(token))?.status).toBe('paid'));
+        // The invoice came from NOWPayments' own answer about the payment, never from the body.
+        expect(fake.invoiceOfCalls).toEqual([PAYMENT]);
+        expect(fake.learnCalls).toEqual([{ invoiceId: INVOICE, paymentId: PAYMENT }]);
+        expect(await store.paymentsFor(authority)).toEqual([PAYMENT]);
+    });
+
+    it('does nothing for an IPN with no invoice id that NOWPayments cannot place', async () => {
+        await startEn();
+        fake.invoiceOfAnswer = null;
+
+        const answer = await post('/api/pay/nowpayments', {
+            invoice_id: null,
+            payment_id: Number(PAYMENT)
+        });
+
+        expect(answer.status).toBe(200);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(fake.invoiceOfCalls).toEqual([PAYMENT]);
+        expect(fake.verifyCalls).toHaveLength(0);
+        expect(fake.learnCalls).toHaveLength(0);
+    });
+
+    it('lets an operator settle a stuck English order from the payment id NOWPayments shows', async () => {
+        const { token, authority } = await startEn();
+        const cookie = await operator();
+        fake.verifyResult = { ok: true, refId: 5000000009, alreadyVerified: false };
+
+        const rescued = await post(
+            '/api/admin/orders/settle',
+            { orderId: token, paymentId: '5000000009' },
+            { cookie }
+        );
+
+        expect(rescued.status).toBe(200);
+        expect(await rescued.json()).toEqual({
+            outcome: 'paid',
+            paymentIds: ['5000000009'],
+            reason: ''
+        });
+        expect(await store.paymentsFor(authority)).toEqual(['5000000009']);
+        expect(fake.mailSent).toHaveLength(1);
+    });
+
+    it('refuses a payment id NOWPayments does not put under the order, and keeps nothing', async () => {
+        const { token, authority } = await startEn();
+        const cookie = await operator();
+        fake.learnAnswer = false;
+
+        const rescued = await post(
+            '/api/admin/orders/settle',
+            { orderId: token, paymentId: '5000000777' },
+            { cookie }
+        );
+
+        expect(await rescued.json()).toMatchObject({ outcome: 'refused', paymentIds: [] });
+        expect((await store.orderById(token))?.status).toBe('pending');
+        expect(await store.paymentsFor(authority)).toEqual([]);
+    });
+
+    it('says why a rescued order is still pending, and does not settle it', async () => {
+        const { token } = await startEn();
+        const cookie = await operator();
+        fake.verifyResult = { ok: false, pending: true, reason: 'nowpayments: payment waiting' };
+
+        const rescued = await post(
+            '/api/admin/orders/settle',
+            { orderId: token, paymentId: '5000000009' },
+            { cookie }
+        );
+
+        expect(await rescued.json()).toEqual({
+            outcome: 'pending',
+            paymentIds: ['5000000009'],
+            reason: 'nowpayments: payment waiting'
+        });
+        expect((await store.orderById(token))?.status).toBe('pending');
+    });
+
+    it('rescues only English NOWPayments orders, and only with digits, and only for the console', async () => {
+        const { token } = await startEn();
+        const cookie = await operator();
+
+        expect(
+            (
+                await post(
+                    '/api/admin/orders/settle',
+                    { orderId: token, paymentId: '../x' },
+                    { cookie }
+                )
+            ).status
+        ).toBe(422);
+        expect(
+            (
+                await post(
+                    '/api/admin/orders/settle',
+                    { orderId: 'no-such-order', paymentId: '5000000009' },
+                    { cookie }
+                )
+            ).status
+        ).toBe(404);
+        expect(
+            (await post('/api/admin/orders/settle', { orderId: token, paymentId: '5000000009' }))
+                .status
+        ).toBe(401);
     });
 
     it('takes the callback as a form post too, without opening forms to the console', async () => {

@@ -8,6 +8,7 @@ import type { contract } from '../../contract/index.ts';
 import type { Store } from '../../db/types.ts';
 import { displayPhone } from '../../domain/phone.ts';
 import { SESSION_COOKIE, type Admin } from './session.ts';
+import type { OrderSettleResult } from './contract.ts';
 
 /** Rows per page. Enough to scan without scrolling twice; small enough to stay fast. */
 const PAGE_SIZE = 25;
@@ -15,16 +16,19 @@ const PAGE_SIZE = 25;
 export interface ConsoleOptions {
     store: Store;
     admin: Admin;
+
+    /** The rescue of a stuck English order - see features/checkout/routes.ts `rescueEnglishOrder`. */
+    settleEnglish: (orderId: string, paymentId: string) => Promise<OrderSettleResult>;
 }
 
 /** Only this feature's routes. app.ts merges them into the `admin` group. */
 type ConsoleHandlers = Pick<
     Handlers<typeof contract>['admin'],
-    'signIn' | 'signOut' | 'overview' | 'orders' | 'redemptions'
+    'signIn' | 'signOut' | 'overview' | 'orders' | 'redemptions' | 'settleOrder'
 >;
 
 export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
-    const { store, admin } = options;
+    const { store, admin, settleEnglish } = options;
 
     return {
         // POST /api/admin/session
@@ -74,6 +78,9 @@ export function consoleHandlers(options: ConsoleOptions): ConsoleHandlers {
                 pageSize: PAGE_SIZE
             };
         },
+
+        // POST /api/admin/orders/settle
+        settleOrder: ({ input }) => settleEnglish(input.orderId, input.paymentId),
 
         // GET /api/admin/redemptions
         redemptions: async ({ query }) => {

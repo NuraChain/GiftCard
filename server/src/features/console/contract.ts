@@ -93,7 +93,26 @@ export const redemptionPage = z.object({
     pageSize: z.number().int()
 });
 
+/**
+ * The operator's rescue of an English order that is stuck pending: the NOWPayments payment id
+ * copied from NOWPayments' panel. Digits only - anything else is refused before it is sent on.
+ */
+export const orderSettleInput = z.object({
+    orderId: z.string().trim().min(1).max(64),
+    paymentId: z
+        .string()
+        .trim()
+        .regex(/^\d{1,20}$/, 'A NOWPayments payment id is digits only')
+});
+
+export const orderSettleResult = z.object({
+    outcome: z.enum(['pending', 'paid', 'cancelled', 'failed', 'refused']),
+    paymentIds: z.array(z.string()),
+    reason: z.string()
+});
+
 export type AdminOverview = z.infer<typeof adminOverview>;
+export type OrderSettleResult = z.infer<typeof orderSettleResult>;
 export type StockLine = z.infer<typeof stockLine>;
 export type LedgerPage = z.infer<typeof ledgerPage>;
 export type LedgerRow = z.infer<typeof ledgerRow>;
@@ -105,5 +124,9 @@ export const consoleRoutes = {
     signOut: del('/admin/session'),
     overview: get('/admin/overview', { output: adminOverview }),
     orders: get('/admin/orders', { query: ledgerQuery, output: ledgerPage }),
-    redemptions: get('/admin/redemptions', { query: ledgerQuery, output: redemptionPage })
+    redemptions: get('/admin/redemptions', { query: ledgerQuery, output: redemptionPage }),
+    settleOrder: post('/admin/orders/settle', {
+        input: orderSettleInput,
+        output: orderSettleResult
+    })
 };

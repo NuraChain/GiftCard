@@ -6,6 +6,7 @@ import { Search } from 'lucide';
 
 import { client, failureText } from '../../lib/api.ts';
 import type { LedgerRow } from '../../../../server/src/contract/index.ts';
+import type { OrderSettleResult } from '../../../../server/src/features/console/contract.ts';
 import { count, moment, toman, usd } from '../../lib/format.ts';
 import { useToasts } from '../../ui/toast.ts';
 import Async from '../../ui/async.azeroth';
@@ -23,6 +24,20 @@ const STATUS_TEXT: Record<string, { label: string; tone: string }> = {
     failed: { label: 'ناموفق', tone: 'text-danger' }
 };
 
+/** What the operator is told after pointing an English order at a NOWPayments payment. */
+function rescueText(result: OrderSettleResult): string {
+    switch (result.outcome) {
+        case 'paid':
+            return 'پرداخت تأیید شد. کد به ایمیل خریدار رفت.';
+        case 'refused':
+            return 'NOWPayments این پرداخت را زیر فاکتور این سفارش نمی‌شناسد. شناسهٔ پرداخت را دوباره از پنل NOWPayments بردارید.';
+        case 'pending':
+            return `پرداخت ثبت شد ولی هنوز تأیید نشده (${ result.reason }). سرور هر دو دقیقه دوباره می‌پرسد.`;
+        default:
+            return `پرداخت تأیید نشد (${ result.reason || result.outcome }).`;
+    }
+}
+
 export default component Orders()
 {
     const notify = useToasts();
@@ -36,6 +51,14 @@ export default component Orders()
     state loading = false;
     state error = '';
     state revealed: string | null = null;
+
+    // The rescue of an English order whose payment never reached us: the operator copies the
+    // payment id from NOWPayments' panel, and the server checks it with NOWPayments before it
+    // believes it. A wrong id is refused, never settled.
+    state rescuing: LedgerRow | null = null;
+    state paymentId = '';
+    state rescueBusy = false;
+    state rescueNote = '';
 
     derived lastPage = Math.max(1, Math.ceil(total / pageSize));
 
@@ -88,6 +111,36 @@ export default component Orders()
         void load();
     };
 
+    const openRescue = (order: LedgerRow): void => {
+        rescuing = order;
+        paymentId = '';
+        rescueNote = '';
+    };
+
+    const runRescue = async (event: Event): Promise<void> => {
+        event.preventDefault();
+        const order = rescuing;
+        if (order === null) {
+            return;
+        }
+        rescueBusy = true;
+        rescueNote = '';
+        try {
+            const result = await client.admin.settleOrder({
+                input: { orderId: order.id, paymentId: paymentId.trim() }
+            });
+            rescueNote = rescueText(result);
+            if (result.outcome === 'paid') {
+                notify.success('سفارش پرداخت شد');
+                void load();
+            }
+        } catch (failure) {
+            rescueNote = failureText(failure, 'درخواست به سرور نرسید');
+        } finally {
+            rescueBusy = false;
+        }
+    };
+
     const copyCode = async (code: string): Promise<void> => {
         try {
             await navigator.clipboard.writeText(code);
@@ -131,6 +184,44 @@ export default component Orders()
                 </Button>
             </Show>
         </form>
+
+        <Show when={ rescuing !== null }>
+            <form
+                class="mt-4 rounded-2xl border border-line bg-surface p-4"
+                novalidate
+                onSubmit={ (event) => void runRescue(event) }
+            >
+                <p class="text-small font-bold">
+                    ثبت پرداخت NOWPayments برای
+                    <span dir="ltr" class="latin"> { rescuing?.phone } · ${ rescuing?.amount }</span>
+                </p>
+                <p class="mt-1 text-caption text-muted">
+                    در پنل NOWPayments، شناسهٔ پرداخت (Payment ID) این خرید را پیدا کنید و اینجا بگذارید.
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <label class="sr-only" for="rescue-payment-id">شناسهٔ پرداخت NOWPayments</label>
+                    <div class="min-w-0 flex-1">
+                        <TextInput
+                            id="rescue-payment-id"
+                            tone="surface"
+                            class="px-4 text-small latin"
+                            placeholder="Payment ID"
+                            value={ paymentId }
+                            onChange={ (value) => paymentId = value }
+                        />
+                    </div>
+                    <Button type="submit" disabled={ rescueBusy || paymentId.trim() === '' }>
+                        بررسی و ثبت
+                    </Button>
+                    <Button variant="ghost" onClick={ () => rescuing = null }>
+                        بستن
+                    </Button>
+                </div>
+                <Show when={ rescueNote !== '' }>
+                    <p class="mt-3 text-small">{ rescueNote }</p>
+                </Show>
+            </form>
+        </Show>
 
         <div class="mt-4">
             <Async
@@ -241,6 +332,15 @@ export default component Orders()
                                         >
                                             <Match when={ order.status === 'paid' && order.code === null }>
                                                 <span class="font-bold text-danger">کد داده نشده</span>
+                                            </Match>
+                                            <Match when={ order.lang === 'en' && order.status !== 'paid' }>
+                                                <button
+                                                    type="button"
+                                                    class="py-1 text-caption font-bold text-firouze hover:underline max-md:min-h-tap max-md:w-full max-md:rounded-xl max-md:border max-md:border-line"
+                                                    onClick={ () => openRescue(order) }
+                                                >
+                                                    ثبت پرداخت
+                                                </button>
                                             </Match>
                                             <Match when={ order.code === null }>
                                                 <span class="text-muted">-</span>
