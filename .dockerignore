@@ -1,0 +1,12 @@
+# The Dockerfile COPYs only named paths, so none of these could reach an image. Listing them
+# keeps them out of the build context too: .env carries the database password, and nothing
+# sent to the builder should.
+.env
+.env.*
+!.env.example
+.git
+node_modules
+**/node_modules
+application/dist
+server/logs
+server/data

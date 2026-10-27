@@ -194,7 +194,7 @@ describe('serving the built client', () => {
     });
 
     it('will not serve a file from outside the build directory', async () => {
-        // A traversal out of the served root reaches the database, the logs and server/.env.
+        // A traversal out of the served root reaches the logs and the root .env.
         // @fastify/static refuses it; this is here so that stays true if it is ever replaced.
         build();
         writeFileSync(join(dist, '..', 'ashbringer-secret.txt'), 'the merchant id');

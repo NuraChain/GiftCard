@@ -3,12 +3,27 @@
 #   docker build -t ashbringer .
 #   docker run -d --name ashbringer --restart unless-stopped \
 #       -p 127.0.0.1:4600:4600 \
-#       -e DATABASE_URL=postgres://ashbringer:<password>@<database host>:5432/ashbringer \
+#       -v "$(pwd)/.env:/app/.env:ro" \
+#       --add-host=host.docker.internal:host-gateway \
 #       ashbringer
+#
+# THE CONFIGURATION IS THE .env AT THE REPOSITORY ROOT (copy .env.example), MOUNTED at /app/.env:
+# the server finds it there exactly as it does outside Docker (server/src/config.ts). Mounted,
+# not copied in - it carries the database password, and an image is not a place for that.
+#   - The image's own HOST, PORT and NODE_ENV win over the file's, so the 127.0.0.1 the file
+#     says for a bare-metal install does not lock the container out of its own published port.
+#     For the same reason, do NOT pass the file with `--env-file`: that sets HOST=127.0.0.1 over
+#     the image's 0.0.0.0, and nothing outside the container can reach it.
+#   - The server runs as `node` (uid 1000) and must be able to read the file: chmod 644, or
+#     chown 1000. An unreadable file stops the boot with the reason, rather than being skipped.
+#   - DATABASE_URL at 127.0.0.1 is the container itself. A database on the same machine is
+#     host.docker.internal (what the --add-host line above provides), and PostgreSQL must
+#     listen on, and allow, the Docker bridge address.
+#   - `-e NAME=value` still works for any one setting, and wins over the file.
 #
 # PUBLISH ON 127.0.0.1 and put nginx in front, as without Docker - see the note on `listen`
 # in server/src/main.ts. Running with nothing in front (or testing over plain http) means
-# adding `-e TRUST_PROXY_HOPS=0 -e COOKIE_SECURE=false`.
+# TRUST_PROXY_HOPS=0 and COOKIE_SECURE=false in the file.
 #
 # THE DATABASE IS THE BUSINESS. PostgreSQL holds the unsold codes and the gateway credentials,
 # outside the image: a container rebuilt or replaced loses nothing but its own logs.

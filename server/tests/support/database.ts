@@ -3,7 +3,7 @@
 // The suite runs against PostgreSQL itself, through the same TypeORM and pg the server uses - a
 // stand-in would agree with production only where somebody remembered to make it, and the claim
 // and redemption guarantees are promises about this engine's locking. The database is
-// TEST_DATABASE_URL, from the environment or from that one key of server/.env (see
+// TEST_DATABASE_URL, from the environment or from that one key of the root .env (see
 // vitest.config.ts). Every store a test opens gets a schema nobody else will pick, so files run
 // in parallel without seeing each other's rows, and `setup.ts` closes it and drops the schema
 // after the test.
@@ -26,7 +26,7 @@ export function testDatabase(): string {
     if (url === undefined || url === '') {
         throw new Error(
             'TEST_DATABASE_URL is not set: the server suite needs a PostgreSQL database it may ' +
-                'create schemas in - set it in the environment or in server/.env (see server/.env.example)'
+                'create schemas in - set it in the environment or in the root .env (see .env.example)'
         );
     }
     return url;

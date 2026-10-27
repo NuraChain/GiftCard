@@ -27,10 +27,20 @@
 // business, and both are explained where they are declared.
 import { bool, loadConfig, num, oneOf, str } from './platform/env.ts';
 
+// THE .env AT THE REPOSITORY ROOT, found from this file rather than from the working directory:
+// `npm start --workspace server` and the Docker image both run from server/, and the one file
+// has to be the same file either way. In the image that is /app/.env, mounted read-only (see
+// the Dockerfile). A variable already in the environment wins over the file's copy, which is
+// what keeps the image's HOST=0.0.0.0 when the file says 127.0.0.1.
 try {
-    process.loadEnvFile();
-} catch {
-    // No .env file - the ambient environment is the configuration.
+    process.loadEnvFile(new URL('../../.env', import.meta.url));
+} catch (error) {
+    // No .env file - the ambient environment is the configuration. Any OTHER failure is a file
+    // that is there and cannot be read (a mount the image's `node` user may not open), and
+    // booting on as if it were absent would blame the first missing setting instead.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+    }
 }
 
 export const config = loadConfig({

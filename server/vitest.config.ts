@@ -8,7 +8,8 @@ import { defineConfig } from 'vitest/config';
 // create schemas in (see tests/support/database.ts).
 
 /**
- * TEST_DATABASE_URL from the environment, or else that ONE key of server/.env.
+ * TEST_DATABASE_URL from the environment, or else that ONE key of the root .env - the same file
+ * the server reads (see src/config.ts).
  *
  * Only that key: the rest of .env configures a running shop - a port, a production NODE_ENV -
  * and a suite that inherited it would be testing a deployment rather than the code.
@@ -18,7 +19,8 @@ function testDatabaseUrl(): string | undefined {
         return process.env.TEST_DATABASE_URL;
     }
     try {
-        return parseEnv(readFileSync(new URL('./.env', import.meta.url), 'utf8')).TEST_DATABASE_URL;
+        return parseEnv(readFileSync(new URL('../.env', import.meta.url), 'utf8'))
+            .TEST_DATABASE_URL;
     } catch {
         return undefined;
     }
