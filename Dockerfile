@@ -10,10 +10,9 @@
 # THE CONFIGURATION IS THE .env AT THE REPOSITORY ROOT (copy .env.example), MOUNTED at /app/.env:
 # the server finds it there exactly as it does outside Docker (server/src/config.ts). Mounted,
 # not copied in - it carries the database password, and an image is not a place for that.
-#   - The image's own HOST, PORT and NODE_ENV win over the file's, so the 127.0.0.1 the file
-#     says for a bare-metal install does not lock the container out of its own published port.
-#     For the same reason, do NOT pass the file with `--env-file`: that sets HOST=127.0.0.1 over
-#     the image's 0.0.0.0, and nothing outside the container can reach it.
+#   - The server inside always listens on 0.0.0.0 (pinned on the CMD line), whatever HOST the
+#     file says - its 127.0.0.1 is for a bare-metal install. The image's PORT and NODE_ENV win
+#     over the file's too. `--env-file .env` or a compose `env_file:` work as well as the mount.
 #   - The server runs as `node` (uid 1000) and must be able to read the file: chmod 644, or
 #     chown 1000. An unreadable file stops the boot with the reason, rather than being skipped.
 #   - DATABASE_URL at 127.0.0.1 is the container itself. A database on the same machine is
@@ -50,8 +49,8 @@ RUN npm run build
 
 FROM node:24-slim
 WORKDIR /app
+# HOST is not set here: it is pinned on the CMD line below, where nothing can override it.
 ENV NODE_ENV=production \
-    HOST=0.0.0.0 \
     PORT=4600
 
 # Only the server's runtime dependencies. The server has no build step: Node runs its
@@ -73,4 +72,9 @@ EXPOSE 4600
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/api/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
 
-CMD ["node", "src/main.ts"]
+# ALWAYS 0.0.0.0. Loopback inside a container is reachable from nowhere but the container, so no
+# HOST - from the mounted .env, `--env-file`, a compose `env_file:` or `-e` - is ever right here.
+# Set by `env` as the process starts, after every one of those, and `env` execs node, so node
+# is still PID 1 and receives `docker stop`'s signal itself. What stays private is the PUBLISHED
+# port: `-p 127.0.0.1:4600:4600`.
+CMD ["env", "HOST=0.0.0.0", "node", "src/main.ts"]

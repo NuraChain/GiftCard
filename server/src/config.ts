@@ -30,8 +30,8 @@ import { bool, loadConfig, num, oneOf, str } from './platform/env.ts';
 // THE .env AT THE REPOSITORY ROOT, found from this file rather than from the working directory:
 // `npm start --workspace server` and the Docker image both run from server/, and the one file
 // has to be the same file either way. In the image that is /app/.env, mounted read-only (see
-// the Dockerfile). A variable already in the environment wins over the file's copy, which is
-// what keeps the image's HOST=0.0.0.0 when the file says 127.0.0.1.
+// the Dockerfile). A variable already in the environment wins over the file's copy - which is
+// how the image's HOST=0.0.0.0, pinned on its CMD line, outlasts the file's 127.0.0.1.
 try {
     process.loadEnvFile(new URL('../../.env', import.meta.url));
 } catch (error) {
